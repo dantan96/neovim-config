@@ -43,6 +43,7 @@ return {
         -- Functional Programming
         "haskell",
         "ocaml",
+        "fsharp",
 
         -- Scripting
         "lua",
