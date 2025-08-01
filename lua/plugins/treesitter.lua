@@ -58,9 +58,27 @@ return {
         "vim",
         "vimdoc",
       },
-      notify_install = false, -- Disable installation notifications
+      auto_install = false, -- Disable installation notifications
       highlight = { enable = true },
       indent = { enable = true },
+      textobjects = {
+        select = {
+          enable = true,
+          lookahead = true, -- automatically jump forward to text-object
+          keymaps = {
+            ["af"] = "@function.outer",
+            ["if"] = "@function.inner",
+            ["ac"] = "@class.outer",
+            ["ic"] = "@class.inner",
+          },
+        },
+        move = {
+          enable = true,
+          set_jumps = true,
+          goto_next_start = { ["]m"] = "@function.outer" },
+          goto_previous_start = { ["[m"] = "@function.outer" },
+        },
+      },
     })
 
     -- -- Add parser path to runtimepath
