@@ -12,14 +12,14 @@ return {
       lspconfig.lua_ls.setup({ capabilities = capabilities })
       lspconfig.basedpyright.setup({ capabilities = capabilities })
       lspconfig.texlab.setup({ capabilities = capabilities })
-      lspconfig.fsautocomplete.setup({
-        capabilities = capabilities,
-        cmd = { "fsautocomplete", "--adaptive-lsp-server-enabled" },
-        filetypes = { "fsharp", "fs", "fsx", "fsi" },
-        on_attach = function(client, bufnr)
-          client.server_capabilities.semanticTokensProvider = nil
-        end,
-      })
+      -- lspconfig.fsautocomplete.setup({
+      --   capabilities = capabilities,
+      --   cmd = { "fsautocomplete", "--adaptive-lsp-server-enabled" },
+      --   filetypes = { "fsharp", "fs", "fsx", "fsi" },
+      --   on_attach = function(client, bufnr)
+      --     client.server_capabilities.semanticTokensProvider = nil
+      --   end,
+      -- })
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(args)
           local client = vim.lsp.get_client_by_id(args.data.client_id)

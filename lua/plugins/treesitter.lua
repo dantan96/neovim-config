@@ -3,8 +3,8 @@ return {
   -- Provides syntax highlighting, indentation, and more using tree-sitter parsers
   "nvim-treesitter/nvim-treesitter",
   build = ":TSUpdate", -- Automatically update parsers on plugin updates
-  priority = 1000,     -- Load treesitter early in the startup process
-  lazy = false,        -- Disable lazy loading to ensure immediate availability
+  priority = 1000, -- Load treesitter early in the startup process
+  lazy = false, -- Disable lazy loading to ensure immediate availability
 
   -- Plugin dependencies
   dependencies = {
@@ -106,15 +106,25 @@ return {
     --     vim.treesitter.language.require_language("spthy")
     --   end)
     -- end
-    local parser_config = require "nvim-treesitter.parsers".get_parser_configs()
+    local parser_config = require("nvim-treesitter.parsers").get_parser_configs()
     parser_config.spthy = {
       install_info = {
         url = "/home/daniel.tanios/tamarin-prover/tree-sitter/tree-sitter-spthy",
         files = { "src/parser.c", "src/scanner.c" },
         -- optional entries:
-        branch = "develop",                     -- default branch in case of git repo if different from master
+        branch = "develop", -- default branch in case of git repo if different from master
         requires_generate_from_grammar = false, -- if folder contains pre-generated src/parser.c
       },
+    }
+    parser_config.fsharp = {
+      install_info = {
+        url = "https://github.com/ionide/tree-sitter-fsharp",
+        branch = "main",
+        files = { "src/scanner.c", "src/parser.c" },
+        location = "fsharp",
+      },
+      requires_generate_from_grammar = false,
+      filetype = "fsharp",
     }
   end,
 }

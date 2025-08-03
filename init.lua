@@ -5,18 +5,19 @@ vim.opt.termguicolors = true
 vim.filetype.add({
   extension = {
     spthy = "spthy",
-    sapic = "spthy"
+    sapic = "spthy",
   },
 })
 -- log("Registered Tamarin filetype")
 
 -- Setup spthy support with the streamlined module
 pcall(function()
-  require('config.spthy_setup').setup()
+  require("config.spthy_setup").setup()
 end)
 
 -- Load lazy.nvim plugin manager
 require("config.lazy")
+require("config.fsharp-highlights")
 
 -- General keymaps
 vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>")
@@ -31,17 +32,17 @@ vim.opt.number = true
 vim.opt.wrap = false
 
 -- Highlight yanked text
-vim.api.nvim_create_autocmd('TextYankPost', {
-  desc = 'Highlight when yanking (copying) text',
-  group = vim.api.nvim_create_augroup('highlight-yank', { clear = true }),
+vim.api.nvim_create_autocmd("TextYankPost", {
+  desc = "Highlight when yanking (copying) text",
+  group = vim.api.nvim_create_augroup("highlight-yank", { clear = true }),
   callback = function()
     vim.highlight.on_yank()
   end,
 })
 
 -- Terminal
-vim.api.nvim_create_autocmd('TermOpen', {
-  group = vim.api.nvim_create_augroup('custom-term-open', { clear = true }),
+vim.api.nvim_create_autocmd("TermOpen", {
+  group = vim.api.nvim_create_augroup("custom-term-open", { clear = true }),
   callback = function()
     vim.opt.modifiable = true
     vim.opt.number = true
@@ -64,7 +65,7 @@ vim.keymap.set("n", "<leader>r", function()
   if job_id == 0 then
     open_terminal()
   end
-  local filename_and_enter = "\"./" .. vim.fn.expand("%") .. "\"\r\n"
+  local filename_and_enter = '"./' .. vim.fn.expand("%") .. '"\r\n'
   vim.fn.chansend(job_id, { filename_and_enter })
 end)
 
@@ -92,12 +93,12 @@ vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-N>")
 
 -- Toggle diagnostics (buffer-local, no globals touched)
 vim.keymap.set("n", "<leader>lx", function()
-  local filter  = { bufnr = 0 }                     -- 0 = current buffer
+  local filter = { bufnr = 0 } -- 0 = current buffer
   local enabled = vim.diagnostic.is_enabled(filter) -- check current state
-  vim.diagnostic.enable(not enabled, filter)        -- flip it
+  vim.diagnostic.enable(not enabled, filter) -- flip it
 end, { desc = "Toggle diagnostics (buffer)" })
 
 -- Add TreeSitter info command
 pcall(function()
-  require('ts_info').setup()
+  require("ts_info").setup()
 end)
