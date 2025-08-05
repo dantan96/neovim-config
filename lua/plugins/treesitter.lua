@@ -61,7 +61,7 @@ return {
       },
       auto_install = false, -- Disable installation notifications
       highlight = { enable = true },
-      indent = { enable = true },
+      indent = { enable = true, disable = { "fsharp" } },
       textobjects = {
         select = {
           enable = true,

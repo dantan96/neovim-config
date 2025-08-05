@@ -6,7 +6,8 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = "fsharp",
   callback = function(args)
     -- Save the current semantic‑token priority so it can be restored later
-    local old_priority = vim.hl.priorities.semantic_tokens
+    -- local old_priority = vim.hl.priorities.semantic_tokens
+    local old_priority = 125
 
     -- Lower the priority below the Tree‑sitter level (100 is the default TS priority)
     -- Values < 100 ensure Tree‑sitter highlights are used when both are present.
