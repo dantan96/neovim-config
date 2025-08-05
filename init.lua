@@ -8,6 +8,7 @@ vim.filetype.add({
     sapic = "spthy",
   },
 })
+
 -- log("Registered Tamarin filetype")
 
 -- Setup spthy support with the streamlined module
@@ -102,3 +103,8 @@ end, { desc = "Toggle diagnostics (buffer)" })
 pcall(function()
   require("ts_info").setup()
 end)
+
+require("capture_report").setup({
+  command = "CapRep", -- :CapRep
+  keymap = "<leader>hc", -- press <leader>hc in normal mode
+})
