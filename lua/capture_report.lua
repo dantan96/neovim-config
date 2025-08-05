@@ -12,8 +12,8 @@ local function hl(group)
     return {}
   end
   return {
-    fg = hex(h.foreground),
-    bg = hex(h.background),
+    fg = hex(h.fg),
+    bg = hex(h.bg),
     attrs = table.concat({
       h.bold and "bold" or nil,
       h.italic and "italic" or nil,
