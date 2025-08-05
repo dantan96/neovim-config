@@ -11,9 +11,19 @@ local function hl(group)
   if not ok or not h then
     return {}
   end
+  local fg = h.fg or h.foreground
+  local bg = h.bg or h.background
+  -- if still missing and a link exists, follow it once
+  if not fg and h.link then
+    local l_ok, l_h = pcall(vim.api.nvim_get_hl, 0, { name = h.link, link = false })
+    if l_ok and l_h then
+      fg = l_h.fg or l_h.foreground
+      bg = l_h.bg or l_h.background
+    end
+  end
   return {
-    fg = hex(h.fg),
-    bg = hex(h.bg),
+    fg = hex(fg),
+    bg = hex(bg),
     attrs = table.concat({
       h.bold and "bold" or nil,
       h.italic and "italic" or nil,
@@ -21,6 +31,26 @@ local function hl(group)
     }, " "),
     link = h.link or group,
   }
+end
+
+local function collect_semantic_groups(bufnr)
+  local sg = {}
+  for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+    -- skip if server has no semantic-token capability
+    if client.server_capabilities.semanticTokensProvider then
+      local ns = vim.lsp.semantic_tokens.get_namespace(client.id) -- ↑ Nvim 0.10+
+      if ns then
+        -- extmarks carry {hl_group=...} in the details table
+        for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })) do
+          local hl = mark[4] and mark[4].hl_group
+          if hl then
+            sg[hl] = true
+          end
+        end
+      end
+    end
+  end
+  return sg
 end
 
 -- build rows of capture → colour
@@ -37,16 +67,18 @@ end
 
 function M.run()
   local buf = vim.api.nvim_get_current_buf()
+
+  -- active TS language -------------------------------------------------------
   local lang = (function()
     local ok, p = pcall(vim.treesitter.get_parser, buf)
     return ok and p and p:lang() or nil
   end)()
 
-  -- enumerate LSP clients using the modern API
+  -- active LSP clients -------------------------------------------------------
   local lsp_lines = {}
-  for _, client in pairs(vim.lsp.get_clients({ bufnr = buf })) do
-    local tok = client.server_capabilities and client.server_capabilities.semanticTokensProvider and "✔" or "✘"
-    table.insert(lsp_lines, ("• %s  (semantic-tokens %s)"):format(client.name, tok))
+  for _, cli in pairs(vim.lsp.get_clients({ bufnr = buf })) do
+    local tok = cli.server_capabilities and cli.server_capabilities.semanticTokensProvider and "✔" or "✘"
+    lsp_lines[#lsp_lines + 1] = ("• %s  (semantic-tokens %s)"):format(cli.name, tok)
   end
   if #lsp_lines == 0 then
     lsp_lines[1] = "∅  (no LSP)"
@@ -54,7 +86,9 @@ function M.run()
 
   local scheme = vim.g.colors_name or "NONE"
 
-  -- build a set of capture names from the highlights query
+  ---------------------------------------------------------------------------
+  -- 1. Capture names from Tree-sitter highlights query
+  ---------------------------------------------------------------------------
   local caps = {}
   if lang then
     local q = vim.treesitter.query.get(lang, "highlights")
@@ -65,17 +99,33 @@ function M.run()
     end
   end
 
-  -- build the rows using the correct table (caps)
-  local rows = build_rows(caps)
-
-  -- print the report into a scratch buffer
-  local out = vim.api.nvim_create_buf(false, true)
-  local function add(line)
-    vim.api.nvim_buf_set_lines(out, -1, -1, false, { line })
+  ---------------------------------------------------------------------------
+  -- 2. Merge in highlight groups used by LSP semantic tokens
+  ---------------------------------------------------------------------------
+  for hl_group in pairs(collect_semantic_groups(buf)) do
+    caps[hl_group:gsub("^@", "")] = true -- strip leading @
   end
 
-  add("┏ Capture‑colour report ┓")
-  add(("Tree‑sitter parser : %s"):format(lang or "none"))
+  ---------------------------------------------------------------------------
+  -- 3. Build & sort rows
+  ---------------------------------------------------------------------------
+  local rows = build_rows(caps)
+  local header = table.remove(rows, 1) -- keep the header out of the sort
+  table.sort(rows, function(a, b)
+    return a[1] < b[1]
+  end)
+  table.insert(rows, 1, header)
+
+  ---------------------------------------------------------------------------
+  -- 4. Display in scratch buffer
+  ---------------------------------------------------------------------------
+  local out = vim.api.nvim_create_buf(false, true)
+  local add = function(s)
+    vim.api.nvim_buf_set_lines(out, -1, -1, false, { s })
+  end
+
+  add("┏ Capture-colour report ┓")
+  add(("Tree-sitter parser : %s"):format(lang or "none"))
   add(("Colourscheme       : %s"):format(scheme))
   add("LSP clients        :")
   for _, l in ipairs(lsp_lines) do
