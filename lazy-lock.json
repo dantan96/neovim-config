@@ -21,5 +21,5 @@
   "telescope.nvim": { "branch": "master", "commit": "a0bbec21143c7bc5f8bb02e0005fa0b982edc026" },
   "vim-fsharp": { "branch": "master", "commit": "68bb8429a40f921f2ef62fd044a64170dc5458a1" },
   "vim-tmux-navigator": { "branch": "master", "commit": "c45243dc1f32ac6bcf6068e5300f3b2b237e576a" },
-  "vimtex": { "branch": "master", "commit": "2526ed113a43c1f18346a17e752f9d94265a3445" }
+  "vimtex": { "branch": "master", "commit": "6fabe8b7b5e83f753eb930036b1d941b2f7d3d4d" }
 }

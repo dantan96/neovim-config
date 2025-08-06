@@ -19,20 +19,20 @@ return {
         root_dir = function(fname)
           return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or util.path.dirname(fname)
         end,
-        capabilities = capabilities,
-        on_attach = function(client, bufnr)
-          local caps = client.server_capabilities
-          if caps.semanticTokensProvider and caps.semanticTokensProvider.full then
-            local augroup = vim.api.nvim_create_augroup("FsacSemanticTokens", {})
-            vim.api.nvim_create_autocmd({ "BufEnter", "TextChanged", "InsertLeave" }, {
-              group = augroup,
-              buffer = bufnr,
-              callback = function()
-                vim.lsp.buf.semantic_tokens_full()
-              end,
-            })
-          end
-        end,
+        -- capabilities = capabilities,
+        -- on_attach = function(client, bufnr)
+        --   local caps = client.server_capabilities
+        --   if caps.semanticTokensProvider and caps.semanticTokensProvider.full then
+        --     local augroup = vim.api.nvim_create_augroup("FsacSemanticTokens", {})
+        --     vim.api.nvim_create_autocmd({ "BufEnter", "TextChanged", "InsertLeave" }, {
+        --       group = augroup,
+        --       buffer = bufnr,
+        --       callback = function()
+        --         vim.lsp.buf.semantic_tokens_full()
+        --       end,
+        --     })
+        --   end
+        -- end,
       })
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(args)
