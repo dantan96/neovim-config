@@ -17,7 +17,7 @@ return {
         cmd = { "fsautocomplete" },
         init_options = { AutomaticWorkspaceInit = true },
         root_dir = function(fname)
-          return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or vim.fs.dirname(fname)
+          return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or util.path.dirname(fname)
         end,
         capabilities = capabilities,
         on_attach = function(client, bufnr)
