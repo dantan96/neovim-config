@@ -52,14 +52,30 @@ vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underli
 --
 --
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "fsharp",
+  pattern = { "fsharp", "fs", "fsx", "fsi" },
   callback = function()
-    vim.cmd("runtime! syntax/fsharp.vim")
+    -- Don’t start a second client if one is already active
+    for _, client in pairs(vim.lsp.get_active_clients()) do
+      if client.name == "fsautocomplete" then
+        return
+      end
+    end
+    vim.lsp.start({
+      name = "fsautocomplete",
+      cmd = { "fsautocomplete" },
+      filetypes = { "fsharp", "fs", "fsx", "fsi" },
+      root_dir = function(fname)
+        local util = require("lspconfig.util")
+        return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or vim.fs.dirname(fname)
+      end,
+      init_options = { AutomaticWorkspaceInit = true },
+    })
+    -- vim.cmd("runtime! syntax/fsharp.vim")
     -- Clear any previous matches in this buffer (optional)
-    vim.fn.clearmatches()
+    -- vim.fn.clearmatches()
 
     -- Add a new high-priority match for "::"
     -- Args:       group           pattern  priority
-    vim.fn.matchadd("fsharpOperator", "::", 150)
+    -- vim.fn.matchadd("fsharpOperator", "::", 150)
   end,
 })
