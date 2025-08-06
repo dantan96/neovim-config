@@ -11,7 +11,7 @@ vim.api.nvim_create_autocmd("FileType", {
 
     -- Lower the priority below the Tree‑sitter level (100 is the default TS priority)
     -- Values < 100 ensure Tree‑sitter highlights are used when both are present.
-    vim.hl.priorities.semantic_tokens = 90
+    vim.hl.priorities.semantic_tokens = 125
 
     -- When the buffer is left/unloaded, restore the old priority
     vim.api.nvim_create_autocmd({ "BufUnload", "BufLeave", "BufWinLeave" }, {

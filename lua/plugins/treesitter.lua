@@ -60,8 +60,18 @@ return {
         "vimdoc",
       },
       auto_install = false, -- Disable installation notifications
-      highlight = { enable = true },
-      indent = { enable = true, disable = { "fsharp" } },
+      highlight = {
+        enable = true,
+        additional_vim_regex_highlighting = {
+          "fsharp",
+        },
+      },
+      indent = {
+        enable = true,
+        disable = {
+          "fsharp",
+        },
+      },
       textobjects = {
         select = {
           enable = true,

@@ -1,52 +1,46 @@
-;; ----------------------------------------------------------------------------
-;; Literals and comments
-
+;; extends: fsharp
 [
   (line_comment)
   (block_comment)
 ] @comment @spell
 
 ((line_comment) @comment.documentation @spell
- (#not-match? @comment.documentation "^///"))
+  (#lua-match? @comment.documentation "^///"))
 
 (const
   [
-   (_) @constant
-   (unit) @constant.builtin
+    (_) @constant
+    (unit) @constant.builtin
   ])
 
-(primary_constr_args (_) @variable.parameter)
+(primary_constr_args
+  (_) @variable.parameter)
 
 (class_as_reference
   (_) @variable.parameter.builtin)
 
-
-((argument_patterns (long_identifier (identifier) @character.special))
- (#match? @character.special "^\_.*"))
-
-;; ----------------------------------------------------------------------------
-;; Punctuation
-
-(type_name type_name: (_) @type.definition)
-(exception_definition exception_name: (_) @type.definition)
+(type_name
+  type_name: (_) @type.definition)
 
 [
- (_type)
- (atomic_type)
+  (_type)
+  (atomic_type)
 ] @type
 
 (member_signature
   .
-  (identifier) @function.member
+  (identifier) @function.method)
+
+(member_signature
   (curried_spec
     (arguments_spec
-      "*"* @operator
       (argument_spec
         (argument_name_spec
           "?"? @character.special
           name: (_) @variable.parameter)))))
 
-(union_type_case (identifier) @constant)
+(union_type_case
+  (identifier) @constant)
 
 (rules
   (rule
@@ -64,16 +58,22 @@
 (optional_pattern
   "?" @character.special)
 
-(fsi_directive_decl . (string) @module)
+(fsi_directive_decl
+  .
+  (string) @module)
 
-(import_decl . (_) @module)
-(named_module
-  name: (_) @module)
-(namespace
-  name: (_) @module)
-(module_defn
+(import_decl
   .
   (_) @module)
+
+(named_module
+  name: (_) @module)
+
+(namespace
+  name: (_) @module)
+
+(module_defn
+  (identifier) @module)
 
 (ce_expression
   .
@@ -87,15 +87,44 @@
     .
     (identifier) @property))
 
-(value_declaration_left . (_) @variable)
+(value_declaration_left
+  .
+  (_) @variable)
 
 (function_declaration_left
-  . (_) @function)
+  .
+  (_) @function)
 
-(argument_patterns) @variable.parameter
-(typed_pattern
-  (_pattern) @variable.parameter
-  (_type) @type)
+(argument_patterns
+  [
+    (const)
+    (long_identifier)
+    (_pattern)
+  ] @variable.parameter)
+
+(argument_patterns
+  (typed_pattern
+    (_pattern) @variable.parameter
+    (_type) @type))
+
+(argument_patterns
+  (record_pattern
+    (field_pattern
+      .
+      (long_identifier) @variable.parameter)))
+
+(argument_patterns
+  (array_pattern
+    (_pattern)? @variable.parameter))
+
+(argument_patterns
+  (list_pattern
+    (_pattern)? @variable.parameter))
+
+((argument_patterns
+  (long_identifier
+    (identifier) @character.special))
+  (#lua-match? @character.special "^\_.*"))
 
 (member_defn
   (method_or_prop_defn
@@ -106,7 +135,6 @@
         method: (identifier) @function.method)
     ]
     args: (_)* @variable.parameter))
-
 
 (dot_expression
   .
@@ -126,10 +154,8 @@
   .
   (infix_op) @operator
   .
-  (_) @function.call
-  )
- (#eq? @operator "|>")
- )
+  (_) @function.call)
+  (#eq? @operator "|>"))
 
 ((infix_expression
   .
@@ -137,10 +163,8 @@
   .
   (infix_op) @operator
   .
-  (_)
-  )
- (#eq? @operator "<|")
- )
+  (_))
+  (#eq? @operator "<|"))
 
 [
   (xint)
@@ -164,12 +188,12 @@
 
 (bool) @boolean
 
-([
+[
   (string)
   (triple_quoted_string)
   (verbatim_string)
   (char)
-] @spell @string)
+] @spell @string
 
 (compiler_directive_decl) @keyword.directive
 
@@ -185,6 +209,7 @@
   ")"
   "{"
   "}"
+  ".["
   "["
   "]"
   "[|"
@@ -227,6 +252,7 @@
   ":>"
   ":?>"
   ".."
+  "*"
   (infix_op)
   (prefix_op)
   (op_identifier)
@@ -234,8 +260,8 @@
 
 (generic_type
   [
-   "<"
-   ">"
+    "<"
+    ">"
   ] @punctuation.bracket)
 
 [
@@ -270,7 +296,6 @@
   "to"
 ] @keyword.repeat
 
-
 [
   "open"
   "#r"
@@ -300,7 +325,6 @@
 [
   "enum"
   "type"
-  "exception"
   "inherit"
   "interface"
   "and"
@@ -309,7 +333,7 @@
 ] @keyword.type
 
 ((identifier) @keyword.exception
- (#any-of? @keyword.exception "failwith" "failwithf" "raise" "reraise"))
+  (#any-of? @keyword.exception "failwith" "failwithf" "raise" "reraise"))
 
 [
   "as"
@@ -337,9 +361,11 @@
 
 [
   "null"
+  (unit)
 ] @constant.builtin
 
-(match_expression "with" @keyword.conditional)
+(match_expression
+  "with" @keyword.conditional)
 
 (try_expression
   [
@@ -348,9 +374,15 @@
     "finally"
   ] @keyword.exception)
 
+(application_expression
+  (unit) @function.call)
+
 ((_type
-  (long_identifier (identifier) @type.builtin))
- (#any-of? @type.builtin "bool" "byte" "sbyte" "int16" "uint16" "int" "uint" "int64" "uint64" "nativeint" "unativeint" "decimal" "float" "double" "float32" "single" "char" "string" "unit"))
+  (long_identifier
+    (identifier) @type.builtin))
+  (#any-of? @type.builtin
+    "bool" "byte" "sbyte" "int16" "uint16" "int" "uint" "int64" "uint64" "nativeint" "unativeint"
+    "decimal" "float" "double" "float32" "single" "char" "string" "unit"))
 
 (preproc_if
   [
@@ -362,22 +394,44 @@
 (preproc_else
   "#else" @keyword.directive)
 
-((long_identifier
-  (identifier)+ @variable.member
-  .
-  (identifier)))
-
 ((identifier) @module.builtin
- (#any-of? @module.builtin "Array" "Async" "Directory" "File" "List" "Option" "Path" "Map" "Set" "Lazy" "Seq" "Task" "String" "Result" ))
+  (#any-of? @module.builtin
+    "Array" "Async" "Directory" "File" "List" "Option" "Path" "Map" "Set" "Lazy" "Seq" "Task"
+    "String" "Result"))
 
 ((value_declaration
-   (attributes
-     (attribute
-       (_type
-         (long_identifier
-           (identifier) @attribute))))
-   (function_or_value_defn
-     (value_declaration_left
-       .
-       (_) @constant)))
- (#eq? @attribute "Literal"))
+  (attributes
+    (attribute
+      (_type
+        (long_identifier
+          (identifier) @attribute))))
+  (function_or_value_defn
+    (value_declaration_left
+      .
+      (_) @constant)))
+  (#eq? @attribute "Literal"))
+
+;; My custom queries
+
+((infix_op) @operator.fsharp
+  (#eq? @operator.fsharp "::")
+  (#set! "priority" 130))
+
+((identifier) @enum.member.fsharp
+  (#match? @enum.member.fsharp "^(Some|None)$"))
+
+((application_expression
+   (long_identifier_or_op
+     (identifier) @enum.member.fsharp
+       (#match? @enum.member.fsharp "^(Some|None)$"))
+   (long_identifier_or_op
+     (identifier) @variable.enum_member.fsharp)))
+
+
+(identifier_pattern 
+  (long_identifier_or_op
+	(identifier) @enum.member.fsharp 
+	  (#match? @enum.member.fsharp "^(Some|None)$"))
+  (identifier_pattern
+    (long_identifier_or_op
+	  (identifier) @variable.enum_member.fsharp)))

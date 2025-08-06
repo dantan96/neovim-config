@@ -1,11 +1,4 @@
--- capture_report.lua - Improved capture colour report for Neovim
--- This script inspects the current buffer, reporting Tree‑sitter captures,
--- active LSP clients and whether they support semantic tokens, and the
--- current colourscheme. It resolves the highlight groups for each capture
--- (prefixed with '@') and displays the foreground/background colours and
--- the highlight group they link to. A simple `setup` function registers
--- a user command and optional key mapping for convenience.
-
+-- capture_report.lua
 local M = {}
 
 -- Convert a numeric RGB value into a hex string, or return an empty
@@ -15,30 +8,6 @@ local function hex(num)
   return num and string.format("#%06x", num) or ""
 end
 
--- Retrieve the highlight table for a group. By passing `link = true` the
--- call follows any links defined on the group and returns the resolved
--- highlight. The returned table includes `foreground`, `background`,
--- boolean style flags and the name of the link target (when present).
--- Remove any trailing language suffix from a semantic token highlight group.
--- For example, "@lsp.type.property.lua" becomes "@lsp.type.property". If
--- there is no trailing suffix, the string is returned unchanged. This
--- helper is used to fall back to a generic semantic token when the
--- language‑specific variant is not coloured by the theme.
-local function unsuffix(hl_group)
-  local base, ft = hl_group:match("^(@lsp[%w%._]+)%.([%w_]+)$")
-  if base and ft then
-    return base
-  end
-  return hl_group
-end
-
--- Collect semantic‑token highlight groups for the given buffer. Neovim
--- stores semantic tokens as extmarks in a per‑client namespace. This
--- helper extracts the `hl_group` field from each extmark’s details.
--- When semantic tokens are disabled or none have been published yet,
--- it returns an empty set. We use the private __STHighlighter table
--- to access the client namespaces. If this table is unavailable, the
--- function safely returns an empty set.
 local function collect_semantic_groups(bufnr)
   local sg = {}
   local ok, st = pcall(function()
@@ -53,8 +22,7 @@ local function collect_semantic_groups(bufnr)
           -- Gather extmarks in the semantic token namespace. Each extmark
           -- details table may contain an `hl_group` key corresponding to
           -- a highlight group name like '@lsp.type.variable'.
-          for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(
-            bufnr, ns, 0, -1, { details = true })) do
+          for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })) do
             local details = mark[4]
             local hl_group = details and details.hl_group
             if hl_group then
@@ -68,51 +36,62 @@ local function collect_semantic_groups(bufnr)
   return sg
 end
 
--- Retrieve the highlight table for a group. Follows links to resolve the
--- final colour, and falls back to a generic semantic token when a
--- language‑specific variant (e.g. "@lsp.type.variable.lua") has no
--- colour defined. The returned table includes the resolved foreground
--- and background colours (as hex strings), any style attributes and
--- the name of the highlight group ultimately used.
-local function hl(group)
-  -- Query the highlight group and follow links (link = true) to get the
-  -- resolved colours. Newer Neovim versions return colours under the
-  -- `fg`/`bg` keys; older versions still use `foreground`/`background`.
-  local ok, h = pcall(vim.api.nvim_get_hl, 0, { name = group, link = true })
-  if not ok or not h then
-    return {}
+-- Resolve a highlight group to its concrete colours.
+-- • Shows the original name unchanged.
+-- • If the group ends in ".<ft>" and has no colour, try the unsuffixed form.
+-- • Then follow `link` pointers until a colour is found (guards against cycles).
+local function hl(name)
+  local root, group = name, name -- root for the “link” column
+  local fg, bg, attrs
+  local seen = {}
+
+  local function hop(g)
+    local ok, h = pcall(vim.api.nvim_get_hl, 0, { name = g, link = true })
+    if not ok or not h then
+      return nil
+    end
+    -- record style flags only the first time
+    if not attrs then
+      attrs = table.concat({
+        h.bold and "bold" or nil,
+        h.italic and "italic" or nil,
+        h.underline and "underline" or nil,
+      }, " ")
+    end
+    fg = fg or h.fg or h.foreground
+    bg = bg or h.bg or h.background
+    return h.link
   end
-  -- Extract foreground/background colours using both new and legacy keys.
-  local fg = h.fg or h.foreground
-  local bg = h.bg or h.background
-  local link = h.link or group
-  -- If no colours are defined and this is a language‑specific semantic
-  -- token ("@lsp.….<lang>"), fall back to the generic form (without
-  -- the language suffix) before following any further links. This makes
-  -- groups like "@lsp.type.variable.lua" inherit the colours from
-  -- "@lsp.type.variable" when the theme does not define the suffix.
-  if (not fg and not bg) and group:match("^@lsp") and group:match("%.[%w_]+$") then
-    local base = unsuffix(group)
-    -- Only attempt the fallback if we have a different base name.
-    if base ~= group then
-      local ok2, h2 = pcall(vim.api.nvim_get_hl, 0, { name = base, link = true })
-      if ok2 and h2 then
-        -- Update colours from the base group.
-        fg = h2.fg or h2.foreground or fg
-        bg = h2.bg or h2.background or bg
-        link = h2.link or base
-      end
+
+  ---------------------------------------------------------------------------
+  -- 1. first hop: the exact name (e.g. "@lsp.type.property.lua")
+  ---------------------------------------------------------------------------
+  local link = hop(group)
+
+  ---------------------------------------------------------------------------
+  -- 2. if we still have no colour and the name ends with ".xxx", try unsuffix
+  ---------------------------------------------------------------------------
+  if (not fg and not bg) and group:match("%.[%w_]+$") then
+    local generic = group:gsub("%.[%w_]+$", "") -- strip last dot-suffix
+    if generic ~= group then
+      link = hop(generic) or link
+      group = generic
     end
   end
+
+  ---------------------------------------------------------------------------
+  -- 3. follow link chain until colour found or loop detected
+  ---------------------------------------------------------------------------
+  while (not fg and not bg) and link and not seen[link] do
+    seen[link] = true
+    link = hop(link)
+  end
+
   return {
-    fg    = hex(fg),
-    bg    = hex(bg),
-    attrs = table.concat({
-      h.bold      and "bold"      or nil,
-      h.italic    and "italic"    or nil,
-      h.underline and "underline" or nil,
-    }, " "),
-    link  = link,
+    fg = hex(fg),
+    bg = hex(bg),
+    attrs = attrs or "",
+    link = group, -- resolved (possibly unsuffixed) highlight group
   }
 end
 
@@ -158,11 +137,8 @@ function M.run()
   -- current buffer.
   local lsp_lines = {}
   for _, client in pairs(vim.lsp.get_clients({ bufnr = buf })) do
-    local tok = client.server_capabilities
-                 and client.server_capabilities.semanticTokensProvider
-                 and "✔" or "✘"
-    table.insert(lsp_lines,
-      string.format("• %s  (semantic-tokens %s)", client.name, tok))
+    local tok = client.server_capabilities and client.server_capabilities.semanticTokensProvider and "✔" or "✘"
+    table.insert(lsp_lines, string.format("• %s  (semantic-tokens %s)", client.name, tok))
   end
   if #lsp_lines == 0 then
     lsp_lines[1] = "∅  (no LSP)"
@@ -191,9 +167,10 @@ function M.run()
   -- generic form (without the trailing language suffix) for each.
   do
     for hl_group in pairs(collect_semantic_groups(buf)) do
-      caps[hl_group] = true
+      caps[hl_group] = true -- keep the .lua variant
       local generic = hl_group:gsub("%.[%w_]+$", "")
-      if generic ~= hl_group then
+      -- only add generic if highlight group exists in Neovim
+      if generic ~= hl_group and vim.fn.hlexists(generic) == 1 then
         caps[generic] = true
       end
     end
