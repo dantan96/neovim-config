@@ -4,11 +4,12 @@ vim.opt.number = true
 
 -- after/ftplugin/lua.lua
 -- Override the @property capture for Lua only:
-vim.api.nvim_set_hl(0, "@property", { fg = "#f2cdcd" })
+vim.api.nvim_set_hl(0, "@property", { fg = "#eba0ac" })
 -- vim.api.nvim_set_hl(0, "@lsp", { fg = "" })
 vim.api.nvim_set_hl(0, "@lsp.typemod.variable.defaultLibrary.lua", { fg = "#fab387" })
 vim.api.nvim_set_hl(0, "@lsp.typemod.function.defaultLibrary.lua", { fg = "#fab387", italic = true })
-vim.api.nvim_set_hl(0, "@lsp.typemod.parameter.declaration.lua", { fg = "#eba0ac" })
+vim.api.nvim_set_hl(0, "@lsp.typemod.parameter.declaration.lua", { fg = "#f38ba8", underline = true, bold = true })
+vim.api.nvim_set_hl(0, "@lsp.type.parameter.lua", { fg = "#f38ba8", underline = true, bold = true })
 vim.api.nvim_set_hl(0, "@lsp.typemod.variable.declaration.lua", { fg = "#cdd6f4" })
 vim.api.nvim_set_hl(0, "@lsp.typemod.function.declaration.lua", { fg = "#89b4fa" })
 vim.api.nvim_set_hl(0, "@lsp.typemod.variable.global.lua", { fg = "#ff69b4" })

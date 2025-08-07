@@ -22,6 +22,26 @@ return {
             "string_processing",
           },
         },
+        stylua = {
+          prepend_args = {
+            "--column-width",
+            "79",
+          },
+        },
+      },
+    },
+    keys = {
+      {
+        "<leader>f",
+        function()
+          require("conform").format({
+            lsp_fallback = true,
+            async = false,
+            timeout_ms = 2000,
+          })
+        end,
+        desc = "Format buffer (Conform)",
+        mode = { "n", "v" },
       },
     },
   },

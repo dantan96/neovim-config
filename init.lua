@@ -83,22 +83,11 @@ vim.keymap.set({ "n", "v" }, "<leader>d", '"_d', { noremap = true, silent = true
 vim.keymap.set({ "n", "v" }, "<Esc><Esc>", "<Esc><cmd>nohlsearch<CR><Esc>", { noremap = true, silent = true })
 vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-N>")
 
--- Toggle diagnostics
--- local isLspDiagnosticsVisible = true
--- vim.keymap.set("n", "<leader>lx", function()
---   isLspDiagnosticsVisible = not isLspDiagnosticsVisible
---   vim.diagnostic.config({
---     virtual_text = isLspDiagnosticsVisible,
---     underline = isLspDiagnosticsVisible,
---     scope = "buffer",
---   }, nil, 0)
--- end)
-
 -- Toggle diagnostics (buffer-local, no globals touched)
 vim.keymap.set("n", "<leader>lx", function()
-  local filter = { bufnr = 0 } -- 0 = current buffer
-  local enabled = vim.diagnostic.is_enabled(filter) -- check current state
-  vim.diagnostic.enable(not enabled, filter) -- flip it
+  local filter = { bufnr = 0 }
+  local enabled = vim.diagnostic.is_enabled(filter)
+  vim.diagnostic.enable(not enabled, filter)
 end, { desc = "Toggle diagnostics (buffer)" })
 
 -- Add TreeSitter info command
