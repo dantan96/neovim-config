@@ -17,37 +17,13 @@ vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
 vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
 vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
 vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(
-  0,
-  "@keyword.modifier.fsharp",
-  { fg = "#f2cdcd", bold = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@module.builtin.fsharp",
-  { fg = "#f9e2af", underline = false, italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.module.fsharp",
-  { fg = "#f9e2af", underline = false, italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.namespace.fsharp",
-  { fg = "#f9e2af", underline = false, italic = true }
-)
+vim.api.nvim_set_hl(0, "@keyword.modifier.fsharp", { fg = "#f2cdcd", bold = true })
+vim.api.nvim_set_hl(0, "@module.builtin.fsharp", { fg = "#f9e2af", underline = false, italic = true })
+vim.api.nvim_set_hl(0, "@lsp.type.module.fsharp", { fg = "#f9e2af", underline = false, italic = true })
+vim.api.nvim_set_hl(0, "@lsp.type.namespace.fsharp", { fg = "#f9e2af", underline = false, italic = true })
 -- Remove underline and faded color for DiagnosticUnnecessary
-vim.api.nvim_set_hl(
-  0,
-  "DiagnosticUnnecessary",
-  { underline = nil, fg = nil, bg = nil, default = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@variable.enum_member.fsharp",
-  { fg = "#f5c2e7", underline = true }
-)
+vim.api.nvim_set_hl(0, "DiagnosticUnnecessary", { underline = nil, fg = nil, bg = nil, default = false })
+vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underline = true })
 -- vim.api.nvim_set_hl(0, "@punctuation.delimiter.fsharp", { priority = 150 })
 
 ---------------------------------------------------------------------------
@@ -66,10 +42,10 @@ if not vim.g._fsharp_fsi_loaded then
 
   local function open_fsi(focus)
     local just_started = false
+    local original_win = vim.api.nvim_get_current_win()
 
     -- spawn if job dead OR window closed
     if not is_running() or not vim.api.nvim_win_is_valid(fsi.win or -1) then
-      local original_win = vim.api.nvim_get_current_win()
       vim.cmd("belowright 15split term://dotnet fsi")
       fsi.win = vim.api.nvim_get_current_win()
       fsi.buf = vim.api.nvim_get_current_buf()
@@ -113,11 +89,11 @@ if not vim.g._fsharp_fsi_loaded then
       end)
     end
 
-    return just_started
+    return just_started, original_win
   end
 
   local function send(lines)
-    local fresh = open_fsi(false) -- never focus on Alt‑Enter
+    local fresh, original_win = open_fsi(true)
     local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n"
 
     -- build the text exactly like Ionide: optionally cd, then the whole block
@@ -134,6 +110,11 @@ if not vim.g._fsharp_fsi_loaded then
 
     local function really_send()
       vim.api.nvim_chan_send(fsi.job, payload)
+      if fresh and vim.api.nvim_win_is_valid(original_win) then
+        vim.schedule(function()
+          vim.fn.win_gotoid(original_win)
+        end)
+      end
     end
 
     if fresh then
@@ -141,12 +122,11 @@ if not vim.g._fsharp_fsi_loaded then
       local tries, interval = 40, 75
       local function poll()
         local lc = vim.api.nvim_buf_line_count(fsi.buf)
-        local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1]
-          or ""
+        local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1] or ""
 
         -- prompt may have leading spaces, so use ^%s*>
         if last:match("^%s*> ") or tries <= 0 then
-          vim.api.nvim_chan_send(fsi.job, payload) -- finally send
+          really_send() -- finally send and refocus
         else
           tries = tries - 1
           vim.defer_fn(poll, interval) -- yield then retry
