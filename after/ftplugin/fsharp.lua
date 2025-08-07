@@ -1,3 +1,4 @@
+-- luacheck: globals vim _FSharpEvalLineOrVisual _FSharpToggleFsi
 -- Use spaces for indentation in F# (required by lightweight syntax)
 vim.opt_local.expandtab = true
 vim.opt_local.shiftwidth = 4
@@ -68,12 +69,19 @@ if not vim.g._fsharp_fsi_loaded then
 
     -- spawn if job dead OR window closed
     if not is_running() or not vim.api.nvim_win_is_valid(fsi.win or -1) then
+      local original_win = vim.api.nvim_get_current_win()
       vim.cmd("belowright 15split term://dotnet fsi")
       fsi.win = vim.api.nvim_get_current_win()
       fsi.buf = vim.api.nvim_get_current_buf()
       fsi.job = vim.b.terminal_job_id
       just_started = true
       vim.opt_local.number, vim.opt_local.relativenumber = false, false
+
+      if not focus then
+        vim.schedule(function()
+          vim.fn.win_gotoid(original_win)
+        end)
+      end
 
       -- clear saved state when user :q or job exits
       vim.api.nvim_create_autocmd({ "TermClose", "BufWipeout" }, {
@@ -89,9 +97,6 @@ if not vim.g._fsharp_fsi_loaded then
       end)
     end
 
-    if not focus and vim.api.nvim_win_is_valid(fsi.win) then
-      vim.cmd("wincmd p") -- always return to editing window
-    end
     return just_started
   end
 
@@ -124,11 +129,7 @@ if not vim.g._fsharp_fsi_loaded then
       local s = vim.api.nvim_buf_get_mark(0, "<")[1] - 1
       local e = vim.api.nvim_buf_get_mark(0, ">")[1]
       lines = vim.api.nvim_buf_get_lines(0, s, e, false)
-      vim.api.nvim_feedkeys(
-        vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
-        "n",
-        false
-      )
+      vim.cmd("normal! \\<Esc>")
     else
       local row = vim.api.nvim_win_get_cursor(0)[1]
       lines = vim.api.nvim_buf_get_lines(0, row - 1, row, false)
@@ -136,13 +137,13 @@ if not vim.g._fsharp_fsi_loaded then
 
     send(lines)
 
-    -- move the cursor down like Ionide: one line for normal mode,
-    -- N lines for visual mode:contentReference[oaicite:5]{index=5}
-    if mode:match("[vV]") then
-      vim.api.nvim_feedkeys(tostring(#lines) .. "j", "n", false)
-    else
-      vim.api.nvim_feedkeys("j", "n", false)
-    end
+    vim.schedule(function()
+      if mode:match("[vV]") then
+        vim.cmd("normal! " .. #lines .. "j")
+      else
+        vim.cmd("normal! j")
+      end
+    end)
   end
   function _FSharpToggleFsi()
     if is_running() and vim.api.nvim_win_is_valid(fsi.win) then
