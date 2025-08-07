@@ -137,29 +137,23 @@ if not vim.g._fsharp_fsi_loaded then
     end
 
     if fresh then
-      -- poll until the banner prints the first “> ” prompt
-      local function banner_ready()
+      -- non-blocking poll: re-arms itself every 50 ms
+      local tries, interval = 40, 75
+      local function poll()
         local lc = vim.api.nvim_buf_line_count(fsi.buf)
         local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1]
           or ""
-        return last:match("^> ") ~= nil
+
+        -- prompt may have leading spaces, so use ^%s*>
+        if last:match("^%s*> ") or tries <= 0 then
+          vim.api.nvim_chan_send(fsi.job, payload) -- finally send
+        else
+          tries = tries - 1
+          vim.defer_fn(poll, interval) -- yield then retry
+        end
       end
 
-      vim.defer_fn(function()
-        local tries = 30
-        while tries > 0 do
-          local lc = vim.api.nvim_buf_line_count(fsi.buf)
-          local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1]
-            or ""
-          if last:match("^> ") then
-            break
-          end
-          tries = tries - 1
-          vim.sleep(50)
-        end
-        vim.api.nvim_chan_send(fsi.job, payload) -- inlined send
-      end, 10)
-    -- schedule without blocking the UI
+      vim.defer_fn(poll, 10) -- first check after 10 ms
     else
       really_send()
     end
