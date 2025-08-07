@@ -17,37 +17,13 @@ vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
 vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
 vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
 vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(
-  0,
-  "@keyword.modifier.fsharp",
-  { fg = "#f2cdcd", bold = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@module.builtin.fsharp",
-  { fg = "#f9e2af", underline = false, italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.module.fsharp",
-  { fg = "#f9e2af", underline = false, italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.namespace.fsharp",
-  { fg = "#f9e2af", underline = false, italic = true }
-)
+vim.api.nvim_set_hl(0, "@keyword.modifier.fsharp", { fg = "#f2cdcd", bold = true })
+vim.api.nvim_set_hl(0, "@module.builtin.fsharp", { fg = "#f9e2af", underline = false, italic = true })
+vim.api.nvim_set_hl(0, "@lsp.type.module.fsharp", { fg = "#f9e2af", underline = false, italic = true })
+vim.api.nvim_set_hl(0, "@lsp.type.namespace.fsharp", { fg = "#f9e2af", underline = false, italic = true })
 -- Remove underline and faded color for DiagnosticUnnecessary
-vim.api.nvim_set_hl(
-  0,
-  "DiagnosticUnnecessary",
-  { underline = nil, fg = nil, bg = nil, default = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@variable.enum_member.fsharp",
-  { fg = "#f5c2e7", underline = true }
-)
+vim.api.nvim_set_hl(0, "DiagnosticUnnecessary", { underline = nil, fg = nil, bg = nil, default = false })
+vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underline = true })
 -- vim.api.nvim_set_hl(0, "@punctuation.delimiter.fsharp", { priority = 150 })
 
 ---------------------------------------------------------------------------
@@ -88,6 +64,9 @@ if not vim.g._fsharp_fsi_loaded then
         buffer = fsi.buf,
         once = true,
         callback = function()
+          if fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 then
+            vim.fn.jobstop(fsi.job)
+          end
           fsi = { buf = nil, win = nil, job = nil }
         end,
       })
@@ -113,12 +92,14 @@ if not vim.g._fsharp_fsi_loaded then
     local text = table.concat(lines, nl)
     local payload = prefix .. text .. nl .. ";;" .. nl
 
-    if fresh then
-      vim.wait(1000, function()
-        return vim.fn.jobwait({ fsi.job }, 0)[1] == -1
-      end)
+    local function send_payload()
+      vim.api.nvim_chan_send(fsi.job, payload)
     end
-    vim.api.nvim_chan_send(fsi.job, payload)
+    if fresh then
+      vim.defer_fn(send_payload, 250)
+    else
+      send_payload()
+    end
   end
 
   function _FSharpEvalLineOrVisual()
@@ -126,10 +107,11 @@ if not vim.g._fsharp_fsi_loaded then
     local lines
 
     if mode:match("[vV]") then
-      local s = vim.api.nvim_buf_get_mark(0, "<")[1] - 1
+      local s = vim.api.nvim_buf_get_mark(0, "<")[1]
       local e = vim.api.nvim_buf_get_mark(0, ">")[1]
-      lines = vim.api.nvim_buf_get_lines(0, s, e, false)
-      vim.cmd("normal! \\<Esc>")
+      lines = vim.api.nvim_buf_get_lines(0, s - 1, e, false)
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+      vim.api.nvim_win_set_cursor(0, { e, 0 })
     else
       local row = vim.api.nvim_win_get_cursor(0)[1]
       lines = vim.api.nvim_buf_get_lines(0, row - 1, row, false)
@@ -138,17 +120,21 @@ if not vim.g._fsharp_fsi_loaded then
     send(lines)
 
     vim.schedule(function()
-      if mode:match("[vV]") then
-        vim.cmd("normal! " .. #lines .. "j")
-      else
-        vim.cmd("normal! j")
-      end
+      vim.cmd("normal! j")
     end)
   end
   function _FSharpToggleFsi()
     if is_running() and vim.api.nvim_win_is_valid(fsi.win) then
-      vim.api.nvim_win_close(fsi.win, true)
-      fsi.win = nil
+      if fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 then
+        vim.fn.jobstop(fsi.job)
+      end
+      if fsi.win and vim.api.nvim_win_is_valid(fsi.win) then
+        vim.api.nvim_win_close(fsi.win, true)
+      end
+      if fsi.buf and vim.api.nvim_buf_is_valid(fsi.buf) then
+        vim.api.nvim_buf_delete(fsi.buf, { force = true })
+      end
+      fsi = { buf = nil, win = nil, job = nil }
     else
       open_fsi(true)
     end
