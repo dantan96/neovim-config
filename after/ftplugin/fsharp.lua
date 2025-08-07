@@ -64,19 +64,19 @@ if not vim.g._fsharp_fsi_loaded then
   end
 
   local function open_fsi(focus)
-    local just_started = false -- NEW
+    local just_started = false
 
-    -- Spawn if job dead OR window gone
+    -- spawn if job dead OR window closed
     if not is_running() or not vim.api.nvim_win_is_valid(fsi.win or -1) then
       vim.cmd("belowright 15split term://dotnet fsi")
       fsi.win = vim.api.nvim_get_current_win()
       fsi.buf = vim.api.nvim_get_current_buf()
       fsi.job = vim.b.terminal_job_id
-      just_started = true -- NEW
-      vim.opt_local.number = false
-      vim.opt_local.relativenumber = false
-      -- When user closes this buffer, clear state so Alt-Enter respawns safely
-      vim.api.nvim_create_autocmd({ "BufWipeout", "TermClose" }, {
+      just_started = true
+      vim.opt_local.number, vim.opt_local.relativenumber = false, false
+
+      -- clear saved state when user :q or job exits
+      vim.api.nvim_create_autocmd({ "TermClose", "BufWipeout" }, {
         buffer = fsi.buf,
         once = true,
         callback = function()
@@ -90,15 +90,15 @@ if not vim.g._fsharp_fsi_loaded then
     end
 
     if not focus and vim.api.nvim_win_is_valid(fsi.win) then
-      vim.cmd("wincmd p")
+      vim.cmd("wincmd p") -- always return to editing window
     end
-    return just_started -- NEW
+    return just_started
   end
 
   local function send(lines)
-    local first = open_fsi(false) -- NEW: did we just spawn?
+    local fresh = open_fsi(false) -- never focus on Alt-Enter
 
-    -- Ionide always terminates with “;;” so FSI runs immediately:contentReference[oaicite:0]{index=0}
+    -- ensure final line ends with `;;`
     if #lines > 0 and not lines[#lines]:match(";;%s*$") then
       lines[#lines] = lines[#lines] .. ";;"
     end
@@ -110,9 +110,8 @@ if not vim.g._fsharp_fsi_loaded then
       end
     end
 
-    -- Give a fresh REPL ~50 ms to finish its banner (Ionide uses a delay too):contentReference[oaicite:2]{index=2}
-    if first then
-      vim.defer_fn(really_send, 50)
+    if fresh then -- banner still printing
+      vim.defer_fn(really_send, 120) -- ≈ Ionide’s 100 ms delay:contentReference[oaicite:2]{index=2}
     else
       really_send()
     end
@@ -135,6 +134,10 @@ if not vim.g._fsharp_fsi_loaded then
       lines = vim.api.nvim_buf_get_lines(0, row - 1, row, false)
     end
     send(lines)
+
+    if not mode:match("[vV]") then
+      vim.api.nvim_feedkeys("j", "n", false)
+    end
   end
 
   function _FSharpToggleFsi()
