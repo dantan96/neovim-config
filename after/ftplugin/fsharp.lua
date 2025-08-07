@@ -108,15 +108,12 @@ if not vim.g._fsharp_fsi_loaded then
     local text = table.concat(lines, nl)
     local payload = prefix .. text .. nl .. ";;" .. nl
 
-    local function really_send()
-      vim.api.nvim_chan_send(fsi.job, payload)
-    end
-
     if fresh then
-      vim.defer_fn(really_send, 120) -- wait for REPL banner:contentReference[oaicite:4]{index=4}
-    else
-      really_send()
+      vim.wait(1000, function()
+        return vim.fn.jobwait({ fsi.job }, 0)[1] == -1
+      end)
     end
+    vim.api.nvim_chan_send(fsi.job, payload)
   end
 
   function _FSharpEvalLineOrVisual()
