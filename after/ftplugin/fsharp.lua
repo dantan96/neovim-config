@@ -67,9 +67,11 @@ if not vim.g._fsharp_fsi_loaded then
           if fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 then
             vim.fn.jobstop(fsi.job)
           end
+
           fsi = { buf = nil, win = nil, job = nil }
         end,
       })
+
       vim.api.nvim_create_autocmd("WinClosed", {
         pattern = tostring(fsi.win),
         once = true,
@@ -80,6 +82,7 @@ if not vim.g._fsharp_fsi_loaded then
           fsi = { buf = nil, win = nil, job = nil }
         end,
       })
+
     elseif vim.api.nvim_win_is_valid(fsi.win) then
       vim.api.nvim_win_call(fsi.win, function()
         vim.cmd("normal! G")
