@@ -229,12 +229,13 @@
     "}"
   ] @punctuation.special)
 
-[
+([
   ","
   ";"
   ":"
   "."
 ] @punctuation.delimiter
+  (#set! "priority" 150))
 
 [
   "|"

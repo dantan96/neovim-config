@@ -23,6 +23,7 @@ vim.api.nvim_set_hl(0, "@lsp.type.namespace.fsharp", { fg = "#f9e2af", underline
 -- Remove underline and faded color for DiagnosticUnnecessary
 vim.api.nvim_set_hl(0, "DiagnosticUnnecessary", { underline = nil, fg = nil, bg = nil, default = false })
 vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underline = true })
+-- vim.api.nvim_set_hl(0, "@punctuation.delimiter.fsharp", { priority = 150 })
 
 -- ""
 -- in your fsharp ftplugin or init.lua
@@ -53,29 +54,35 @@ vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underli
 --
 vim.api.nvim_create_autocmd("FileType", {
   pattern = { "fsharp", "fs", "fsx", "fsi" },
-  callback = function()
+  callback = function(args)
     -- Don’t start a second client if one is already active
-    for _, client in pairs(vim.lsp.get_active_clients()) do
+    for _, client in pairs(vim.lsp.get_clients({ bufnr = args.buf })) do
       if client.name == "fsautocomplete" then
         return
       end
     end
+
+    local fname = vim.api.nvim_buf_get_name(args.buf)
+    local util = require("lspconfig.util")
+    local root = util.root_pattern("*.sln", "*.fsproj", ".git")(fname)
+    if not root then
+      root = vim.fs.dirname(fname) -- fallback to the file’s directory
+    end
+
     vim.lsp.start({
       name = "fsautocomplete",
       cmd = { "fsautocomplete" },
       filetypes = { "fsharp", "fs", "fsx", "fsi" },
-      root_dir = function(fname)
-        local util = require("lspconfig.util")
-        return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or vim.fs.dirname(fname)
-      end,
+      root_dir = root,
       init_options = { AutomaticWorkspaceInit = true },
     })
-    -- vim.cmd("runtime! syntax/fsharp.vim")
+    vim.cmd("runtime! syntax/fsharp.vim")
     -- Clear any previous matches in this buffer (optional)
-    -- vim.fn.clearmatches()
+    vim.fn.clearmatches()
 
     -- Add a new high-priority match for "::"
     -- Args:       group           pattern  priority
-    -- vim.fn.matchadd("fsharpOperator", "::", 150)
+    vim.fn.matchadd("fsharpOperator", "::", 150)
+    vim.fn.matchadd("Operator", "::", 200)
   end,
 })

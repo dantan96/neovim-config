@@ -6,7 +6,6 @@ return {
     },
     config = function()
       local lspconfig = require("lspconfig")
-      local util = require("lspconfig.util")
       local capabilities = require("blink.cmp").get_lsp_capabilities()
 
       -- Lua, Python and LaTeX servers
@@ -15,16 +14,16 @@ return {
       lspconfig.texlab.setup({ capabilities = capabilities })
 
       -- FsAutoComplete for F#
-      lspconfig.fsautocomplete.setup({
-        cmd = { "fsautocomplete" },
-        init_options = { AutomaticWorkspaceInit = true },
-        filetypes = { "fsharp", "fs", "fsx", "fsi" },
-        root_dir = function(fname)
-          -- Use lspconfig.util.root_pattern first, fall back to vim.fs.dirname
-          return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or vim.fs.dirname(fname)
-        end,
-        capabilities = capabilities,
-      })
+      -- lspconfig.fsautocomplete.setup({
+      --   cmd = { "fsautocomplete" },
+      --   init_options = { AutomaticWorkspaceInit = true },
+      --   filetypes = { "fsharp", "fs", "fsx", "fsi" },
+      --   root_dir = function(fname)
+      --     -- Use lspconfig.util.root_pattern first, fall back to vim.fs.dirname
+      --     return util.root_pattern("*.sln", "*.fsproj", ".git")(fname) or vim.fs.dirname(fname)
+      --   end,
+      --   capabilities = capabilities,
+      -- })
 
       vim.api.nvim_create_autocmd("LspAttach", {
         callback = function(args)
