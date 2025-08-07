@@ -88,6 +88,9 @@ if not vim.g._fsharp_fsi_loaded then
         buffer = fsi.buf,
         once = true,
         callback = function()
+          if fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 then
+            vim.fn.jobstop(fsi.job)
+          end
           fsi = { buf = nil, win = nil, job = nil }
         end,
       })
