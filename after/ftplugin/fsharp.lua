@@ -117,7 +117,9 @@ if not vim.g._fsharp_fsi_loaded then
   end
 
   local function send(lines)
-    local fresh = open_fsi(false) -- never focus on Alt‑Enter
+    -- Alt-Enter temporarily gives focus to FSI until it's ready
+    local origin_win = vim.api.nvim_get_current_win()
+    local fresh = open_fsi(true)
     local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n"
 
     -- build the text exactly like Ionide: optionally cd, then the whole block
@@ -132,8 +134,17 @@ if not vim.g._fsharp_fsi_loaded then
     end -- right after you build `text`
     local payload = prefix .. text .. nl .. ";;" .. nl
 
+    local function return_focus()
+      if fresh then
+        vim.schedule(function()
+          vim.fn.win_gotoid(origin_win)
+        end)
+      end
+    end
+
     local function really_send()
       vim.api.nvim_chan_send(fsi.job, payload)
+      return_focus()
     end
 
     if fresh then
@@ -147,6 +158,7 @@ if not vim.g._fsharp_fsi_loaded then
         -- prompt may have leading spaces, so use ^%s*>
         if last:match("^%s*> ") or tries <= 0 then
           vim.api.nvim_chan_send(fsi.job, payload) -- finally send
+          return_focus()
         else
           tries = tries - 1
           vim.defer_fn(poll, interval) -- yield then retry
