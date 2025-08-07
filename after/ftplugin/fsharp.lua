@@ -64,32 +64,45 @@ if not vim.g._fsharp_fsi_loaded then
   end
 
   local function open_fsi(focus)
-    local just_started = false
-    if not is_running() then
+    local just_started = false -- NEW
+
+    -- Spawn if job dead OR window gone
+    if not is_running() or not vim.api.nvim_win_is_valid(fsi.win or -1) then
       vim.cmd("belowright 15split term://dotnet fsi")
       fsi.win = vim.api.nvim_get_current_win()
       fsi.buf = vim.api.nvim_get_current_buf()
       fsi.job = vim.b.terminal_job_id
-      just_started = true
+      just_started = true -- NEW
       vim.opt_local.number = false
       vim.opt_local.relativenumber = false
+      -- When user closes this buffer, clear state so Alt-Enter respawns safely
+      vim.api.nvim_create_autocmd({ "BufWipeout", "TermClose" }, {
+        buffer = fsi.buf,
+        once = true,
+        callback = function()
+          fsi = { buf = nil, win = nil, job = nil }
+        end,
+      })
     elseif vim.api.nvim_win_is_valid(fsi.win) then
       vim.api.nvim_win_call(fsi.win, function()
         vim.cmd("normal! G")
       end)
     end
+
     if not focus and vim.api.nvim_win_is_valid(fsi.win) then
       vim.cmd("wincmd p")
     end
-    return just_started
+    return just_started -- NEW
   end
 
   local function send(lines)
-    local fresh = open_fsi(false)
+    local first = open_fsi(false) -- NEW: did we just spawn?
+
+    -- Ionide always terminates with “;;” so FSI runs immediately:contentReference[oaicite:0]{index=0}
     if #lines > 0 and not lines[#lines]:match(";;%s*$") then
       lines[#lines] = lines[#lines] .. ";;"
     end
-    local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n" -- Ionide’s CRLF fix
+    local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n" -- CRLF fix:contentReference[oaicite:1]{index=1}
 
     local function really_send()
       for _, l in ipairs(lines) do
@@ -97,7 +110,8 @@ if not vim.g._fsharp_fsi_loaded then
       end
     end
 
-    if fresh then
+    -- Give a fresh REPL ~50 ms to finish its banner (Ionide uses a delay too):contentReference[oaicite:2]{index=2}
+    if first then
       vim.defer_fn(really_send, 50)
     else
       really_send()
