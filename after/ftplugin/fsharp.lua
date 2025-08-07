@@ -17,13 +17,37 @@ vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
 vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
 vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
 vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(0, "@keyword.modifier.fsharp", { fg = "#f2cdcd", bold = true })
-vim.api.nvim_set_hl(0, "@module.builtin.fsharp", { fg = "#f9e2af", underline = false, italic = true })
-vim.api.nvim_set_hl(0, "@lsp.type.module.fsharp", { fg = "#f9e2af", underline = false, italic = true })
-vim.api.nvim_set_hl(0, "@lsp.type.namespace.fsharp", { fg = "#f9e2af", underline = false, italic = true })
+vim.api.nvim_set_hl(
+  0,
+  "@keyword.modifier.fsharp",
+  { fg = "#f2cdcd", bold = true }
+)
+vim.api.nvim_set_hl(
+  0,
+  "@module.builtin.fsharp",
+  { fg = "#f9e2af", underline = false, italic = true }
+)
+vim.api.nvim_set_hl(
+  0,
+  "@lsp.type.module.fsharp",
+  { fg = "#f9e2af", underline = false, italic = true }
+)
+vim.api.nvim_set_hl(
+  0,
+  "@lsp.type.namespace.fsharp",
+  { fg = "#f9e2af", underline = false, italic = true }
+)
 -- Remove underline and faded color for DiagnosticUnnecessary
-vim.api.nvim_set_hl(0, "DiagnosticUnnecessary", { underline = nil, fg = nil, bg = nil, default = false })
-vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underline = true })
+vim.api.nvim_set_hl(
+  0,
+  "DiagnosticUnnecessary",
+  { underline = nil, fg = nil, bg = nil, default = false }
+)
+vim.api.nvim_set_hl(
+  0,
+  "@variable.enum_member.fsharp",
+  { fg = "#f5c2e7", underline = true }
+)
 -- vim.api.nvim_set_hl(0, "@punctuation.delimiter.fsharp", { priority = 150 })
 
 ---------------------------------------------------------------------------
@@ -50,6 +74,7 @@ if not vim.g._fsharp_fsi_loaded then
       fsi.win = vim.api.nvim_get_current_win()
       fsi.buf = vim.api.nvim_get_current_buf()
       fsi.job = vim.b.terminal_job_id
+      vim.bo.bufhidden = "wipe"
       just_started = true
       vim.opt_local.number, vim.opt_local.relativenumber = false, false
 
@@ -82,9 +107,8 @@ if not vim.g._fsharp_fsi_loaded then
           fsi = { buf = nil, win = nil, job = nil }
         end,
       })
-
-    elseif vim.api.nvim_win_is_valid(fsi.win) then
-      vim.api.nvim_win_call(fsi.win, function()
+    elseif vim.api.nvim_buf_is_valid(fsi.buf) then
+      vim.api.nvim_buf_call(fsi.buf, function()
         vim.cmd("normal! G")
       end)
     end
@@ -103,14 +127,41 @@ if not vim.g._fsharp_fsi_loaded then
       prefix = '#cd @"' .. current_dir .. '"' .. nl
     end
     local text = table.concat(lines, nl)
+    if #lines == 0 or (#lines == 1 and text:match("^%s*$")) then
+      return
+    end -- right after you build `text`
     local payload = prefix .. text .. nl .. ";;" .. nl
 
-    if fresh then
-      vim.defer_fn(function()
-        vim.api.nvim_chan_send(fsi.job, payload)
-      end, 500)
-    else
+    local function really_send()
       vim.api.nvim_chan_send(fsi.job, payload)
+    end
+
+    if fresh then
+      -- poll until the banner prints the first “> ” prompt
+      local function banner_ready()
+        local lc = vim.api.nvim_buf_line_count(fsi.buf)
+        local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1]
+          or ""
+        return last:match("^> ") ~= nil
+      end
+
+      vim.defer_fn(function()
+        local tries = 30
+        while tries > 0 do
+          local lc = vim.api.nvim_buf_line_count(fsi.buf)
+          local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1]
+            or ""
+          if last:match("^> ") then
+            break
+          end
+          tries = tries - 1
+          vim.sleep(50)
+        end
+        vim.api.nvim_chan_send(fsi.job, payload) -- inlined send
+      end, 10)
+    -- schedule without blocking the UI
+    else
+      really_send()
     end
   end
 
