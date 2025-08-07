@@ -96,22 +96,24 @@ if not vim.g._fsharp_fsi_loaded then
   end
 
   local function send(lines)
-    local fresh = open_fsi(false) -- never focus on Alt-Enter
+    local fresh = open_fsi(false) -- never focus on Alt‑Enter
+    local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n"
 
-    -- ensure final line ends with `;;`
-    if #lines > 0 and not lines[#lines]:match(";;%s*$") then
-      lines[#lines] = lines[#lines] .. ";;"
+    -- build the text exactly like Ionide: optionally cd, then the whole block
+    local current_dir = vim.fn.expand("%:p:h")
+    local prefix = ""
+    if current_dir ~= "" and vim.fn.isdirectory(current_dir) == 1 then
+      prefix = '#cd @"' .. current_dir .. '"' .. nl
     end
-    local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n" -- CRLF fix:contentReference[oaicite:1]{index=1}
+    local text = table.concat(lines, nl)
+    local payload = prefix .. text .. nl .. ";;" .. nl
 
     local function really_send()
-      for _, l in ipairs(lines) do
-        vim.api.nvim_chan_send(fsi.job, l .. nl)
-      end
+      vim.api.nvim_chan_send(fsi.job, payload)
     end
 
-    if fresh then -- banner still printing
-      vim.defer_fn(really_send, 120) -- ≈ Ionide’s 100 ms delay:contentReference[oaicite:2]{index=2}
+    if fresh then
+      vim.defer_fn(really_send, 120) -- wait for REPL banner:contentReference[oaicite:4]{index=4}
     else
       really_send()
     end
@@ -120,6 +122,7 @@ if not vim.g._fsharp_fsi_loaded then
   function _FSharpEvalLineOrVisual()
     local mode = vim.fn.mode()
     local lines
+
     if mode:match("[vV]") then
       local s = vim.api.nvim_buf_get_mark(0, "<")[1] - 1
       local e = vim.api.nvim_buf_get_mark(0, ">")[1]
@@ -133,13 +136,17 @@ if not vim.g._fsharp_fsi_loaded then
       local row = vim.api.nvim_win_get_cursor(0)[1]
       lines = vim.api.nvim_buf_get_lines(0, row - 1, row, false)
     end
+
     send(lines)
 
-    if not mode:match("[vV]") then
+    -- move the cursor down like Ionide: one line for normal mode,
+    -- N lines for visual mode:contentReference[oaicite:5]{index=5}
+    if mode:match("[vV]") then
+      vim.api.nvim_feedkeys(tostring(#lines) .. "j", "n", false)
+    else
       vim.api.nvim_feedkeys("j", "n", false)
     end
   end
-
   function _FSharpToggleFsi()
     if is_running() and vim.api.nvim_win_is_valid(fsi.win) then
       vim.api.nvim_win_close(fsi.win, true)
