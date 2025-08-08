@@ -34,13 +34,16 @@ vim.api.nvim_set_hl(0, "@variable.enum_member.fsharp", { fg = "#f5c2e7", underli
 if not vim.g._fsharp_fsi_loaded then
   vim.g._fsharp_fsi_loaded = true
 
-  local fsi = { buf = nil, win = nil, job = nil }
+  local fsi = { buf = nil, win = nil, job = nil, sent_cd = false }
 
   local function is_running()
     return fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 -- -1 → still running
   end
 
-  local function open_fsi(focus)
+  ---Open (or ensure) FSI in a split. Optionally keep focus in the REPL.
+  ---@param keep_focus_in_repl boolean
+  ---@return boolean just_started, integer original_win
+  local function open_fsi(keep_focus_in_repl)
     local just_started = false
     local original_win = vim.api.nvim_get_current_win()
 
@@ -50,13 +53,16 @@ if not vim.g._fsharp_fsi_loaded then
       fsi.win = vim.api.nvim_get_current_win()
       fsi.buf = vim.api.nvim_get_current_buf()
       fsi.job = vim.b.terminal_job_id
+      fsi.sent_cd = false
       vim.bo.bufhidden = "wipe"
       just_started = true
       vim.opt_local.number, vim.opt_local.relativenumber = false, false
 
-      if not focus then
+      if not keep_focus_in_repl then
         vim.schedule(function()
-          vim.fn.win_gotoid(original_win)
+          if vim.api.nvim_win_is_valid(original_win) then
+            vim.fn.win_gotoid(original_win)
+          end
         end)
       end
 
@@ -66,10 +72,9 @@ if not vim.g._fsharp_fsi_loaded then
         once = true,
         callback = function()
           if fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 then
-            vim.fn.jobstop(fsi.job)
+            pcall(vim.fn.jobstop, fsi.job)
           end
-
-          fsi = { buf = nil, win = nil, job = nil }
+          fsi = { buf = nil, win = nil, job = nil, sent_cd = false }
         end,
       })
 
@@ -78,12 +83,13 @@ if not vim.g._fsharp_fsi_loaded then
         once = true,
         callback = function()
           if fsi.job and vim.fn.jobwait({ fsi.job }, 0)[1] == -1 then
-            vim.fn.jobstop(fsi.job)
+            pcall(vim.fn.jobstop, fsi.job)
           end
-          fsi = { buf = nil, win = nil, job = nil }
+          fsi = { buf = nil, win = nil, job = nil, sent_cd = false }
         end,
       })
     elseif vim.api.nvim_buf_is_valid(fsi.buf) then
+      -- keep the terminal scrolled to bottom if it already existed
       vim.api.nvim_buf_call(fsi.buf, function()
         vim.cmd("normal! G")
       end)
@@ -92,61 +98,52 @@ if not vim.g._fsharp_fsi_loaded then
     return just_started, original_win
   end
 
+  ---Send a list of lines to FSI, appending ';;' and a newline.
+  ---Sends '#cd "…"' exactly once per FSI session (on first start).
   local function send(lines)
-    local fresh, original_win = open_fsi(true)
+    local just_started, _ = open_fsi(false) -- keep focus in code window
     local nl = vim.bo.fileformat == "dos" and "\r\n" or "\n"
 
-    -- build the text exactly like Ionide: optionally cd, then the whole block
-    local current_dir = vim.fn.expand("%:p:h")
-    local prefix = ""
-    if current_dir ~= "" and vim.fn.isdirectory(current_dir) == 1 then
-      prefix = '#cd @"' .. current_dir .. '"' .. nl
-    end
-    local text = table.concat(lines, nl)
-    if #lines == 0 or (#lines == 1 and text:match("^%s*$")) then
+    local text = table.concat(lines or {}, nl)
+    if (#lines == 0) or (#lines == 1 and text:match("^%s*$")) then
       return
-    end -- right after you build `text`
-    local payload = prefix .. text .. nl .. ";;" .. nl
-
-    local function really_send()
-      vim.api.nvim_chan_send(fsi.job, payload)
-      if fresh and vim.api.nvim_win_is_valid(original_win) then
-        vim.schedule(function()
-          vim.fn.win_gotoid(original_win)
-        end)
-      end
     end
 
-    if fresh then
-      -- non-blocking poll: re-arms itself every 50 ms
-      local tries, interval = 40, 75
-      local function poll()
-        local lc = vim.api.nvim_buf_line_count(fsi.buf)
-        local last = vim.api.nvim_buf_get_lines(fsi.buf, lc - 1, lc, false)[1] or ""
+    local payload = ""
 
-        -- prompt may have leading spaces, so use ^%s*>
-        if last:match("^%s*> ") or tries <= 0 then
-          really_send() -- finally send and refocus
-        else
-          tries = tries - 1
-          vim.defer_fn(poll, interval) -- yield then retry
-        end
+    -- Only send #cd once per FSI session
+    if just_started and not fsi.sent_cd then
+      local current_dir = vim.fn.expand("%:p:h")
+      if current_dir ~= "" and vim.fn.isdirectory(current_dir) == 1 then
+        payload = '#cd @"' .. current_dir .. '"' .. nl
       end
-
-      vim.defer_fn(poll, 10) -- first check after 10 ms
-    else
-      really_send()
+      fsi.sent_cd = true
     end
+
+    payload = payload .. text .. nl .. ";;" .. nl
+    vim.fn.chansend(fsi.job, payload)
   end
 
   function _FSharpEvalLineOrVisual()
-    local mode = vim.fn.mode()
+    local m = vim.fn.mode()
     local lines
 
-    if mode:match("[vV]") then
-      local s = vim.api.nvim_buf_get_mark(0, "<")[1] - 1
-      local e = vim.api.nvim_buf_get_mark(0, ">")[1]
-      lines = vim.api.nvim_buf_get_lines(0, s, e, false)
+    if m == "v" or m == "V" or m == "\022" then -- charwise/linewise/blockwise visual
+      local s = vim.fn.getpos("'<")
+      local e = vim.fn.getpos("'>")
+      local srow, scol = s[2], s[3]
+      local erow, ecol = e[2], e[3]
+
+      local raw = vim.api.nvim_buf_get_lines(0, srow - 1, erow, false)
+      if #raw == 0 then return end
+
+      -- Trim to visual column bounds (inclusive)
+      raw[1] = string.sub(raw[1], math.max(scol, 1))
+      raw[#raw] = string.sub(raw[#raw], 1, ecol)
+
+      lines = raw
+
+      -- leave visual mode
       local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
       vim.api.nvim_feedkeys(esc, "n", false)
     else
@@ -156,23 +153,27 @@ if not vim.g._fsharp_fsi_loaded then
 
     send(lines)
 
+    -- Move cursor down one line after sending (Ionide-like nicety)
     vim.schedule(function()
-      vim.cmd("normal! j")
+      pcall(vim.cmd, "normal! j")
     end)
   end
+
   function _FSharpToggleFsi()
-    if is_running() and vim.api.nvim_win_is_valid(fsi.win) then
+    if is_running() and vim.api.nvim_win_is_valid(fsi.win or -1) then
       if fsi.job then
         pcall(vim.fn.jobstop, fsi.job)
       end
-      vim.api.nvim_win_close(fsi.win, true)
-      fsi = { buf = nil, win = nil, job = nil }
+      if vim.api.nvim_win_is_valid(fsi.win) then
+        pcall(vim.api.nvim_win_close, fsi.win, true)
+      end
+      fsi = { buf = nil, win = nil, job = nil, sent_cd = false }
     else
-      open_fsi(true)
+      open_fsi(true) -- open and keep focus in the REPL
     end
   end
 
-  -- Expose a :FsiShow command like Ionide
+  -- Expose a :FsiShow command like Ionide (open FSI but keep focus in code)
   vim.api.nvim_create_user_command("FsiShow", function()
     open_fsi(false)
   end, {})
@@ -212,7 +213,7 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.fn.matchadd("Operator", "::", 200)
 
     --------------------------------------------------------------------
-    -- 2.  Attach Alt-Enter / Alt-@ for **this buffer**      ← NEW
+    -- 2.  Attach Alt-Enter / Alt-@ for **this buffer**
     --------------------------------------------------------------------
     local map_opts = { buffer = args.buf, desc = "F# Interactive" }
     vim.keymap.set({ "n", "v" }, "<M-CR>", _FSharpEvalLineOrVisual, map_opts)
