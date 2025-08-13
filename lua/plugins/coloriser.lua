@@ -1,8 +1,14 @@
 return {
   {
-    'norcalli/nvim-colorizer.lua',
+    "norcalli/nvim-colorizer.lua",
     config = function()
       require("colorizer").setup()
-    end
+      vim.api.nvim_set_keymap(
+        "n",
+        "<leader>ct",
+        "<cmd>ColorizerToggle<CR>",
+        { noremap = true, silent = true, desc = "Toggle Colorizer" }
+      )
+    end,
   },
 }
