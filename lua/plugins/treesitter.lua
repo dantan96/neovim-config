@@ -3,8 +3,7 @@ return {
   -- Provides syntax highlighting, indentation, and more using tree-sitter parsers
   "nvim-treesitter/nvim-treesitter",
   build = ":TSUpdate", -- Automatically update parsers on plugin updates
-  priority = 1000, -- Load treesitter early in the startup process
-  lazy = false, -- Disable lazy loading to ensure immediate availability
+  event = { "BufReadPost", "BufNewFile" }, -- <— defer setup until a buffer exists
 
   -- Plugin dependencies
   dependencies = {
@@ -20,7 +19,7 @@ return {
       -- stylua: ignore
       ensure_installed = {
         "agda", "awk", "bash", "c", "cmake", "cpp",
-        "csharp", "css", "dockerfile", "fish", "fsharp",
+        "css", "dockerfile", "fish", "fsharp",
         "go", "haskell", "html", "javascript", "json",
         "lua", "luadoc", "make", "markdown", "markdown_inline",
         "ocaml", "python", "query", "regex", "ruby", "rust",
