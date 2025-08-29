@@ -1,6 +1,17 @@
 -- Enable 24-bit RGB colors in the terminal
 vim.opt.termguicolors = true
 
+-- auto-reload files when modified externally
+-- https://unix.stackexchange.com/a/383044
+vim.o.autoread = true
+vim.api.nvim_create_autocmd(
+  { "BufEnter", "CursorHold", "CursorHoldI", "FocusGained" },
+  {
+    command = "if mode() != 'c' | checktime | endif",
+    pattern = { "*" },
+  }
+)
+
 -- Set up filetype detection for Tamarin files - do this as early as possible
 vim.filetype.add({
   extension = {
@@ -22,6 +33,7 @@ end)
 require("config.lazy")
 require("config.fsharp-highlights")
 
+local ns = { noremap = true, silent = true }
 -- General keymaps
 vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>")
 vim.keymap.set("n", "<space>x", "<cmd>:.lua<CR>")
@@ -76,12 +88,34 @@ end)
 vim.keymap.set("n", "<leader>-", "<cmd>Oil<CR>")
 vim.keymap.set("n", "<leader>vim", "<cmd>Oil ~/.config/nvim/<CR>")
 
+-- Statusline keymaps
+-- Global toggle: <leader>ts
+vim.keymap.set("n", "<leader>ts", function()
+  if vim.opt.laststatus:get() == 0 then
+    vim.opt.laststatus = 3 -- or 2, whatever you prefer
+    vim.g.ministatusline_disable = false
+  else
+    vim.opt.laststatus = 0
+    vim.g.ministatusline_disable = true
+  end
+  vim.cmd("redrawstatus")
+end, { desc = "Toggle mini.statusline (and bar)" })
+
+-- Buffer-local toggle: <leader>tS
+vim.keymap.set("n", "<leader>tS", function()
+  vim.b.ministatusline_disable = not vim.b.ministatusline_disable
+  vim.cmd("redrawstatus")
+end, { desc = "Toggle mini.statusline (buffer)" })
+
 -- General keymaps
-vim.keymap.set({ "n", "v" }, "<leader>p", '"+p', { noremap = true, silent = true })
-vim.keymap.set({ "n", "v" }, "<leader>y", '"+y', { noremap = true, silent = true })
-vim.keymap.set({ "n", "v" }, "<leader>d", '"_d', { noremap = true, silent = true })
-vim.keymap.set({ "n", "v" }, "<Esc><Esc>", "<Esc><cmd>nohlsearch<CR><Esc>", { noremap = true, silent = true })
-vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-N>")
+vim.keymap.set({ "n", "v" }, "<leader>p", '"+p', ns)
+vim.keymap.set({ "n", "v" }, "<C-d>", "<C-d>zz", ns)
+vim.keymap.set({ "n", "v" }, "<C-u>", "<C-u>zz", ns)
+vim.keymap.set({ "n", "v" }, "<leader>y", '"+y', ns)
+vim.keymap.set({ "n", "v" }, "<leader>d", '"_d', ns)
+vim.keymap.set({ "n", "v" }, "<Esc><Esc>", "<Esc><Esc><cmd>nohlsearch<CR>", ns)
+vim.keymap.set({ "n", "v" }, "<leader>ns", "<cmd>nohlsearch<CR><Esc>", ns)
+-- vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-N>")
 
 -- Toggle diagnostics (buffer-local, no globals touched)
 vim.keymap.set("n", "<leader>lx", function()

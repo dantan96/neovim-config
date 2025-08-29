@@ -418,21 +418,30 @@
   (#eq? @operator.fsharp "::")
   (#set! "priority" 130))
 
+;; DU-like case binders in *pattern* position (match rules only).
+
+
+;; Unqualified: Case x
+; (rule
+;   pattern:
+;     (identifier_pattern
+;       (long_identifier_or_op (identifier) @enum.member.fsharp)
+;       (identifier_pattern
+;         (long_identifier_or_op (identifier) @variable.enum_member.fsharp))))
+; (#match? @enum.member.fsharp "^[A-Z]")
+;
+; ;; Qualified: Type.Case x
+; (rule
+;   pattern:
+;     (identifier_pattern
+;       (long_identifier_or_op
+;         (long_identifier
+;           (_)                      ; Type/module, ignored
+;           (identifier) @enum.member.fsharp))
+;       (identifier_pattern
+;         (long_identifier_or_op (identifier) @variable.enum_member.fsharp))))
+; (#match? @enum.member.fsharp "^[A-Z]")
+
 ((identifier) @enum.member.fsharp
-  (#match? @enum.member.fsharp "^(Some|None)$"))
+  (#any-of? @enum.member.fsharp "Some" "None"))
 
-((application_expression
-   (long_identifier_or_op
-     (identifier) @enum.member.fsharp
-       (#match? @enum.member.fsharp "^(Some|None)$"))
-   (long_identifier_or_op
-     (identifier) @variable.enum_member.fsharp)))
-
-
-(identifier_pattern 
-  (long_identifier_or_op
-	(identifier) @enum.member.fsharp 
-	  (#match? @enum.member.fsharp "^(Some|None)$"))
-  (identifier_pattern
-    (long_identifier_or_op
-	  (identifier) @variable.enum_member.fsharp)))

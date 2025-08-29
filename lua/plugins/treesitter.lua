@@ -29,15 +29,12 @@ return {
       auto_install = false, -- Disable installation notifications
       highlight = {
         enable = true,
-        -- additional_vim_regex_highlighting = {
-        --   "fsharp",
-        -- },
+        additional_vim_regex_highlighting = false,
+        -- = { "fsharp", },
       },
       indent = {
         enable = true,
-        -- disable = {
-        --   "fsharp",
-        -- },
+        -- disable = { "fsharp" },
       },
       textobjects = {
         select = {
