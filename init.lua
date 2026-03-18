@@ -1,6 +1,26 @@
 -- Enable 24-bit RGB colors in the terminal
 vim.opt.termguicolors = true
 
+vim.o.guifont = "Fira Code:h14"
+
+if vim.g.neovide then
+  vim.g.neovide_scale_factor = 1.0
+
+  local function change_font_size(delta)
+    vim.g.neovide_scale_factor = vim.g.neovide_scale_factor + delta * 0.1
+  end
+
+  vim.keymap.set({ "n", "v", "i" }, "<D-=>", function()
+    change_font_size(1)
+  end)
+  vim.keymap.set({ "n", "v", "i" }, "<D-->", function()
+    change_font_size(-1)
+  end)
+  vim.keymap.set({ "n", "v", "i" }, "<D-0>", function()
+    vim.g.neovide_scale_factor = 1.0
+  end)
+end
+
 -- auto-reload files when modified externally
 -- https://unix.stackexchange.com/a/383044
 vim.o.autoread = true
@@ -29,9 +49,24 @@ pcall(function()
   require("config.spthy_setup").setup()
 end)
 
+-- Suppress deprecation warnings originating from third-party plugins.
+-- Warnings from the user's own config are still shown.
+local _deprecate = vim.deprecate
+---@diagnostic disable-next-line: duplicate-set-field
+vim.deprecate = function(name, alternative, version, plugin, backtrace)
+  local trace = debug.traceback("", 2)
+  if trace:find(vim.fn.stdpath("data") .. "/lazy/", 1, true) then
+    return
+  end
+  _deprecate(name, alternative, version, plugin, backtrace)
+end
+
 -- Load lazy.nvim plugin manager
 require("config.lazy")
 require("config.fsharp-highlights")
+require("config.remark_auto").setup()
+require("config.shebang").setup()
+require("config.uv_init").setup()
 
 local ns = { noremap = true, silent = true }
 -- General keymaps
@@ -66,18 +101,24 @@ vim.api.nvim_create_autocmd("TermOpen", {
 })
 
 local job_id = 0
-function open_terminal()
+local term_buf = -1
+local function open_terminal()
   vim.cmd.vnew()
   vim.cmd.term()
   vim.cmd.wincmd("J")
   vim.api.nvim_win_set_height(0, 15)
   job_id = vim.bo.channel
+  term_buf = vim.api.nvim_get_current_buf()
+end
+
+local function term_alive()
+  return job_id ~= 0 and vim.api.nvim_buf_is_valid(term_buf)
 end
 
 vim.keymap.set("n", "<leader>st", open_terminal)
 
 vim.keymap.set("n", "<leader>r", function()
-  if job_id == 0 then
+  if not term_alive() then
     open_terminal()
   end
   local filename_and_enter = '"./' .. vim.fn.expand("%") .. '"\r\n'
