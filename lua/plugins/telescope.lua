@@ -2,6 +2,16 @@ return {
   {
     "nvim-telescope/telescope.nvim",
     tag = "0.1.8",
+    cmd = { "Telescope" },
+    keys = {
+      { "<space>fh", desc = "Help tags" },
+      { "<space>ff", desc = "Find files" },
+      { "<leader>fb", desc = "Buffers" },
+      { "<space>en", desc = "Config files" },
+      { "<space>ep", desc = "Plugin files" },
+      { "<leader>fg", desc = "Multi grep" },
+      { "<leader>fG", desc = "Multi grep (nvim config)" },
+    },
     dependencies = {
       "nvim-lua/plenary.nvim",
       { "nvim-telescope/telescope-fzf-native.nvim", build = "make" }
