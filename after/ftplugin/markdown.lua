@@ -1,4 +1,32 @@
 -- after/ftplugin/markdown.lua
+
+vim.api.nvim_create_autocmd("BufReadPost", {
+  pattern = "*.md",
+  callback = function()
+    -- only run if not triggered already
+    if vim.b.peek_triggered then
+      return
+    end
+
+    local text =
+      table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+    local has_latex = text:match("\\%(")
+      or text:match("\\%[")
+      or text:match("%$%$[^%$]+%$%$")
+      or text:match("%$[^%$]+%$")
+
+    if has_latex then
+      vim.b.peek_triggered = true
+      pcall(vim.cmd, "Markview Stop") -- suppress error if Markview isn't loaded
+      -- CALL PEEK VIA LUA API:
+      if pcall(require, "peek") then
+        require("peek").open()
+      end
+    end
+    -- Markview is intentionally NOT auto-started; use :Markview to enable manually.
+  end,
+})
+
 -- ------------------------------------------------------------
 -- Markdown helpers: auto-create configs + fix roots for scratch buffers
 -- Commands:
@@ -15,67 +43,18 @@ if vim.g._markdown_config_helper then
 end
 vim.g._markdown_config_helper = true
 
--- ---------- root discovery (no deprecated APIs) ----------
+-- ---------- root discovery ----------
+local roots = require("config.roots")
+
 local function project_root(start)
-  local cfgdir = vim.fn.stdpath("config")
-  start = (type(start) == "string" and #start > 0) and start
-    or vim.api.nvim_buf_get_name(0)
-  if start == "" then
-    start = vim.fn.getcwd()
-  end
-
-  local hit = vim.fs.find({
-    ".git",
-    ".marksman.toml",
-    "marksman.toml",
-    ".remarkrc.mjs",
-    ".remarkrc.js",
-    ".remarkrc.cjs",
-    ".remarkrc",
-    ".remarkrc.json",
-    ".remarkrc.yaml",
-    ".remarkrc.yml",
-    "remark.config.mjs",
-    "remark.config.js",
-    "remark.config.cjs",
-  }, { path = start, upward = true })[1]
-
-  local root = hit and vim.fs.dirname(hit) or vim.fs.dirname(start)
-  -- avoid accidentally rooting to your Neovim config dir
-  if not start:find(cfgdir, 1, true) and root:find(cfgdir, 1, true) then
-    root = vim.fs.dirname(start)
-  end
-  return root
+  return roots.find(start, roots.all_markers) or vim.fs.dirname(
+    (type(start) == "string" and #start > 0) and start
+      or vim.api.nvim_buf_get_name(0)
+  )
 end
 
-local function find_marksman_config(root)
-  for _, name in ipairs({ ".marksman.toml", "marksman.toml" }) do
-    local p = root .. "/" .. name
-    if vim.fn.filereadable(p) == 1 then
-      return p
-    end
-  end
-end
-
-local function find_remark_config(root)
-  for _, name in ipairs({
-    ".remarkrc.mjs",
-    ".remarkrc.js",
-    ".remarkrc.cjs",
-    ".remarkrc",
-    ".remarkrc.json",
-    ".remarkrc.yaml",
-    ".remarkrc.yml",
-    "remark.config.mjs",
-    "remark.config.js",
-    "remark.config.cjs",
-  }) do
-    local p = root .. "/" .. name
-    if vim.fn.filereadable(p) == 1 then
-      return p
-    end
-  end
-end
+local find_marksman_config = roots.find_marksman_config
+local find_remark_config = roots.find_remark_config
 
 local function ensure_dir(filepath)
   local dir = vim.fs.dirname(filepath)
@@ -234,13 +213,7 @@ vim.api.nvim_create_autocmd("BufWritePost", {
       for _, c in ipairs(clients) do
         if c.name == "marksman" or c.name == "remark_ls" then
           table.insert(to_restart, c.name)
-          if type(c.stop) == "function" then
-            -- 0.12 signature: no args
-            pcall(c.stop, c)
-          else
-            -- fallback for older versions
-            pcall(vim.lsp.stop_client, c.id, true)
-          end
+          pcall(c.stop, c)
         end
       end
 
@@ -259,4 +232,194 @@ vim.api.nvim_create_autocmd("BufWritePost", {
       end, 100)
     end
   end,
+})
+
+-- Convert \(..\), \[..] math delimiters to $..$, $$..$$ using pandoc.
+-- Robust because pandoc parses Markdown structure (won't touch code spans/blocks as math).
+
+local function math_delims_to_dollars()
+  local buf = vim.api.nvim_get_current_buf()
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local input = table.concat(lines, "\n")
+
+  -- Prefer LF to avoid accidental CRLF churn in-buffer (optional)
+  -- You can remove --eol=lf if you want OS-native behavior.
+  local cmd = {
+    "pandoc",
+    "--from=markdown+tex_math_single_backslash",
+    "--to=markdown+tex_math_dollars",
+    "--wrap=preserve",
+    "--eol=lf",
+  }
+
+  -- vim.fn.systemlist is widely available and easy for “run command, capture output”.
+  -- It runs {cmd} and returns stdout as a List of lines.  :contentReference[oaicite:4]{index=4}
+  local out = vim.fn.systemlist(cmd, input)
+  local code = vim.v.shell_error
+
+  if code ~= 0 then
+    vim.notify(
+      ("pandoc failed (exit %d). Is pandoc installed and on $PATH?"):format(
+        code
+      ),
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  -- Replace buffer contents
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
+  vim.notify(
+    "Converted \\(\\)/\\[\\] math delimiters to $/$$ via pandoc.",
+    vim.log.levels.INFO
+  )
+end
+
+vim.api.nvim_create_user_command(
+  "MathDelimsToDollars",
+  math_delims_to_dollars,
+  {
+    desc = "Convert \\(\\)/\\[\\] math delimiters to $/$$ using pandoc",
+  }
+)
+
+-- Export current markdown buffer to HTML via pandoc
+vim.api.nvim_create_user_command("ExportHTML", function(opts)
+  local file = vim.api.nvim_buf_get_name(0)
+  if file == "" then
+    vim.notify(
+      "No file found — save buffer before exporting",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  -- Change extension .md → .html
+  local output = file:gsub("%.%w+$", ".html")
+
+  -- Build pandoc command
+  local cmd = {
+    "pandoc",
+    "-s", -- standalone HTML
+    "--from=markdown+tex_math_single_backslash",
+    "--to=html5",
+    "--mathjax", -- math rendering in browser
+    "-o",
+    output,
+    file,
+  }
+
+  -- Execute Pandoc
+  local result = vim.fn.system(cmd)
+  local code = vim.v.shell_error
+  if code == 0 then
+    vim.notify("Exported HTML ➤ " .. output, vim.log.levels.INFO)
+  else
+    vim.notify("pandoc failed: " .. result, vim.log.levels.ERROR)
+  end
+end, {
+  desc = "Export current markdown to HTML with math via pandoc",
+})
+
+-- ── mathdelim.py integration ──────────────────────────────────────────────────
+-- Commands (only available in markdown buffers):
+--   :DelimToggle      – auto-detect dominant style and convert to the other
+--   :DelimDollars     – convert \(…\) / \[…\] → $…$ / $$…$$
+--   :DelimParens      – convert $…$ / $$…$$ → \(…\) / \[…\]
+--   :ExportToGippity  – copy buffer (as LaTeX delimiters) to clipboard; no buffer change
+-- Auto-save: \( / \[ delimiters are silently converted → $ on every BufWritePre.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+--- Run `mathdelim.py [args…]` on *buf* (default: current buffer) in-place.
+--- Returns true on success, false on failure (with a notification).
+local function run_mathdelim(args, buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local input = table.concat(lines, "\n")
+  local cmd = vim.list_extend({ "mathdelim.py" }, args or {})
+  local out = vim.fn.systemlist(cmd, input)
+  if vim.v.shell_error ~= 0 then
+    local hint = (#args == 0) and "; use :DelimDollars or :DelimParens" or ""
+    vim.notify(
+      ("mathdelim: conversion failed (exit %d)%s"):format(vim.v.shell_error, hint),
+      vim.log.levels.WARN
+    )
+    return false
+  end
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
+  return true
+end
+
+vim.api.nvim_create_user_command("DelimToggle", function()
+  if run_mathdelim({}) then
+    vim.notify("Math delimiters toggled.", vim.log.levels.INFO)
+  end
+end, {
+  desc = "Auto-detect dominant delimiter style and toggle to the other",
+})
+
+vim.api.nvim_create_user_command("DelimDollars", function()
+  if run_mathdelim({ "--to-dollar" }) then
+    vim.notify("Converted math delimiters → $…$ / $$…$$", vim.log.levels.INFO)
+  end
+end, {
+  desc = "Convert math delimiters to dollar style ($…$ / $$…$$)",
+})
+
+vim.api.nvim_create_user_command("DelimParens", function()
+  if run_mathdelim({ "--to-latex" }) then
+    vim.notify("Converted math delimiters → \\(…\\) / \\[…\\]", vim.log.levels.INFO)
+  end
+end, {
+  desc = "Convert math delimiters to LaTeX style (\\(…\\) / \\[…\\])",
+})
+
+-- On every save: silently convert any LaTeX-style delimiters to dollars so
+-- that markdown preview plugins (which only support $…$) render correctly.
+-- The check for \( / \[ means already-dollar documents are never touched.
+local _math_aug =
+  vim.api.nvim_create_augroup("MarkdownMathDelims", { clear = true })
+
+vim.api.nvim_create_autocmd("BufWritePre", {
+  group = _math_aug,
+  pattern = { "*.md", "*.markdown", "*.mdx" },
+  callback = function(ev)
+    local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
+    local text = table.concat(lines, "\n")
+    -- Quick bail-out: nothing to do if no LaTeX-style delimiters present
+    if not (text:find("\\%(") or text:find("\\%[")) then
+      return
+    end
+    local out = vim.fn.systemlist({ "mathdelim.py", "--to-dollar" }, text)
+    if vim.v.shell_error == 0 then
+      vim.api.nvim_buf_set_lines(ev.buf, 0, -1, false, out)
+    end
+  end,
+})
+
+-- ExportToGippity: read buffer, convert to LaTeX delimiters, place result in
+-- the unnamed register (") and the system clipboard (+).  Buffer is untouched.
+vim.api.nvim_create_user_command("ExportToGippity", function()
+  local buf = vim.api.nvim_get_current_buf()
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local input = table.concat(lines, "\n")
+
+  local out = vim.fn.systemlist({ "mathdelim.py", "--to-latex" }, input)
+  if vim.v.shell_error ~= 0 then
+    vim.notify(
+      ("ExportToGippity: mathdelim.py failed (exit %d)"):format(vim.v.shell_error),
+      vim.log.levels.ERROR
+    )
+    return
+  end
+
+  local result = table.concat(out, "\n")
+  vim.fn.setreg('"', result) -- unnamed / default yank register
+  vim.fn.setreg("+", result) -- system clipboard
+  vim.notify(
+    ("Converted to LaTeX delimiters and copied to clipboard (%d lines)."):format(#out),
+    vim.log.levels.INFO
+  )
+end, {
+  desc = "Copy buffer as LaTeX-style math to clipboard (buffer unchanged)",
 })
