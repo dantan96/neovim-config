@@ -86,11 +86,10 @@ return {
       require("nvim-treesitter.parsers").get_parser_configs()
     parser_config.spthy = {
       install_info = {
-        url = "/home/daniel.tanios/tamarin-prover/tree-sitter/tree-sitter-spthy",
+        url = vim.fn.expand("~") .. "/tamarin-prover/tree-sitter/tree-sitter-spthy",
         files = { "src/parser.c", "src/scanner.c" },
-        -- optional entries:
-        branch = "develop", -- default branch in case of git repo if different from master
-        requires_generate_from_grammar = false, -- if folder contains pre-generated src/parser.c
+        branch = "develop",
+        requires_generate_from_grammar = false,
       },
     }
     parser_config.fsharp = {
