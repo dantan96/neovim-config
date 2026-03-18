@@ -13,7 +13,7 @@ return {
   config = function()
     -- Basic treesitter setup
     require("nvim-treesitter.configs").setup({
-      sync_install = true,
+      sync_install = false,
       ignore_install = {},
       modules = {},
       -- stylua: ignore
@@ -30,7 +30,6 @@ return {
       highlight = {
         enable = true,
         additional_vim_regex_highlighting = false,
-        -- = { "fsharp", },
       },
       indent = {
         enable = true,

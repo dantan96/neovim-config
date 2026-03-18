@@ -90,7 +90,6 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 vim.api.nvim_create_autocmd("TermOpen", {
   group = vim.api.nvim_create_augroup("custom-term-open", { clear = true }),
   callback = function()
-    vim.opt.modifiable = true
     vim.opt.number = true
     vim.opt.relativenumber = true
   end,
