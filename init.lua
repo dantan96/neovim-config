@@ -40,10 +40,6 @@ vim.filetype.add({
   },
 })
 
-vim.cmd("syntax on")
-
--- log("Registered Tamarin filetype")
-
 -- Setup spthy support with the streamlined module
 pcall(function()
   require("config.spthy_setup").setup()
