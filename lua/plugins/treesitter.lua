@@ -56,31 +56,6 @@ return {
       },
     })
 
-    -- -- Add parser path to runtimepath
-    -- local parser_path = vim.fn.stdpath("config") .. "/parser"
-    -- vim.opt.runtimepath:append(parser_path)
-    --
-    -- -- Register the spthy parser if it exists
-    -- local spthy_parser_path = parser_path .. "/spthy.so"
-    -- if vim.fn.filereadable(spthy_parser_path) == 1 then
-    --   -- Direct language registration
-    --   pcall(function()
-    --     vim.treesitter.language.register('spthy', 'spthy')
-    --   end)
-    --
-    --   -- Also add the parser for spthy
-    --   pcall(function()
-    --     vim.treesitter.language.add('spthy', {
-    --       path = spthy_parser_path
-    --     })
-    --   end)
-    --
-    --   -- Ensure the parser can be loaded
-    --   pcall(function()
-    --     vim.treesitter.language.require_language("spthy")
-    --   end)
-    -- end
-    --
     ---@class MyParserConfigs: table<string, any>
     local parser_config =
       require("nvim-treesitter.parsers").get_parser_configs()
