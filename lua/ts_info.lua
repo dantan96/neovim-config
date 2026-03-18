@@ -118,15 +118,15 @@ function M.show_info()
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
   -- Set buffer options
-  vim.api.nvim_buf_set_option(buf, "modifiable", false)
-  vim.api.nvim_buf_set_option(buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
+  vim.bo[buf].modifiable = false
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].filetype = "markdown"
 
   -- Calculate window dimensions
   local width = 60
   local height = #lines
-  local win_height = vim.api.nvim_get_option("lines")
-  local win_width = vim.api.nvim_get_option("columns")
+  local win_height = vim.o.lines
+  local win_width = vim.o.columns
   local row = math.floor((win_height - height) / 2)
   local col = math.floor((win_width - width) / 2)
 
@@ -142,8 +142,8 @@ function M.show_info()
   })
 
   -- Set mappings to close the window
-  vim.api.nvim_buf_set_keymap(buf, "n", "q", ":close<CR>", { noremap = true, silent = true })
-  vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", ":close<CR>", { noremap = true, silent = true })
+  vim.keymap.set("n", "q", ":close<CR>", { buffer = buf, noremap = true, silent = true })
+  vim.keymap.set("n", "<Esc>", ":close<CR>", { buffer = buf, noremap = true, silent = true })
 
   return win
 end

@@ -23,7 +23,7 @@ return {
         if vim.g.this_obsession == nil then
           local root = vim.fn.getcwd()
           -- opt-in sentinel: start only if ".obsession" exists in the project root
-          if vim.loop.fs_stat(root .. "/.obsession") then
+          if vim.uv.fs_stat(root .. "/.obsession") then
             vim.cmd("silent! Obsession")
           end
         end

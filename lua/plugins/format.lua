@@ -5,27 +5,42 @@ return {
     opts = {
       format_on_save = {
         timeout_ms = 2000,
+        quiet = true, -- suppress "Formatters unavailable" when no formatter matches
       },
       formatters_by_ft = {
         lua = { "stylua" },
-        python = { "isort", "black" },
+        python = { "ruff_format" },
         sh = { "shfmt" },
         bash = { "shfmt" },
         zsh = { "shfmt" },
         fsharp = { "fantomas" },
 
-        markdown = { "remark" },
-        ["markdown.mdx"] = { "remark" },
+        markdown = { "remark", "prettier", stop_after_first = true },
+        ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },
       },
       formatters = {
-        black = {
-          prepend_args = {
-            "--line-length",
-            "79",
-            "--preview",
-            "--enable-unstable-feature",
-            "string_processing",
-          },
+        -- remark-cli loads .remarkrc.mjs which imports remark-gfm etc. via ESM.
+        -- Those packages must be installed in the project's node_modules; without
+        -- them Node exits with a module-not-found error and conform shows a crash.
+        -- This condition skips the formatter silently when they're absent.
+        remark = {
+          command = "remark",
+          args = { "--no-color", "--quiet", "--frail" },
+          stdin = true,
+          condition = function(_, ctx)
+            local found = vim.fs.find("node_modules", {
+              path = ctx.dirname,
+              upward = true,
+              type = "directory",
+              limit = 1,
+            })
+            if #found == 0 then return false end
+            return vim.fn.isdirectory(found[1] .. "/remark-gfm") == 1
+          end,
+        },
+
+        ruff_format = {
+          prepend_args = { "--line-length", "79" },
         },
         stylua = {
           prepend_args = { "--column-width", "79" },
