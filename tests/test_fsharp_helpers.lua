@@ -1,5 +1,6 @@
 local new_set = MiniTest.new_set
 local expect = MiniTest.expect
+local H = dofile("tests/helpers.lua")
 local T = new_set()
 
 local fsh = require("custom.fsharp_helpers")
@@ -100,6 +101,56 @@ end
 T["pick_balanced_break"]["returns nil for empty"] = function()
   local best = fsh._pick_balanced_break({}, 10)
   expect.equality(best, nil)
+end
+
+-- ── find_editorconfig ──────────────────────────────────────────────────────
+T["find_editorconfig"] = new_set()
+
+T["find_editorconfig"]["finds in start dir"] = function()
+  H.with_temp_dir(function(dir)
+    local f = io.open(dir .. "/.editorconfig", "w")
+    f:write("[*]\nmax_line_length = 120\n")
+    f:close()
+    expect.equality(fsh.find_editorconfig(dir), dir .. "/.editorconfig")
+  end)
+end
+
+T["find_editorconfig"]["finds in parent dir"] = function()
+  H.with_temp_dir(function(dir)
+    local sub = dir .. "/sub"
+    vim.fn.mkdir(sub, "p")
+    local f = io.open(dir .. "/.editorconfig", "w")
+    f:write("[*]\nmax_line_length = 80\n")
+    f:close()
+    expect.equality(fsh.find_editorconfig(sub), dir .. "/.editorconfig")
+  end)
+end
+
+T["find_editorconfig"]["returns nil when none exists"] = function()
+  H.with_temp_dir(function(dir)
+    expect.equality(fsh.find_editorconfig(dir), nil)
+  end)
+end
+
+-- ── edge cases ─────────────────────────────────────────────────────────────
+T["edge cases"] = new_set()
+
+T["edge cases"]["parse_prefix_and_delim with empty string"] = function()
+  expect.no_error(function()
+    fsh._parse_prefix_and_delim("")
+  end)
+end
+
+T["edge cases"]["collect_safe_breaks with empty string"] = function()
+  local breaks = fsh._collect_safe_breaks("", false)
+  expect.equality(#breaks, 0)
+end
+
+T["edge cases"]["collect_safe_breaks falls back to spaces"] = function()
+  -- No NICE_TOKENS, but has spaces — should fall back to space splitting
+  local breaks = fsh._collect_safe_breaks("abc def ghi jkl", false)
+  expect.equality(#breaks > 0, true)
+  expect.equality(breaks[1].tok, " ")
 end
 
 return T

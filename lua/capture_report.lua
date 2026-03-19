@@ -97,6 +97,8 @@ local function hl(name)
   }
 end
 
+M._hl = hl
+
 -- Given a set of capture names (as keys in a table), build a list of
 -- rows. Each row holds the capture name, foreground colour, background
 -- colour, any style attributes and the resolved highlight group. The
@@ -121,6 +123,8 @@ local function build_rows(captures)
   end
   return rows
 end
+
+M._build_rows = build_rows
 
 -- Main entry point. This function collects data about the current buffer
 -- and constructs a scratch buffer to display the report.

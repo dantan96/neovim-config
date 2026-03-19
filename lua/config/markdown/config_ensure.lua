@@ -51,6 +51,8 @@ local function write_marksman(path)
   vim.fn.writefile(lines, path)
 end
 
+M._write_marksman = write_marksman
+
 local function write_remark(path)
   ensure_dir(path)
   local lines = {
@@ -74,6 +76,8 @@ local function write_remark(path)
   }
   vim.fn.writefile(lines, path)
 end
+
+M._write_remark = write_remark
 
 local function ensure_marksman(open_after)
   local root = project_root()
