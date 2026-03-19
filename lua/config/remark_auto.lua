@@ -155,6 +155,8 @@ local function remarkify(root)
   ensure_gitignored(root)
 end
 
+M._find_init_root = find_init_root
+
 function M.setup()
   vim.api.nvim_create_autocmd("FileType", {
     pattern = "markdown",

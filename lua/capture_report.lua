@@ -8,6 +8,8 @@ local function hex(num)
   return num and string.format("#%06x", num) or ""
 end
 
+M._hex = hex
+
 local function collect_semantic_groups(bufnr)
   local sg = {}
   local ok, st = pcall(function()

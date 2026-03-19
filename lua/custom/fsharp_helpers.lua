@@ -106,6 +106,8 @@ local function parse_prefix_and_delim(full)
   return sigil, delim, content_start, content_end
 end
 
+M._parse_prefix_and_delim = parse_prefix_and_delim
+
 -- 2) Collect “safe” breakpoints in `raw` outside any { ... } placeholder.
 --    We track depth only when the string is interpolated (has '$').
 local NICE_TOKENS =
@@ -158,6 +160,8 @@ local function collect_safe_breaks(raw, interpolated)
   return breaks
 end
 
+M._collect_safe_breaks = collect_safe_breaks
+
 -- 3) Choose a split close to the target column, but never inside { ... }.
 local function pick_balanced_break(breaks, target_col)
   local best, bestdist = nil, math.huge
@@ -169,6 +173,8 @@ local function pick_balanced_break(breaks, target_col)
   end
   return best
 end
+
+M._pick_balanced_break = pick_balanced_break
 
 -- 4) Recursively split into pieces that fit `eff_width`, keeping tokens readable.
 local function split_outside_interpolation(raw, eff_width, interpolated, depth)
