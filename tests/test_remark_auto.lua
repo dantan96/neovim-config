@@ -33,34 +33,34 @@ T["find_init_root"]["setup"]["returns git root when .git exists"] = function()
   local dir = test_base .. "/proj"
   vim.fn.mkdir(dir .. "/sub", "p")
   vim.fn.mkdir(dir .. "/.git", "p")
+  MiniTest.finally(function() vim.fn.delete(dir, "rf") end)
   local result = remark._find_init_root(dir .. "/sub/file.md")
   expect.equality(result, dir)
-  vim.fn.delete(dir, "rf")
 end
 
 T["find_init_root"]["setup"]["returns file dir when no .git found"] = function()
   local dir = test_base .. "/noproj/sub"
   vim.fn.mkdir(dir, "p")
+  MiniTest.finally(function() vim.fn.delete(test_base .. "/noproj", "rf") end)
   local result = remark._find_init_root(dir .. "/file.md")
   expect.equality(result, dir)
-  vim.fn.delete(test_base .. "/noproj", "rf")
 end
 
 T["find_init_root"]["setup"]["returns nil when remarkrc already exists"] = function()
   local dir = test_base .. "/hasrc"
   vim.fn.mkdir(dir, "p")
+  MiniTest.finally(function() vim.fn.delete(dir, "rf") end)
   local f = io.open(dir .. "/.remarkrc.json", "w")
   f:write("{}")
   f:close()
   expect.equality(remark._find_init_root(dir .. "/file.md"), nil)
-  vim.fn.delete(dir, "rf")
 end
 
 T["find_init_root"]["setup"]["returns nil when remark-gfm installed"] = function()
   local dir = test_base .. "/hasgfm"
   vim.fn.mkdir(dir .. "/node_modules/remark-gfm", "p")
+  MiniTest.finally(function() vim.fn.delete(dir, "rf") end)
   expect.equality(remark._find_init_root(dir .. "/file.md"), nil)
-  vim.fn.delete(dir, "rf")
 end
 
 return T

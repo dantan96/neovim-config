@@ -1,28 +1,16 @@
 local new_set = MiniTest.new_set
 local expect = MiniTest.expect
+local H = dofile("tests/helpers.lua")
 local T = new_set()
 
 local child = MiniTest.new_child_neovim()
-local cfg = vim.fn.stdpath("config")
 
 T["usercmds"] = new_set({
   hooks = {
-    pre_once = function()
-      child.restart({ "-u", cfg .. "/init.lua", "--cmd", "set rtp^=" .. cfg })
-      child.lua([[vim.wait(5000, function() return pcall(require, "lazy") end)]])
-    end,
-    post_once = function()
-      child.stop()
-    end,
+    pre_once = function() H.setup_child(child) end,
+    post_once = function() child.stop() end,
   },
 })
-
--- Helper to check command existence
-local function cmd_exists(name)
-  return child.lua_get(string.format(
-    [[vim.fn.exists(":%s") == 2]], name
-  ))
-end
 
 -- ── global commands ────────────────────────────────────────────────────────
 local global_cmds = { "CapRep", "TSInfo", "UvInit" }
@@ -37,7 +25,7 @@ T["usercmds"]["global commands"] = new_set({
   end)(),
 }, {
   test = function(name)
-    expect.equality(cmd_exists(name), true)
+    expect.equality(H.cmd_exists(child, name), true)
   end,
 })
 
@@ -69,7 +57,7 @@ T["usercmds"]["markdown commands"] = new_set({
   end)(),
 }, {
   test = function(name)
-    expect.equality(cmd_exists(name), true)
+    expect.equality(H.cmd_exists(child, name), true)
   end,
 })
 

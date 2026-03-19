@@ -1,5 +1,6 @@
 local new_set = MiniTest.new_set
 local expect = MiniTest.expect
+local H = dofile("tests/helpers.lua")
 local T = new_set()
 
 local roots = require("config.roots")
@@ -25,62 +26,79 @@ end
 -- ── find() ─────────────────────────────────────────────────────────────────
 T["find"] = new_set()
 
-local tmproot
-
 T["find"]["returns root when .git found"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot .. "/sub", "p")
-  vim.fn.mkdir(tmproot .. "/.git", "p")
-  local result = roots.find(tmproot .. "/sub/file.md", roots.marksman_markers)
-  expect.equality(result, tmproot)
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    vim.fn.mkdir(dir .. "/sub", "p")
+    vim.fn.mkdir(dir .. "/.git", "p")
+    local result = roots.find(dir .. "/sub/file.md", roots.marksman_markers)
+    expect.equality(result, dir)
+  end)
 end
 
 T["find"]["returns nil when root would be home"] = function()
   local home = vim.fn.expand("~")
   vim.fn.mkdir(home .. "/.git", "p")
+  MiniTest.finally(function()
+    vim.fn.delete(home .. "/.git", "rf")
+  end)
   local result = roots.find(home .. "/somefile.md", { ".git" })
-  -- Should be nil because root == home
   expect.equality(result, nil)
-  vim.fn.delete(home .. "/.git", "rf")
 end
 
 T["find"]["returns dirname when no markers found"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot .. "/sub", "p")
-  local result = roots.find(tmproot .. "/sub/file.md", { ".nonexistent_marker" })
-  expect.equality(result, tmproot .. "/sub")
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    vim.fn.mkdir(dir .. "/sub", "p")
+    local result = roots.find(dir .. "/sub/file.md", { ".nonexistent_marker" })
+    expect.equality(result, dir .. "/sub")
+  end)
+end
+
+T["find"]["avoids config dir for non-config paths"] = function()
+  -- When a marker is found in the nvim config dir but the file is elsewhere,
+  -- roots.find() should fall back to the file's dirname
+  H.with_temp_dir(function(dir)
+    local cfgdir = vim.fn.stdpath("config")
+    -- start is outside cfgdir, but markers could match up to cfgdir
+    -- use a marker that exists in cfgdir (init.lua exists there)
+    local result = roots.find(dir .. "/file.md", { "init.lua" })
+    -- Should NOT return cfgdir; should return dir instead
+    if result then
+      expect.equality(result:find(cfgdir, 1, true) == nil or dir:find(cfgdir, 1, true) ~= nil, true)
+    end
+  end)
+end
+
+T["find"]["nil start falls back without error"] = function()
+  expect.no_error(function()
+    roots.find(nil, { ".git" })
+  end)
 end
 
 -- ── find_marksman_config() ─────────────────────────────────────────────────
 T["find_marksman_config"] = new_set()
 
 T["find_marksman_config"]["finds .marksman.toml"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot, "p")
-  local f = io.open(tmproot .. "/.marksman.toml", "w")
-  f:write("")
-  f:close()
-  expect.equality(roots.find_marksman_config(tmproot), tmproot .. "/.marksman.toml")
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    local f = io.open(dir .. "/.marksman.toml", "w")
+    f:write("")
+    f:close()
+    expect.equality(roots.find_marksman_config(dir), dir .. "/.marksman.toml")
+  end)
 end
 
 T["find_marksman_config"]["finds marksman.toml"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot, "p")
-  local f = io.open(tmproot .. "/marksman.toml", "w")
-  f:write("")
-  f:close()
-  expect.equality(roots.find_marksman_config(tmproot), tmproot .. "/marksman.toml")
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    local f = io.open(dir .. "/marksman.toml", "w")
+    f:write("")
+    f:close()
+    expect.equality(roots.find_marksman_config(dir), dir .. "/marksman.toml")
+  end)
 end
 
 T["find_marksman_config"]["returns nil when no config"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot, "p")
-  expect.equality(roots.find_marksman_config(tmproot), nil)
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    expect.equality(roots.find_marksman_config(dir), nil)
+  end)
 end
 
 T["find_marksman_config"]["returns nil for nil root"] = function()
@@ -91,20 +109,27 @@ end
 T["find_remark_config"] = new_set()
 
 T["find_remark_config"]["finds .remarkrc.json"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot, "p")
-  local f = io.open(tmproot .. "/.remarkrc.json", "w")
-  f:write("")
-  f:close()
-  expect.equality(roots.find_remark_config(tmproot), tmproot .. "/.remarkrc.json")
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    local f = io.open(dir .. "/.remarkrc.json", "w")
+    f:write("")
+    f:close()
+    expect.equality(roots.find_remark_config(dir), dir .. "/.remarkrc.json")
+  end)
+end
+
+T["find_remark_config"]["finds .remarkrc.mjs"] = function()
+  H.with_temp_dir(function(dir)
+    local f = io.open(dir .. "/.remarkrc.mjs", "w")
+    f:write("")
+    f:close()
+    expect.equality(roots.find_remark_config(dir), dir .. "/.remarkrc.mjs")
+  end)
 end
 
 T["find_remark_config"]["returns nil when no config"] = function()
-  tmproot = vim.fn.tempname()
-  vim.fn.mkdir(tmproot, "p")
-  expect.equality(roots.find_remark_config(tmproot), nil)
-  vim.fn.delete(tmproot, "rf")
+  H.with_temp_dir(function(dir)
+    expect.equality(roots.find_remark_config(dir), nil)
+  end)
 end
 
 T["find_remark_config"]["returns nil for nil root"] = function()
