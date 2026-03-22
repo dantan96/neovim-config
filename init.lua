@@ -12,13 +12,13 @@ if vim.g.neovide then
 
   vim.keymap.set({ "n", "v", "i" }, "<D-=>", function()
     change_font_size(1)
-  end)
+  end, { desc = "Increase font size" })
   vim.keymap.set({ "n", "v", "i" }, "<D-->", function()
     change_font_size(-1)
-  end)
+  end, { desc = "Decrease font size" })
   vim.keymap.set({ "n", "v", "i" }, "<D-0>", function()
     vim.g.neovide_scale_factor = 1.0
-  end)
+  end, { desc = "Reset font size" })
 end
 
 -- auto-reload files when modified externally
@@ -66,9 +66,9 @@ require("config.uv_init").setup()
 
 local ns = { noremap = true, silent = true }
 -- General keymaps
-vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>")
-vim.keymap.set("n", "<space>x", "<cmd>:.lua<CR>")
-vim.keymap.set("v", "<space>x", "<cmd>:lua<CR>")
+vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>", { desc = "Source current file" })
+vim.keymap.set("n", "<space>x", "<cmd>:.lua<CR>", { desc = "Execute line as Lua" })
+vim.keymap.set("v", "<space>x", "<cmd>:lua<CR>", { desc = "Execute selection as Lua" })
 
 -- Basic editor settings
 vim.opt.tabstop = 4
@@ -85,6 +85,7 @@ vim.api.nvim_create_autocmd("TextYankPost", {
     vim.highlight.on_yank()
   end,
 })
+
 
 -- Terminal
 vim.api.nvim_create_autocmd("TermOpen", {
@@ -110,7 +111,7 @@ local function term_alive()
   return job_id ~= 0 and vim.api.nvim_buf_is_valid(term_buf)
 end
 
-vim.keymap.set("n", "<leader>st", open_terminal)
+vim.keymap.set("n", "<leader>st", open_terminal, { desc = "Open terminal" })
 
 vim.keymap.set("n", "<leader>r", function()
   if not term_alive() then
@@ -118,11 +119,11 @@ vim.keymap.set("n", "<leader>r", function()
   end
   local filename_and_enter = '"./' .. vim.fn.expand("%") .. '"\r\n'
   vim.fn.chansend(job_id, { filename_and_enter })
-end)
+end, { desc = "Run current file" })
 
 -- Oil.nvim keymaps
-vim.keymap.set("n", "<leader>-", "<cmd>Oil<CR>")
-vim.keymap.set("n", "<leader>vim", "<cmd>Oil ~/.config/nvim/<CR>")
+vim.keymap.set("n", "<leader>-", "<cmd>Oil<CR>", { desc = "Oil file manager" })
+vim.keymap.set("n", "<leader>vim", "<cmd>Oil ~/.config/nvim/<CR>", { desc = "Oil nvim config" })
 
 -- Statusline keymaps
 -- Global toggle: <leader>ts
@@ -144,13 +145,13 @@ vim.keymap.set("n", "<leader>tS", function()
 end, { desc = "Toggle mini.statusline (buffer)" })
 
 -- General keymaps
-vim.keymap.set({ "n", "v" }, "<leader>p", '"+p', ns)
-vim.keymap.set({ "n", "v" }, "<C-d>", "<C-d>zz", ns)
-vim.keymap.set({ "n", "v" }, "<C-u>", "<C-u>zz", ns)
-vim.keymap.set({ "n", "v" }, "<leader>y", '"+y', ns)
-vim.keymap.set({ "n", "v" }, "<leader>d", '"_d', ns)
-vim.keymap.set({ "n", "v" }, "<Esc><Esc>", "<Esc><Esc><cmd>nohlsearch<CR>", ns)
-vim.keymap.set({ "n", "v" }, "<leader>ns", "<cmd>nohlsearch<CR><Esc>", ns)
+vim.keymap.set({ "n", "v" }, "<leader>p", '"+p', { noremap = true, silent = true, desc = "Paste from clipboard" })
+vim.keymap.set({ "n", "v" }, "<C-d>", "<C-d>zz", { noremap = true, silent = true, desc = "Page down + center" })
+vim.keymap.set({ "n", "v" }, "<C-u>", "<C-u>zz", { noremap = true, silent = true, desc = "Page up + center" })
+vim.keymap.set({ "n", "v" }, "<leader>y", '"+y', { noremap = true, silent = true, desc = "Yank to clipboard" })
+vim.keymap.set({ "n", "v" }, "<leader>d", '"_d', { noremap = true, silent = true, desc = "Delete to black hole" })
+vim.keymap.set({ "n", "v" }, "<Esc><Esc>", "<Esc><Esc><cmd>nohlsearch<CR>", { noremap = true, silent = true, desc = "Clear search highlights" })
+vim.keymap.set({ "n", "v" }, "<leader>ns", "<cmd>nohlsearch<CR><Esc>", { noremap = true, silent = true, desc = "Clear search highlights" })
 -- vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-N>")
 
 -- Toggle diagnostics (buffer-local, no globals touched)

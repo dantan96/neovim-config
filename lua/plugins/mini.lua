@@ -7,7 +7,9 @@ return {
       require("mini.statusline").setup()
       require("mini.operators").setup()
       require("mini.ai").setup()
-      require("mini.starter").setup()
+
+
+
     end,
   },
 }
