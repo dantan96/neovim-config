@@ -16,7 +16,7 @@ return {
 
       -- Non-Mason servers must be enabled explicitly.
       vim.lsp.enable("remark_ls") -- installed via npm
-      vim.lsp.enable("ruff")      -- installed via brew
+      vim.lsp.enable("ruff")      -- installed via uv
 
       -- Disable formatting for servers that aren't the formatting authority.
       vim.api.nvim_create_autocmd("LspAttach", {

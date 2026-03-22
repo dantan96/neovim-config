@@ -3,12 +3,22 @@ local M = {}
 -- "latest"  → let uv pick the newest Python it can find (recommended)
 -- "minimum" → run vermin and use the lowest version that works
 -- "3.x"     → pin a specific version (e.g. "3.12")
-M.python_version = "latest"
+M.python_version = "3.14"
 
 local BASEDPYRIGHT_TOML = [[
 
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["E", "F", "TCH", "I", "N", "UP"]
+ignore = []
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "sqlalchemy.orm.DeclarativeBase"]
+
 [tool.basedpyright]
-typeCheckingMode = "standard"
+typeCheckingMode = "all"
 venvPath = "."
 venv = ".venv"
 ]]
@@ -158,16 +168,21 @@ function M.run(name_arg)
   local basename   = vim.fn.fnamemodify(src, ":t")   -- myscript.py
   local parent_dir = vim.fn.fnamemodify(src, ":h")   -- /path/to
   local stem       = vim.fn.fnamemodify(src, ":t:r") -- myscript
-  local proj_name  = name_arg or stem
-  local proj_dir   = parent_dir .. "/" .. proj_name
+  local in_place   = (name_arg == ".")
+  local proj_name  = in_place and vim.fn.fnamemodify(parent_dir, ":t") or (name_arg or stem)
+  local proj_dir   = in_place and parent_dir or (parent_dir .. "/" .. proj_name)
 
-  -- Guard: target directory must not exist
-  if vim.fn.isdirectory(proj_dir) == 1 then
+  -- Guard: target directory must not exist (unless in-place)
+  if not in_place and vim.fn.isdirectory(proj_dir) == 1 then
     return err("directory already exists: " .. proj_dir)
   end
 
   -- Step 1: resolve Python version for uv init
   local init_cmd = { "uv", "init", "--name", proj_name, "--no-readme" }
+  if in_place then
+    table.insert(init_cmd, "--bare")
+    table.insert(init_cmd, ".")
+  end
   local python_ver
   if M.python_version == "latest" then
     -- let uv pick the newest available Python; don't pass --python
@@ -178,21 +193,25 @@ function M.run(name_arg)
     python_ver = M.python_version
     vim.list_extend(init_cmd, { "--python", python_ver })
   end
-  vim.list_extend(init_cmd, { proj_dir })
+  if not in_place then vim.list_extend(init_cmd, { proj_dir }) end
 
   -- Step 2: uv init
-  local init_result = vim.system(init_cmd, { text = true }):wait()
+  local init_result = vim.system(init_cmd, { cwd = parent_dir, text = true }):wait()
   if init_result.code ~= 0 then
     return err("uv init failed:\n" .. (init_result.stderr or ""))
   end
 
-  -- Step 3: remove the stub main.py uv creates, move our script in
-  vim.fn.delete(proj_dir .. "/main.py")
+  -- Step 3: cleanup and move (if not in-place)
   local old_bufnr = vim.api.nvim_get_current_buf()
-  local new_path  = proj_dir .. "/" .. basename
-  local mv = vim.system({ "mv", src, new_path }, { text = true }):wait()
-  if mv.code ~= 0 then
-    return err("could not move file:\n" .. (mv.stderr or ""))
+  local new_path  = src
+  if not in_place then
+    vim.fn.delete(proj_dir .. "/main.py")
+    vim.fn.delete(proj_dir .. "/hello.py")
+    new_path = proj_dir .. "/" .. basename
+    local mv = vim.system({ "mv", src, new_path }, { text = true }):wait()
+    if mv.code ~= 0 then
+      return err("could not move file:\n" .. (mv.stderr or ""))
+    end
   end
 
   -- Step 4: shebang + chmod +x
@@ -203,6 +222,7 @@ function M.run(name_arg)
 
   -- Step 6: uv add detected packages (also creates .venv)
   if #packages > 0 then
+    vim.notify("UvInit: adding " .. #packages .. " packages and creating .venv...", vim.log.levels.INFO)
     local add_cmd = vim.list_extend({ "uv", "add" }, packages)
     local add = vim.system(add_cmd, { cwd = proj_dir, text = true }):wait()
     if add.code ~= 0 then
@@ -212,16 +232,21 @@ function M.run(name_arg)
       )
     end
   else
-    vim.system({ "uv", "venv" }, { cwd = proj_dir }):wait()
+    vim.notify("UvInit: creating .venv...", vim.log.levels.INFO)
+    vim.system({ "uv", "venv" }, { cwd = proj_dir, text = true }):wait()
   end
 
   -- Step 7: append [tool.basedpyright] to pyproject.toml
   ensure_basedpyright(proj_dir .. "/pyproject.toml")
 
-  -- Step 8: open moved file, close stale buffer
-  vim.cmd("edit " .. vim.fn.fnameescape(new_path))
-  if vim.api.nvim_buf_is_valid(old_bufnr) then
-    vim.cmd("bdelete " .. old_bufnr)
+  -- Step 8: open moved file, close stale buffer (only if moved)
+  if not in_place then
+    vim.cmd("edit " .. vim.fn.fnameescape(new_path))
+    if vim.api.nvim_buf_is_valid(old_bufnr) then
+      vim.cmd("bdelete " .. old_bufnr)
+    end
+  else
+    vim.cmd("edit!") -- just reload the current file to pick up shebang changes
   end
 
   local ver_info = python_ver and (" (python >=" .. python_ver .. ")") or ""

@@ -9,7 +9,7 @@ return {
       },
       formatters_by_ft = {
         lua = { "stylua" },
-        python = { "ruff_format" },
+        python = { "ruff_fix", "ruff_format", "docformatter", "black" },
         sh = { "shfmt" },
         bash = { "shfmt" },
         zsh = { "shfmt" },
@@ -34,15 +34,35 @@ return {
               type = "directory",
               limit = 1,
             })
-            if #found == 0 then return false end
+            if #found == 0 then
+              return false
+            end
             return vim.fn.isdirectory(found[1] .. "/remark-gfm") == 1
           end,
         },
-
+        ruff_fix = {
+          prepend_args = { "--fix-only", "--unsafe-fixes" },
+        },
         ruff_format = {
-          prepend_args = { "--line-length", "79" },
+          -- line-length comes from pyproject.toml; no overrides needed
+        },
+        docformatter = {
+          command = "docformatter",
+          args = {
+            "--wrap-summaries", "79",
+            "--wrap-descriptions", "72",
+            "-",
+          },
+          stdin = true,
+        },
+        black = {
+          prepend_args = {
+            "--preview",
+            "--enable-unstable-feature", "string_processing",
+          },
         },
         stylua = {
+
           prepend_args = { "--column-width", "79" },
         },
         shfmt = {
