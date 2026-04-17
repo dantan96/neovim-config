@@ -8,6 +8,7 @@ return {
         quiet = true, -- suppress "Formatters unavailable" when no formatter matches
       },
       formatters_by_ft = {
+        toml = { "taplo", "prettier", stop_after_first = true },
         lua = { "stylua" },
         python = { "ruff_fix", "ruff_format", "docformatter", "black" },
         sh = { "shfmt" },
@@ -19,6 +20,20 @@ return {
         ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },
       },
       formatters = {
+        taplo = {
+          command = "taplo",
+          args = { "fmt", "--stdin-filepath", "$FILENAME" },
+          stdin = true,
+        },
+        prettier = {
+          command = "prettier",
+          args = {
+            "--plugin=prettier-plugin-toml",
+            "--stdin-filepath",
+            "$FILENAME",
+          },
+          stdin = true,
+        },
         -- remark-cli loads .remarkrc.mjs which imports remark-gfm etc. via ESM.
         -- Those packages must be installed in the project's node_modules; without
         -- them Node exits with a module-not-found error and conform shows a crash.
@@ -49,8 +64,10 @@ return {
         docformatter = {
           command = "docformatter",
           args = {
-            "--wrap-summaries", "79",
-            "--wrap-descriptions", "72",
+            "--wrap-summaries",
+            "79",
+            "--wrap-descriptions",
+            "72",
             "-",
           },
           stdin = true,
@@ -58,7 +75,8 @@ return {
         black = {
           prepend_args = {
             "--preview",
-            "--enable-unstable-feature", "string_processing",
+            "--enable-unstable-feature",
+            "string_processing",
           },
         },
         stylua = {

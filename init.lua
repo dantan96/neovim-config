@@ -151,7 +151,6 @@ vim.keymap.set({ "n", "v" }, "<C-u>", "<C-u>zz", { noremap = true, silent = true
 vim.keymap.set({ "n", "v" }, "<leader>y", '"+y', { noremap = true, silent = true, desc = "Yank to clipboard" })
 vim.keymap.set({ "n", "v" }, "<leader>d", '"_d', { noremap = true, silent = true, desc = "Delete to black hole" })
 vim.keymap.set({ "n", "v" }, "<Esc><Esc>", "<Esc><Esc><cmd>nohlsearch<CR>", { noremap = true, silent = true, desc = "Clear search highlights" })
-vim.keymap.set({ "n", "v" }, "<leader>ns", "<cmd>nohlsearch<CR><Esc>", { noremap = true, silent = true, desc = "Clear search highlights" })
 -- vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-N>")
 
 -- Toggle diagnostics (buffer-local, no globals touched)

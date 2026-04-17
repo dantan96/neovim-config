@@ -3,10 +3,9 @@
 --
 -- Strategy:
 --   • remark-gfm is installed ONCE to ~/.config/.remarks/node_modules/ (central hub).
---   • Each remarkified directory gets only two tiny artefacts:
---       .remarkrc.json   {"plugins":["remark-gfm"]}
---       node_modules  →  ~/.config/.remarks/node_modules  (symlink, ~50 bytes)
---   • Node.js follows the symlink, so remark finds the plugin via normal resolution.
+--   • Each remarkified directory gets one tiny artefact:
+--       .remarkrc.json   {"plugins":["/abs/path/to/remark-gfm/index.js"]}
+--   • Node.js resolves the absolute path directly — no symlink needed.
 --   • The central npm install is fired detached (nohup … &) so it outlives Neovim.
 --   • Every remarkified directory is recorded in ~/.config/.remarks/index.json.
 
@@ -16,7 +15,7 @@ local REMARKS_DIR    = vim.fn.expand("~/.config/.remarks")
 local CENTRAL_PKGS   = REMARKS_DIR .. "/node_modules"
 local INDEX_FILE     = REMARKS_DIR .. "/index.json"
 local REMARKRC       = ".remarkrc.json"
-local REMARKRC_BODY  = '{\n  "plugins": ["remark-gfm"]\n}\n'
+local REMARKRC_BODY  = '{\n  "plugins": ["' .. CENTRAL_PKGS .. '/remark-gfm/index.js"]\n}\n'
 
 -- Roots processed this session — avoid redundant work.
 local done = {} ---@type table<string, true>
@@ -116,20 +115,6 @@ local function index_add(dir)
   write_index(data)
 end
 
--- ── gitignore ─────────────────────────────────────────────────────────────────
-
-local function ensure_gitignored(dir)
-  local gi = dir .. "/.gitignore"
-  -- Only touch .gitignore if the directory is a git repo or already has one.
-  if not vim.uv.fs_stat(dir .. "/.git") and not vim.uv.fs_stat(gi) then return end
-  local existing = ""
-  local f = io.open(gi, "r")
-  if f then existing = f:read("*a") f:close() end
-  if existing:find("node_modules", 1, true) then return end
-  local out = io.open(gi, "a")
-  if out then out:write("\nnode_modules\n") out:close() end
-end
-
 -- ── main entry ────────────────────────────────────────────────────────────────
 
 local function remarkify(root)
@@ -145,14 +130,7 @@ local function remarkify(root)
     if f then f:write(REMARKRC_BODY) f:close() end
   end
 
-  -- node_modules symlink → central hub
-  local link = root .. "/node_modules"
-  if not vim.uv.fs_stat(link) then
-    vim.uv.fs_symlink(CENTRAL_PKGS, link, { junction = false }, function() end)
-  end
-
   index_add(root)
-  ensure_gitignored(root)
 end
 
 M._find_init_root = find_init_root

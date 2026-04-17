@@ -8,3 +8,5 @@ documentation/*
 test.spthy
 *.swp
 *~ 
+
+node_modules

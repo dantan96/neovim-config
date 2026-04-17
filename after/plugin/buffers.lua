@@ -33,7 +33,7 @@ end
 
 -- 1) New empty buffer in the SAME window (canonical)
 -- :enew opens an unnamed buffer in the current window.
-safe_map("n", "<leader>n", ":enew<CR>", { desc = "New empty buffer" }) -- help: :h :enew
+safe_map("n", "<leader>B", ":enew<CR>", { desc = "New empty buffer" }) -- help: :h :enew
 
 -- 2) Copy CURRENT window to a NEW TAB (full window view; original splits remain)
 -- :tab split creates a new tabpage with a copy of the current window.
