@@ -152,6 +152,7 @@ M._find_init_root = find_init_root
 
 function M.setup()
   vim.api.nvim_create_autocmd("FileType", {
+    group = vim.api.nvim_create_augroup("remark-auto", { clear = true }),
     pattern = "markdown",
     callback = function(args)
       -- Opt-out: skip all filesystem writes (checked per-event so it can

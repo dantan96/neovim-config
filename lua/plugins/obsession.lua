@@ -19,6 +19,7 @@ return {
 
     -- in the same plugin spec's config/init, or anywhere in your config
     vim.api.nvim_create_autocmd("VimEnter", {
+      group = vim.api.nvim_create_augroup("obsession-autostart", { clear = true }),
       callback = function()
         -- If Obsession isn't already active…
         if vim.g.this_obsession == nil then
@@ -43,6 +44,7 @@ return {
     -- vim.opt.statusline:append("%{ObsessionStatus()}")
 
     vim.api.nvim_create_autocmd("User", {
+      group = vim.api.nvim_create_augroup("obsession-sentinel", { clear = true }),
       pattern = "ObsessionStart",
       callback = function()
         local f = io.open(".obsession", "w")

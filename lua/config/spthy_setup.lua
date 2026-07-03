@@ -21,6 +21,7 @@ function M.setup()
 
   -- 2. Setup highlights for spthy files
   vim.api.nvim_create_autocmd("FileType", {
+    group = vim.api.nvim_create_augroup("spthy-setup", { clear = true }),
     pattern = "spthy",
     callback = function()
       -- Make sure tamarin-colors is loaded first

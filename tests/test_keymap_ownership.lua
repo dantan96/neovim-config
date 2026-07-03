@@ -118,6 +118,90 @@ T["ownership"]["plugin keymaps exist"] = new_set({
   end,
 })
 
+-- ── Static cross-file duplicate scan ───────────────────────────────────
+-- Two files both defining the same GLOBAL (mode, lhs) means one silently
+-- wins by load order — the class of bug where init.lua's <Up>/<Down>
+-- display-line maps were dead under multicursor's. Scans literal
+-- vim.keymap.set calls (plus per-file `local x = vim.keymap.set`
+-- aliases) in global-map territory; buffer-local domains (ftplugins)
+-- and lazy `keys` specs (whose stub/real duplication is intentional)
+-- are out of scope.
+T["ownership"]["no cross-file duplicate global keymaps"] = function()
+  local files = { H.cfg .. "/init.lua" }
+  vim.list_extend(files, vim.fn.glob(H.cfg .. "/lua/**/*.lua", false, true))
+  vim.list_extend(files, vim.fn.glob(H.cfg .. "/after/plugin/*.lua", false, true))
+
+  -- (mode .. lhs) -> { file, ... }
+  local defs = {}
+
+  local function note(file, mode, lhs, span)
+    -- Skip calls that pass buffer-local opts.
+    if span:find("buffer") then
+      return
+    end
+    -- Normalize: <leader>/<space> are the same physical key; special
+    -- keys are case-insensitive.
+    lhs = lhs:gsub("<[Ll]eader>", " "):gsub("<[Ss]pace>", " ")
+    if lhs:find("<") then
+      lhs = lhs:lower()
+    end
+    local key = mode .. " " .. lhs
+    defs[key] = defs[key] or {}
+    if not vim.tbl_contains(defs[key], file) then
+      table.insert(defs[key], file)
+    end
+  end
+
+  for _, file in ipairs(files) do
+    local src = table.concat(vim.fn.readfile(file), "\n")
+    local callers = { "vim%.keymap%.set" }
+    for alias in src:gmatch("local%s+([%w_]+)%s*=%s*vim%.keymap%.set") do
+      table.insert(callers, "%f[%w_]" .. alias)
+    end
+    local Q = "[\"']" -- either quote character
+    for _, caller in ipairs(callers) do
+      -- form: set("n", "<lhs>", ...)
+      local pat1 = caller
+        .. "%s*%(%s*"
+        .. Q
+        .. "([nvxsoitc]+)"
+        .. Q
+        .. "%s*,%s*"
+        .. Q
+        .. "([^\"']+)"
+        .. Q
+        .. "()"
+      for mode, lhs, span in src:gmatch(pat1) do
+        note(file, mode, lhs, src:sub(span, span + 160))
+      end
+      -- form: set({ "n", "x" }, "<lhs>", ...)
+      local pat2 = caller
+        .. "%s*%(%s*(%b{})%s*,%s*"
+        .. Q
+        .. "([^\"']+)"
+        .. Q
+        .. "()"
+      for modes, lhs, span in src:gmatch(pat2) do
+        for mode in modes:gmatch(Q .. "([nvxsoitc]+)" .. Q) do
+          note(file, mode, lhs, src:sub(span, span + 160))
+        end
+      end
+    end
+  end
+
+  local dups = {}
+  for key, where in pairs(defs) do
+    if #where > 1 then
+      table.insert(
+        dups,
+        string.format("%q defined in: %s", key, table.concat(where, ", "))
+      )
+    end
+  end
+  table.sort(dups)
+  expect.equality(table.concat(dups, "\n"), "")
+end
+
 T["ownership"]["gitsigns maps attach to repo buffers"] = function()
   -- init.lua is tracked by the config repo, so gitsigns attaches.
   child.lua(string.format(

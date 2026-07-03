@@ -21,6 +21,7 @@ return {
 
       -- Auto-start \ll as soon as VimTeX finishes initialisation
       vim.api.nvim_create_autocmd('User', {
+        group = vim.api.nvim_create_augroup('vimtex-autocompile', { clear = true }),
         pattern  = 'VimtexEventInitPost',
         callback = function() vim.cmd('VimtexCompile') end,
       })

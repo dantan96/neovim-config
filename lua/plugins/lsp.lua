@@ -22,6 +22,7 @@ return {
 
       -- Disable formatting for servers that aren't the formatting authority.
       vim.api.nvim_create_autocmd("LspAttach", {
+        group = vim.api.nvim_create_augroup("lsp-formatting-authority", { clear = true }),
         callback = function(args)
           local client = vim.lsp.get_client_by_id(args.data.client_id)
           if not client then
