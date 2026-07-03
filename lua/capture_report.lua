@@ -12,6 +12,11 @@ M._hex = hex
 
 local function collect_semantic_groups(bufnr)
   local sg = {}
+  -- NOTE: __STHighlighter is a PRIVATE Neovim API (double-underscore prefix)
+  -- and may be renamed or removed in any release. The pcall plus the
+  -- `ok and st and st.active` checks below mean we degrade gracefully to an
+  -- empty set if it disappears — M.run() then falls back to enumerating
+  -- '@lsp*' groups via vim.fn.getcompletion(), so the report still works.
   local ok, st = pcall(function()
     return vim.lsp.semantic_tokens and vim.lsp.semantic_tokens.__STHighlighter
   end)
