@@ -1,10 +1,10 @@
 vim.opt_local.shiftwidth = 2
-vim.opt.relativenumber = true
-vim.opt.number = true
+-- number/relativenumber are global options set in init.lua; a ftplugin
+-- must not set them via vim.opt (global scope), so they were removed here.
 
 -- after/ftplugin/lua.lua
 -- Override the @property capture for Lua only:
-vim.api.nvim_set_hl(0, "@property", { fg = "#eba0ac" })
+vim.api.nvim_set_hl(0, "@property.lua", { fg = "#eba0ac" })
 -- vim.api.nvim_set_hl(0, "@lsp", { fg = "" })
 vim.api.nvim_set_hl(
   0,
