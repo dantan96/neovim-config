@@ -831,6 +831,20 @@ set_constraint(BRIGHTMAGENTA)
 --   set_constraint_gold(GOLDENROD)
 -- end, { desc = "Constraint → goldenrod (deeper)" })
 
+-- Buffer-local command to split long string literals so they fit within
+-- the project's max_line_length (see custom.fsharp_helpers).
+vim.api.nvim_buf_create_user_command(0, "FSharpSplitStrings", function()
+  local helpers = require("custom.fsharp_helpers")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local new_lines = helpers.split_long_strings_in_buffer(bufnr)
+  if new_lines then
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+    vim.notify("FSharp: long strings split.", vim.log.levels.INFO)
+  else
+    vim.notify("FSharp: no strings needed splitting.", vim.log.levels.INFO)
+  end
+end, { desc = "Split long F# string literals to fit max_line_length" })
+
 -- Command to easily view the string splitter's log file
 vim.api.nvim_create_user_command("FSharpSplitterLog", function()
   local log_path = vim.fn.stdpath("state") .. "/fsharp_string_splitter.log"
