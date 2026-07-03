@@ -1,21 +1,12 @@
 -- after/plugin/buffers.lua
 
--- Check if a mapping already exists (buffer-local or global) WITHOUT vim.keymap.get
-local function has_map(mode, lhs, bufnr)
-  bufnr = bufnr or 0
-  -- 1) buffer-local
-  for _, m in ipairs(vim.api.nvim_buf_get_keymap(bufnr, mode)) do
-    if m.lhs == lhs then
-      return true
-    end
-  end
-  -- 2) global
-  for _, m in ipairs(vim.api.nvim_get_keymap(mode)) do
-    if m.lhs == lhs then
-      return true
-    end
-  end
-  return false
+-- Check if a mapping already exists (buffer-local or global).
+-- NOTE: nvim_get_keymap returns lhs with <leader> already EXPANDED
+-- (e.g. " B"), so a literal comparison against "<leader>B" never
+-- matches. maparg() does its own expansion of the queried lhs and
+-- checks both buffer-local and global maps.
+local function has_map(mode, lhs)
+  return vim.fn.maparg(lhs, mode) ~= ""
 end
 
 -- Safe mapping: skip & warn if something already mapped there
