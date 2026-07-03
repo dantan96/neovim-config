@@ -14,37 +14,12 @@ function M.setup()
     },
   })
 
-  -- 2. Add parser directory to runtimepath to ensure parser is found
-  local parser_path = vim.fn.stdpath("config") .. "/parser"
+  -- The spthy parser lives at <config>/parser/spthy.so; the config dir is
+  -- already on the runtimepath, so Neovim finds it natively. The filetype
+  -- ('spthy') equals the treesitter language name, so no
+  -- vim.treesitter.language.register() call is needed either.
 
-  -- Check if the path is already in runtimepath
-  local rtp = vim.opt.runtimepath:get()
-  local in_rtp = false
-  for _, path in ipairs(rtp) do
-    if path == parser_path then
-      in_rtp = true
-      break
-    end
-  end
-
-  -- Add to runtimepath if not already there
-  if not in_rtp then
-    vim.opt.runtimepath:prepend(parser_path)
-  end
-
-  -- 3. Ensure the parser is available and properly registered
-  pcall(function()
-    -- Check if spthy parser exists in site directory
-    local parser_dir = vim.fn.stdpath('data') .. '/site/parser'
-    local spthy_path = parser_dir .. '/spthy.so'
-
-    -- Register language with TreeSitter if available
-    if vim.fn.filereadable(spthy_path) == 1 and vim.treesitter and vim.treesitter.language then
-      vim.treesitter.language.register('spthy', 'spthy')
-    end
-  end)
-
-  -- 4. Setup highlights for spthy files
+  -- 2. Setup highlights for spthy files
   vim.api.nvim_create_autocmd("FileType", {
     pattern = "spthy",
     callback = function()
@@ -53,13 +28,14 @@ function M.setup()
       tc.setup()
 
       -- Explicitly enable TreeSitter for this buffer
-      pcall(function()
-        if vim.treesitter and vim.treesitter.start then
-          vim.treesitter.start(0, "spthy")
-        elseif vim.fn.exists(':TSBufEnable') == 2 then
-          vim.cmd('TSBufEnable highlight')
-        end
-      end)
+      local ok, err = pcall(vim.treesitter.start, 0, "spthy")
+      if not ok and not M._warned then
+        M._warned = true
+        vim.notify(
+          "spthy: treesitter highlighting unavailable: " .. tostring(err),
+          vim.log.levels.WARN
+        )
+      end
 
       local highlights = tc.highlights
       for group, color in pairs(highlights) do
