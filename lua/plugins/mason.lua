@@ -1,11 +1,12 @@
 return {
   {
-    "williamboman/mason.nvim",
+    "mason-org/mason.nvim",
     config = true, -- calls require("mason").setup()
     lazy = false, -- eager-load so :Mason* commands & API exist headless
   },
   {
-    "williamboman/mason-lspconfig.nvim",
+    "mason-org/mason-lspconfig.nvim",
+    dependencies = { "mason-org/mason.nvim" },
     opts = {
       automatic_installation = false,
       ensure_installed = {}, -- keep empty; we’ll install via bootstrap
