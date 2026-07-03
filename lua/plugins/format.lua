@@ -41,7 +41,9 @@ return {
         -- This condition skips the formatter silently when they're absent.
         remark = {
           command = "remark",
-          args = { "--no-color", "--quiet", "--frail" },
+          -- No --frail: it makes remark exit non-zero on any lint warning,
+          -- which conform treats as failure and discards the output.
+          args = { "--no-color", "--quiet" },
           stdin = true,
           condition = function(_, ctx)
             local found = vim.fs.find("node_modules", {
