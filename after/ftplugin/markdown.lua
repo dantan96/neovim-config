@@ -12,3 +12,7 @@ vim.g._markdown_config_helper = true
 require("config.markdown.config_ensure").setup()
 require("config.markdown.math_delims").setup()
 require("config.markdown.export").setup()
+
+vim.opt_local.textwidth = 65
+vim.opt_local.formatoptions:append("aw")
+vim.opt_local.colorcolumn = "+1"

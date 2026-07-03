@@ -77,6 +77,25 @@ vim.opt.relativenumber = true
 vim.opt.number = true
 vim.opt.wrap = false
 
+-- Visual-line vertical motion: pairs with the visual-relative numbers rendered
+-- by statuscol.nvim (lua/plugins/statuscol.lua). With these, a count like 3<j>
+-- moves 3 *screen* rows, landing on the gutter row labelled 3 when wrap is on.
+-- Normal + visual only; operator-pending is left native so dj/dk stay linewise.
+vim.keymap.set({ "n", "x" }, "j", "gj", { desc = "Down by display line" })
+vim.keymap.set({ "n", "x" }, "k", "gk", { desc = "Up by display line" })
+vim.keymap.set({ "n", "x" }, "<Down>", "gj", { desc = "Down by display line" })
+vim.keymap.set({ "n", "x" }, "<Up>", "gk", { desc = "Up by display line" })
+vim.keymap.set("i", "<Down>", "<C-o>gj", { desc = "Down by display line" })
+vim.keymap.set("i", "<Up>", "<C-o>gk", { desc = "Up by display line" })
+
+-- Toggle soft wrap (window-local), with prose-friendly linebreak/breakindent.
+vim.keymap.set("n", "<leader>w", function()
+  vim.wo.wrap = not vim.wo.wrap
+  vim.wo.linebreak = vim.wo.wrap
+  vim.wo.breakindent = vim.wo.wrap
+  vim.notify("wrap " .. (vim.wo.wrap and "on" or "off"))
+end, { desc = "Toggle soft wrap" })
+
 -- Highlight yanked text
 vim.api.nvim_create_autocmd("TextYankPost", {
   desc = "Highlight when yanking (copying) text",
