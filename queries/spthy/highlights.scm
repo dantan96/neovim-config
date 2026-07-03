@@ -1,11 +1,11 @@
 (single_comment) @spthycomment
 (multi_comment) @spthycomment
 
-((pub_name) @spthypublic.constant
-(#has-parent? @spthypublic.constant tuple_term))
+((pub_name) @spthypublic.constant.tuple
+(#has-ancestor? @spthypublic.constant.tuple tuple_term))
 
 ((pub_name) @spthypublic.constant
-(#not-has-parent? @spthypublic.constant tuple_term))
+(#not-has-ancestor? @spthypublic.constant tuple_term))
 
 ((ident) @spthyvariable.message
  (#has-parent? @spthyvariable.message msg_var_or_nullary_fun))

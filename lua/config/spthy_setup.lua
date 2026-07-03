@@ -37,10 +37,15 @@ function M.setup()
         )
       end
 
+      -- Keys in tamarin-colors.lua use plain capture names (e.g.
+      -- "@keyword"); the query captures are namespaced as "@spthy<name>".
+      -- Skip keys that already carry the prefix.
       local highlights = tc.highlights
       for group, color in pairs(highlights) do
-        local groupSuffix = string.sub(group, 2)
-        local spthyGroup = "@spthy" .. groupSuffix
+        local spthyGroup = group
+        if not vim.startswith(group, "@spthy") then
+          spthyGroup = "@spthy" .. string.sub(group, 2)
+        end
         vim.api.nvim_set_hl(0, spthyGroup, color)
       end
     end,
