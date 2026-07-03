@@ -317,13 +317,20 @@ local CONSTRAINT_PATTERNS = {
   "%f[%w_]not%f[^%w_]%s+%f[%w_]struct%f[^%w_]",
 }
 
--- Treesitter query to grab constraint nodes
-local constraint_query = ts.query.parse(
+-- Treesitter query to grab constraint nodes. pcall'd: if the fsharp parser
+-- is not (yet) registered — e.g. nvim-treesitter has not been loaded by
+-- lazy.nvim at the time this ftplugin is sourced — degrade to "no
+-- constraint overlay" instead of aborting the whole ftplugin.
+local constraint_query_ok, constraint_query = pcall(
+  ts.query.parse,
   "fsharp",
   [[
   (constraint) @c
 ]]
 )
+if not constraint_query_ok then
+  constraint_query = nil
+end
 
 -- === extmark highlighter (replacement for deprecated add_highlight) =========
 local function hl_add(buf, lnum, start_col, end_col)
@@ -354,6 +361,9 @@ end
 
 -- Use iter_captures() so we always get a TSNode, never a table/nil
 local function refresh_constraint_names(buf)
+  if not constraint_query then
+    return
+  end
   buf = buf or vim.api.nvim_get_current_buf()
   if vim.bo[buf].filetype ~= "fsharp" then
     return
@@ -361,8 +371,8 @@ local function refresh_constraint_names(buf)
 
   vim.api.nvim_buf_clear_namespace(buf, ns_constraints, 0, -1)
 
-  local parser = ts.get_parser(buf, "fsharp")
-  if not parser then
+  local parser_ok, parser = pcall(ts.get_parser, buf, "fsharp")
+  if not parser_ok or not parser then
     return
   end
 
@@ -695,19 +705,27 @@ if not vim.g._fsharp_fsi_loaded then
   end
 end
 
--- LSP boot (unchanged aside from mappings)
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "fsharp", "fs", "fsx", "fsi" },
-  callback = function(args)
-    -- Don’t start a second client if one is already active
-    for _, client in pairs(vim.lsp.get_clients({ bufnr = args.buf })) do
-      if client.name == "fsautocomplete" then
-        return
-      end
-    end
+-- LSP boot. This ftplugin is itself sourced on FileType for every F#
+-- buffer, so run the boot logic directly instead of registering a nested
+-- FileType autocmd (which never fired for the first F# buffer of a session
+-- and duplicated itself on every subsequent one).
+do
+  local bufnr = vim.api.nvim_get_current_buf()
 
-    local fname = vim.api.nvim_buf_get_name(args.buf)
+  -- Don’t start a second client if one is already active for this buffer
+  local already_attached = false
+  for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+    if client.name == "fsautocomplete" then
+      already_attached = true
+      break
+    end
+  end
+
+  if not already_attached then
+    local fname = vim.api.nvim_buf_get_name(bufnr)
     local util = require("lspconfig.util")
+    -- vim.lsp.start also dedups per (name, root_dir): a second buffer in
+    -- the same root reuses the running client instead of starting another.
     local root = util.root_pattern("*.sln", "*.fsproj", ".git")(fname)
       or vim.fs.dirname(fname)
 
@@ -737,12 +755,12 @@ vim.api.nvim_create_autocmd("FileType", {
     vim.fn.matchadd("Operator", "::", 200)
 
     -- Mappings: Ex-command so Visual gets :'<,'> automatically
-    local map_opts = { buffer = args.buf, desc = "F# Interactive" }
+    local map_opts = { buffer = bufnr, desc = "F# Interactive" }
     vim.keymap.set("n", "<M-CR>", [[:FsiSend<CR>]], map_opts) -- Normal: current line (then move down)
     vim.keymap.set("x", "<M-CR>", [[:FsiSend<CR>]], map_opts) -- Visual: current selection
     vim.keymap.set("n", "<M-@>", _FSharpToggleFsi, map_opts)
-  end,
-})
+  end
+end
 
 -- ------------------------------------------------------------
 -- Ensure a suitable .editorconfig for this F# project
