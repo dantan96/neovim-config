@@ -901,15 +901,6 @@ end
 
 local BRIGHTMAGENTA = "#ff00ff"
 set_constraint(BRIGHTMAGENTA)
--- vim.keymap.set("n", "<leader>fg", function()
---   set_constraint_gold(BRIGHTMAGENTA)
--- end, { desc = "Constraint → bright gold" })
--- vim.keymap.set("n", "<leader>fa", function()
---   set_constraint_gold(AMBER500)
--- end, { desc = "Constraint → amber 500" })
--- vim.keymap.set("n", "<leader>fr", function()
---   set_constraint_gold(GOLDENROD)
--- end, { desc = "Constraint → goldenrod (deeper)" })
 
 -- Buffer-local command to split long string literals so they fit within
 -- the project's max_line_length (see custom.fsharp_helpers).

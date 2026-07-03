@@ -78,8 +78,9 @@ vim.opt.wrap = false
 -- Normal + visual only; operator-pending is left native so dj/dk stay linewise.
 vim.keymap.set({ "n", "x" }, "j", "gj", { desc = "Down by display line" })
 vim.keymap.set({ "n", "x" }, "k", "gk", { desc = "Up by display line" })
-vim.keymap.set({ "n", "x" }, "<Down>", "gj", { desc = "Down by display line" })
-vim.keymap.set({ "n", "x" }, "<Up>", "gk", { desc = "Up by display line" })
+-- No n/x arrow maps here: multicursor.nvim owns <Up>/<Down> in those modes
+-- (add cursor above/below); it loads on VeryLazy and would shadow them
+-- anyway. Insert mode keeps display-line arrows.
 vim.keymap.set("i", "<Down>", "<C-o>gj", { desc = "Down by display line" })
 vim.keymap.set("i", "<Up>", "<C-o>gk", { desc = "Up by display line" })
 

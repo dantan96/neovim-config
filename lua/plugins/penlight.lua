@@ -1,5 +1,7 @@
 -- lua/plugins/penlight.lua
 return {
-  -- Small pure-Lua lib; safe to load eagerly so it’s always on runtimepath
-  { "lunarmodules/Penlight", lazy = false },
+  -- Utility library, not used by this config itself. lazy = true: lazy.nvim
+  -- loads it on demand when any of its modules (pl.*) is require()d, so
+  -- ad-hoc scripts still work without paying the eager-load cost.
+  { "lunarmodules/Penlight", lazy = true },
 }

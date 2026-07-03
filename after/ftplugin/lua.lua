@@ -1,4 +1,10 @@
+-- Match stylua's output (2-space indent, spaces not tabs) so manual
+-- edits and format-on-save agree. All four options are set together:
+-- shiftwidth=2 alone left tabstop at the global 4, mixing widths.
+vim.opt_local.expandtab = true
 vim.opt_local.shiftwidth = 2
+vim.opt_local.softtabstop = 2
+vim.opt_local.tabstop = 2
 -- number/relativenumber are global options set in init.lua; a ftplugin
 -- must not set them via vim.opt (global scope), so they were removed here.
 

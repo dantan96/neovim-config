@@ -82,21 +82,11 @@ function M.setup()
     ["@number"]                               = colors.brownNoStyle, -- Numbers: 1, 2, 3
     ["@public.constant"]                      = colors.hotPink,      -- Public constants: 'g', 'pk', etc. (in single quotes)
     ["@public.constant.tuple"]                = colors.hotPink,      -- Public constants: 'g', 'pk', etc. (in single quotes)
-    -- ["@string"]                            = colors.deepGreen,    -- Strings: quoted text
-    -- ["@constant"]                          = colors.orchidPlain,  -- General constants: constants without decoration
-    -- ["@constant.string"]                   = colors.orchidItalic, -- String constants: quoted strings
 
     ---------------------------------------------------
     -- COMMENTS
     ---------------------------------------------------
     ["@comment"]                              = colors.grayItalic, -- Comments: // line comments and /* block comments */
-
-    ---------------------------------------------------
-    -- RULE STRUCTURE SPECIFIC
-    ---------------------------------------------------
-    -- ["@premise"]                           = colors.slateBlue,    -- Rule premises: left side of rule (before --[)
-    -- ["@conclusion"]                        = colors.royalBlue,    -- Rule conclusions: right side of rule (after ]->)
-    -- ["@rule.simple"]                       = colors.mediumPurple, -- Simple rules: entire rule structure
 
     ---------------------------------------------------
     -- ERROR HANDLING

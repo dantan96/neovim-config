@@ -5,7 +5,9 @@ local M = {}
 -- =============================================================================
 --  DEBUGGING INFRASTRUCTURE
 -- =============================================================================
-local DEBUG = true -- SET TO `false` TO DISABLE LOGGING
+-- Off by default; set vim.g.fsharp_splitter_debug = true (or flip this
+-- check) when diagnosing :FSharpSplitStrings.
+local DEBUG = vim.g.fsharp_splitter_debug == true
 local LOG_PATH = vim.fn.stdpath("state") .. "/fsharp_string_splitter.log"
 
 -- A more robust logger using vim.fn.writefile, like your FSI logger.

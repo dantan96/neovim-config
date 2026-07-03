@@ -18,7 +18,9 @@ ignore = []
 runtime-evaluated-base-classes = ["pydantic.BaseModel", "sqlalchemy.orm.DeclarativeBase"]
 
 [tool.basedpyright]
-typeCheckingMode = "all"
+# "standard" matches the editor-wide default in lsp/basedpyright.lua, so
+# UvInit projects don't light up under a stricter mode than everything else.
+typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
 ]]

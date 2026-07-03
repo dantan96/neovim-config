@@ -1,7 +1,6 @@
 -- spthy-colorscheme.lua
 -- Color definitions for Tamarin Protocol Theory syntax highlighting
--- Only the entries referenced by tamarin-colors.lua are kept (including
--- those used by its currently commented-out groups).
+-- Only the entries referenced by tamarin-colors.lua are kept.
 
 local M = {}
 
@@ -12,7 +11,6 @@ M.colors = {
   brownNoStyle               = { fg = "#8B4513" },                                                -- SaddleBrown - for numbers
   brownPlainItalic           = { fg = "#8B4513", bold = false, italic = true },                   -- SaddleBrown italic - for number variables/arities
   darkGoldBold               = { fg = "#908070", bold = true },                                   -- Dark gold - for tuples
-  deepGreen                  = { fg = "#006400", bold = false },                                  -- Deep green - for strings
   flamingoItalic             = { fg = "#f2cdcd", italic = true, bold = false },                   -- Flamingo - for fresh variables (~k)
   grayItalic                 = { fg = "#777777", italic = true },                                 -- Gray - for comments
   greenItalic                = { fg = "#a6e3a1", italic = true, bold = false },                   -- Green - for public variables ($A)
@@ -20,9 +18,6 @@ M.colors = {
   maroonItalic               = { fg = "#eba0ac", italic = true, bold = false, nocombine = true }, -- Maroon - for message variables
   mauve                      = { fg = "#cba6f7" },                                                -- Mauve - for keywords
   mediumMagentaBold          = { fg = "#FF5FFF", bold = true },                                   -- Medium Magenta - for logical operators
-  mediumPurple               = { fg = "#9370DB", italic = false },                                -- Medium Purple - for rule structure
-  orchidItalic               = { fg = "#DA70D6", italic = true },                                 -- Orchid - for string constants
-  orchidPlain                = { fg = "#DA70D6" },                                                -- Orchid - for constants
   peachBold                  = { fg = "#fab387", bold = true },                                   -- Peach - for types and rule names
   peachItalic                = { fg = "#fab387", italic = true },                                 -- Peach - for regular variables
   pink                       = { fg = "#f5c2e7" },                                                -- Pink - for action brackets and period
@@ -31,9 +26,7 @@ M.colors = {
   redBold                    = { fg = "#f38ba8", bold = true },                                   -- Red - for persistent facts (!Ltk)
   redBoldUnderlined          = { fg = "#f38ba8", bold = true, underline = true },                 -- Red with underline - for errors
   redItalic                  = { fg = "#f38ba8", italic = true },                                 -- Red - for function arities
-  royalBlue                  = { fg = "#4169E1", italic = false },                                -- Royal Blue - for rule conclusions
   skyItalic                  = { fg = "#89dceb", italic = true },                                 -- Sky - for temporal variables (#i)
-  slateBlue                  = { fg = "#6A5ACD", italic = false },                                -- Slate Blue - for rule premises
   slateGrayBold              = { fg = "#708090", bold = true },                                   -- Slate Gray - for operators with bold
   slateGrayPlain             = { fg = "#708090" },                                                -- Slate Gray - for punctuation
   yellowBoldItalic           = { fg = "#f9e2af", bold = true, italic = true },                    -- Yellow - for functions and macros
