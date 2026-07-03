@@ -36,7 +36,12 @@ function M.setup()
 
       if M.has_latex(text) then
         vim.b.peek_triggered = true
-        pcall(vim.cmd, "Markview Stop")
+        -- Stop markview rendering only if the plugin is actually loaded.
+        -- It is lazy-loaded on keys, so usually it is not; calling the
+        -- command unconditionally would just silently fail via pcall.
+        if package.loaded["markview"] then
+          pcall(vim.cmd, "Markview Stop")
+        end
         if pcall(require, "peek") then
           require("peek").open()
         end
