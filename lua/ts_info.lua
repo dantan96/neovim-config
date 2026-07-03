@@ -122,13 +122,12 @@ function M.show_info()
   vim.bo[buf].bufhidden = "wipe"
   vim.bo[buf].filetype = "markdown"
 
-  -- Calculate window dimensions
-  local width = 60
-  local height = #lines
-  local win_height = vim.o.lines
-  local win_width = vim.o.columns
-  local row = math.floor((win_height - height) / 2)
-  local col = math.floor((win_width - width) / 2)
+  -- Calculate window dimensions, clamped to the editor size so long
+  -- capture lists cannot push row/col negative (nvim_open_win errors).
+  local width = math.max(1, math.min(60, vim.o.columns - 4))
+  local height = math.max(1, math.min(#lines, vim.o.lines - 4))
+  local row = math.max(0, math.floor((vim.o.lines - height) / 2))
+  local col = math.max(0, math.floor((vim.o.columns - width) / 2))
 
   -- Create the floating window
   local win = vim.api.nvim_open_win(buf, true, {
