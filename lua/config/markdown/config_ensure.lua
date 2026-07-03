@@ -184,14 +184,13 @@ function M.setup()
           end
         end
 
+        -- Servers are enabled via vim.lsp.enable(), which attaches on
+        -- FileType. Re-fire the event for this buffer to re-attach the
+        -- stopped clients (the old lspconfig manager API was removed in
+        -- nvim-lspconfig v2).
         vim.defer_fn(function()
-          local ok, lsp = pcall(require, "lspconfig")
-          if not ok then return end
-          for _, name in ipairs(to_restart) do
-            local cfg = lsp[name]
-            if cfg and cfg.manager then
-              cfg.manager.try_add(args.buf)
-            end
+          if #to_restart > 0 and vim.api.nvim_buf_is_valid(args.buf) then
+            vim.api.nvim_exec_autocmds("FileType", { buffer = args.buf })
           end
         end, 100)
       end
