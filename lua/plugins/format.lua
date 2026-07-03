@@ -5,6 +5,7 @@ return {
     opts = {
       format_on_save = {
         timeout_ms = 2000,
+        lsp_format = "fallback", -- use LSP formatting when no formatter matches
         quiet = true, -- suppress "Formatters unavailable" when no formatter matches
       },
       formatters_by_ft = {
@@ -67,14 +68,9 @@ return {
     config = function(_, opts)
       local conform = require("conform")
       conform.setup(opts)
-      -- ------------- Register our Lua formatter -------------
-      -- This mirrors how builtin Lua formatters (e.g. trim_whitespace) are defined:
-      --   format = function(self, ctx, lines, callback) ... end
-      -- Reference: trim_whitespace.lua in conform.nvim.  (See GitHub)
-      -- https://github.com/stevearc/conform.nvim/blob/master/lua/conform/formatters/trim_whitespace.lua
       vim.keymap.set({ "n", "v" }, "<leader>f", function()
         conform.format({
-          lsp_fallback = true,
+          lsp_format = "fallback",
           async = false,
           timeout_ms = 4000, -- a bit more generous than 2000
         })
