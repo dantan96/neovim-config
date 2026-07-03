@@ -426,15 +426,24 @@ vim.api.nvim_create_autocmd(
   }
 )
 
--- Also refresh after colorscheme (so highlight group exists) and when TS reparses
-vim.api.nvim_create_autocmd({ "ColorScheme", "BufWritePost" }, {
-  group = vim.api.nvim_create_augroup(
-    "fs_constraint_names_colors",
-    { clear = true }
-  ),
+-- Also refresh after colorscheme (so highlight group exists) and after
+-- writes. These need separate autocmds: ColorScheme matches the colorscheme
+-- NAME while BufWritePost matches file PATHS, so a single autocmd with
+-- pattern "catppuccin" meant the write-refresh never fired.
+local constraint_colors_group =
+  vim.api.nvim_create_augroup("fs_constraint_names_colors", { clear = true })
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = constraint_colors_group,
   pattern = "catppuccin",
   callback = function()
     refresh_constraint_names(0)
+  end,
+})
+vim.api.nvim_create_autocmd("BufWritePost", {
+  group = constraint_colors_group,
+  pattern = { "*.fs", "*.fsx", "*.fsi" },
+  callback = function(args)
+    refresh_constraint_names(args.buf)
   end,
 })
 
