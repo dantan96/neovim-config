@@ -27,6 +27,9 @@ vim.o.autoread = true
 vim.api.nvim_create_autocmd(
   { "BufEnter", "CursorHold", "CursorHoldI", "FocusGained" },
   {
+    -- Grouped with clear=true so re-sourcing init.lua (<space><space>x)
+    -- replaces this autocmd instead of stacking duplicates.
+    group = vim.api.nvim_create_augroup("autoread-checktime", { clear = true }),
     command = "if mode() != 'c' | checktime | endif",
     pattern = { "*" },
   }
@@ -57,7 +60,6 @@ require("config.remark_auto").setup()
 require("config.shebang").setup()
 require("config.uv_init").setup()
 
-local ns = { noremap = true, silent = true }
 -- General keymaps
 vim.keymap.set("n", "<space><space>x", "<cmd>source %<CR>", { desc = "Source current file" })
 vim.keymap.set("n", "<space>x", "<cmd>:.lua<CR>", { desc = "Execute line as Lua" })
@@ -94,7 +96,7 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   desc = "Highlight when yanking (copying) text",
   group = vim.api.nvim_create_augroup("highlight-yank", { clear = true }),
   callback = function()
-    vim.highlight.on_yank()
+    vim.hl.on_yank()
   end,
 })
 
@@ -103,8 +105,11 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 vim.api.nvim_create_autocmd("TermOpen", {
   group = vim.api.nvim_create_augroup("custom-term-open", { clear = true }),
   callback = function()
-    vim.opt.number = true
-    vim.opt.relativenumber = true
+    -- Window-local, NOT vim.opt: the global form re-asserted
+    -- number/relativenumber for the whole session every time a terminal
+    -- opened, silently undoing any global toggle.
+    vim.opt_local.number = true
+    vim.opt_local.relativenumber = true
   end,
 })
 
