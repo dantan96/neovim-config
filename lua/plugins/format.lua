@@ -8,7 +8,7 @@ return {
         quiet = true, -- suppress "Formatters unavailable" when no formatter matches
       },
       formatters_by_ft = {
-        toml = { "taplo", "prettier", stop_after_first = true },
+        toml = { "taplo" },
         lua = { "stylua" },
         python = { "ruff_fix", "ruff_format" },
         sh = { "shfmt" },
@@ -21,20 +21,10 @@ return {
         ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },
       },
       formatters = {
-        taplo = {
-          command = "taplo",
-          args = { "fmt", "--stdin-filepath", "$FILENAME" },
-          stdin = true,
-        },
-        prettier = {
-          command = "prettier",
-          args = {
-            "--plugin=prettier-plugin-toml",
-            "--stdin-filepath",
-            "$FILENAME",
-          },
-          stdin = true,
-        },
+        -- taplo and prettier use conform's builtin definitions. Do not add
+        -- --plugin=prettier-plugin-toml to prettier: mason's prettier shadows
+        -- PATH inside nvim and lacks that plugin, so resolution would fail
+        -- for every filetype prettier runs on.
         -- remark-cli loads .remarkrc.mjs which imports remark-gfm etc. via ESM.
         -- Those packages must be installed in the project's node_modules; without
         -- them Node exits with a module-not-found error and conform shows a crash.
