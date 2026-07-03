@@ -7,7 +7,8 @@
 --   :DelimParens          – force to LaTeX style
 --   :ExportToGippity      – copy buffer as LaTeX delimiters to clipboard
 --
--- Auto-save: BufWritePre silently converts \( / \[ → $ on markdown files.
+-- Auto-save: BufWritePre converts \( / \[ → $ on markdown files (warns on
+-- failure; opt out per buffer with vim.b.mathdelim_disable = true).
 
 local M = {}
 
@@ -95,7 +96,10 @@ function M.setup()
     desc = "Convert math delimiters to LaTeX style (\\(…\\) / \\[…\\])",
   })
 
-  -- On every save: silently convert LaTeX-style delimiters to dollars
+  -- On every save: convert LaTeX-style delimiters to dollars, warning on
+  -- failure. Set vim.b.mathdelim_disable = true to skip for a buffer.
+  -- (mathdelim.py itself is markdown-it based and leaves fenced code
+  -- blocks untouched, so a \( inside a fence only costs a no-op run.)
   local aug =
     vim.api.nvim_create_augroup("MarkdownMathDelims", { clear = true })
 
@@ -103,15 +107,15 @@ function M.setup()
     group = aug,
     pattern = { "*.md", "*.markdown", "*.mdx" },
     callback = function(ev)
+      if vim.b[ev.buf].mathdelim_disable then
+        return
+      end
       local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
       local text = table.concat(lines, "\n")
       if not (text:find("\\%(") or text:find("\\%[")) then
         return
       end
-      local out = vim.fn.systemlist({ "mathdelim.py", "--to-dollar" }, text)
-      if vim.v.shell_error == 0 then
-        vim.api.nvim_buf_set_lines(ev.buf, 0, -1, false, out)
-      end
+      run_mathdelim({ "--to-dollar" }, ev.buf)
     end,
   })
 end
