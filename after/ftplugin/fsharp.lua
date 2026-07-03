@@ -8,91 +8,78 @@ vim.opt_local.autoindent = false
 vim.opt_local.smartindent = false
 vim.opt_local.cindent = false
 
-local cp = require("catppuccin.palettes").get_palette("mocha")
-local sky = cp.sky
-
--- UI tweaks (yours)
-vim.api.nvim_set_hl(
-  0,
-  "@variable.parameter.fsharp",
-  { fg = "#f38ba8", bold = false, underline = false }
-)
-vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
-vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
-vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.type.fsharp",
-  { fg = "#f9e2af", underline = false, bold = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@type.fsharp",
-  { fg = "#f9e2af", underline = false, bold = false }
-)
-local limegreen = { fg = "#aaff00", italic = true, bold = true }
-local electriccyan = { fg = "#00ffff", italic = true }
-local deepteal = { fg = "#008080", italic = true }
-local deepteal2 = { fg = "#00cccc", italic = true }
-local brightmagenta = { fg = "#ff00ff", italic = true }
-local brightmagentabold = { fg = "#ff00ff", italic = true, bold = true }
 local GOLD = "#FFD700" -- CSS 'gold'
-local AMBER500 = "#FFC107" -- Material Amber 500
-local GOLDENROD = "#DAA520" -- CSS 'goldenrod'
 local g1 = { fg = GOLD, italic = true }
-local g2 = { fg = AMBER500, italic = true }
-local g3 = { fg = GOLDENROD, italic = true }
--- Retrieve the sky color from Catppuccin palette
-vim.api.nvim_set_hl(0, "@lsp.type.typeParameter.fsharp", g1)
 
-vim.api.nvim_set_hl(
-  0,
-  "@keyword.modifier.fsharp",
-  { fg = "#f2cdcd", bold = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@module.builtin.fsharp",
-  { fg = "#f9e2af", italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.module.fsharp",
-  { fg = "#f9e2af", italic = true, underline = true }
-)
+-- UI tweaks (yours). Highlight groups are global, so define them once per
+-- session (guarded below) instead of on every F# buffer open, and re-apply
+-- them when the colorscheme changes.
+local function apply_fsharp_highlights()
+  vim.api.nvim_set_hl(
+    0,
+    "@variable.parameter.fsharp",
+    { fg = "#f38ba8", bold = false, underline = false }
+  )
+  vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
+  vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
+  vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
+  vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.type.type.fsharp",
+    { fg = "#f9e2af", underline = false, bold = false }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@type.fsharp",
+    { fg = "#f9e2af", underline = false, bold = false }
+  )
+  vim.api.nvim_set_hl(0, "@lsp.type.typeParameter.fsharp", g1)
 
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.typemod.property.readonly",
-  { fg = "#fab387", italic = true }
-)
+  vim.api.nvim_set_hl(
+    0,
+    "@keyword.modifier.fsharp",
+    { fg = "#f2cdcd", bold = true }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@module.builtin.fsharp",
+    { fg = "#f9e2af", italic = true }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.type.module.fsharp",
+    { fg = "#f9e2af", italic = true, underline = true }
+  )
 
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.namespace.fsharp",
-  { fg = "#f9e2af", italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "DiagnosticUnnecessary",
-  { underline = nil, fg = nil, bg = nil, default = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@variable.enum_member.fsharp",
-  { fg = "#f5c2e7", underline = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@punctuation.special",
-  { fg = "#9399b2", underline = false }
-)
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.typemod.property.readonly",
+    { fg = "#fab387", italic = true }
+  )
 
----------------------------------------------------------------------------
--- ==========  BEEFING UP SEMANTIC COLOURING  ==========
----------------------------------------------------------------------------
-local function link_binder_hl()
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.type.namespace.fsharp",
+    { fg = "#f9e2af", italic = true }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "DiagnosticUnnecessary",
+    { underline = nil, fg = nil, bg = nil, default = false }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@variable.enum_member.fsharp",
+    { fg = "#f5c2e7", underline = false }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@punctuation.special",
+    { fg = "#9399b2", underline = false }
+  )
+
+  -- ==========  BEEFING UP SEMANTIC COLOURING  ==========
   vim.api.nvim_set_hl(
     0,
     "@lsp.variable.enum_member.fsharp",
@@ -100,11 +87,14 @@ local function link_binder_hl()
   )
 end
 
-link_binder_hl()
-vim.api.nvim_create_autocmd("ColorScheme", {
-  group = vim.api.nvim_create_augroup("fs_du_binder_hl", { clear = true }),
-  callback = link_binder_hl,
-})
+if not vim.g._fsharp_hl_setup then
+  vim.g._fsharp_hl_setup = true
+  apply_fsharp_highlights()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("fs_hl_reapply", { clear = true }),
+    callback = apply_fsharp_highlights,
+  })
+end
 
 local ts = vim.treesitter
 
