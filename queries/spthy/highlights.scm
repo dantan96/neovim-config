@@ -1,11 +1,11 @@
 (single_comment) @spthycomment
 (multi_comment) @spthycomment
 
-((pub_name) @spthypublic.constant
-(#has-parent? @spthypublic.constant tuple_term))
+((pub_name) @spthypublic.constant.tuple
+(#has-ancestor? @spthypublic.constant.tuple tuple_term))
 
 ((pub_name) @spthypublic.constant
-(#not-has-parent? @spthypublic.constant tuple_term))
+(#not-has-ancestor? @spthypublic.constant tuple_term))
 
 ((ident) @spthyvariable.message
  (#has-parent? @spthyvariable.message msg_var_or_nullary_fun))
@@ -94,19 +94,19 @@
 ((ident) @spthytype
  (#has-parent? @spthytype theory))
 
-(function_pub function_identifier: (ident)) @spthyfunction
+(function_untyped function_identifier: (ident)) @spthyfunction
 
 ((ident) @spthyfunction
-(#has-parent? @spthyfunction function_pub))
+(#has-parent? @spthyfunction function_untyped))
 
 ((ident) @spthyfunction
-(#has-parent? @spthyfunction function_private))
+(#has-parent? @spthyfunction function_typed))
 
 ((natural) @spthyfunction.arity
-(#has-parent? @spthyfunction.arity function_pub))
+(#has-parent? @spthyfunction.arity function_untyped))
 
 ((natural) @spthyfunction.arity
-(#has-parent? @spthyfunction.arity function_private))
+(#has-parent? @spthyfunction.arity function_typed))
 
 ;; Rule identifiers - using parent and position checking
 ((ident) @spthyfunction.rule
@@ -165,11 +165,11 @@
 
 
 ((ident) @spthyfunction.builtin
- (#has-parent? @spthyfunction.builtin function_pub)
+ (#has-parent? @spthyfunction.builtin function_untyped)
  (#any-of? @spthyfunction.builtin "aenc" "adec" "senc" "sdec" "mac" "kdf" "pk" "h" "verify" "sign" "true" "revealSign" "revealVerify" "getMessage" "inv" "1" "zero" "⊕" "XOR" "zero"))
 
 ((ident) @spthyfunction.builtin
- (#has-parent? @spthyfunction.builtin function_private)
+ (#has-parent? @spthyfunction.builtin function_typed)
  (#any-of? @spthyfunction.builtin "aenc" "adec" "senc" "sdec" "mac" "kdf" "pk" "h" "verify" "sign" "true" "revealSign" "revealVerify" "getMessage" "inv" "1" "zero" "⊕" "XOR" "zero"))
 
 ;; Facts - with different styles

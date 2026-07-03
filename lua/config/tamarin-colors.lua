@@ -70,9 +70,10 @@ function M.setup()
     ["@operator.assignment"]                  = colors.slateGrayPlain,    -- Assignment operators: = in let statements
     ["@punctuation.bracket.square"]           = colors.slateGrayPlain,    -- Regular brackets: (), [], <>
     ["@punctuation.bracket.round"]            = colors.slateGrayPlain,    -- Regular brackets: (), [], <>
-    ["@spthypunctuation.delimiter.period"]    = colors.pink,              -- Punctuation: . (just the fullstop)
-    ["@spthypunctuation.delimiter.semicolon"] = colors.slateGrayPlain,    -- Regular brackets: (), [], <>
-    ["@spthypunctuation.delimiter.colon"]     = colors.slateGrayPlain,    -- Regular brackets: (), [], <>
+    ["@punctuation.delimiter.period"]         = colors.pink,              -- Punctuation: . (just the fullstop)
+    ["@punctuation.delimiter.semicolon"]      = colors.slateGrayPlain,    -- Punctuation: ;
+    ["@punctuation.delimiter.colon"]          = colors.slateGrayPlain,    -- Punctuation: :
+    ["@punctuation.delimiter.comma"]          = colors.slateGrayPlain,    -- Punctuation: , (outside tuples)
     ["@tuple"]                                = colors.darkGoldBold,      -- Regular brackets: (), [], <>
 
     ---------------------------------------------------

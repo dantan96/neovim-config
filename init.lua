@@ -32,15 +32,8 @@ vim.api.nvim_create_autocmd(
   }
 )
 
--- Set up filetype detection for Tamarin files - do this as early as possible
-vim.filetype.add({
-  extension = {
-    spthy = "spthy",
-    sapic = "spthy",
-  },
-})
-
 -- Setup spthy support with the streamlined module
+-- (also registers the spthy/sapic filetypes)
 pcall(function()
   require("config.spthy_setup").setup()
 end)
