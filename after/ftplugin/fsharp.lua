@@ -168,22 +168,26 @@ local function case_coords_for_binder(buf, row, col)
   end
 end
 
--- Convert an LSP Position (utf-16/32) -> byte col for extmarks
+-- Convert between LSP Positions and byte columns using the client's actual
+-- offset encoding, via the Neovim 0.11+ signatures:
+--   vim.str_byteindex(s, encoding, index, strict_indexing)
+--   vim.str_utfindex(s, encoding, index, strict_indexing)
+-- (The old numeric use_utf16 third argument is deprecated; worse, `0` is
+-- truthy in Lua, so the previous code always took the utf-16 branch.)
 
--- LSP character -> byte column (Neovim 0.12)
+-- LSP character -> byte column (for extmarks)
 local function lsp_pos_to_bytes(bufnr, pos, enc)
   local line = vim.api.nvim_buf_get_lines(bufnr, pos.line, pos.line + 1, true)[1]
     or ""
-  local use_utf16 = (enc == "utf-16") and 1 or 0
-  return pos.line, vim.str_byteindex(line, pos.character, use_utf16)
+  -- strict_indexing=false clamps out-of-range positions to the line end.
+  return pos.line, vim.str_byteindex(line, enc or "utf-16", pos.character, false)
 end
 
--- Buffer byte column -> LSP character (Neovim 0.12)
+-- Buffer byte column -> LSP character
 local function lsp_char_from_byte(bufnr, line_nr, bytecol, enc)
   local line = vim.api.nvim_buf_get_lines(bufnr, line_nr, line_nr + 1, true)[1]
     or ""
-  local use_utf16 = (enc == "utf-16") and 1 or nil
-  return vim.str_utfindex(line, bytecol, use_utf16)
+  return vim.str_utfindex(line, enc or "utf-16", bytecol, false)
 end
 
 -- Highlight all references in the current buffer for ONE binder key
