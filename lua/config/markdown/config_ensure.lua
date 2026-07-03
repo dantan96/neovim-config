@@ -156,7 +156,7 @@ function M.setup()
   -- mark scratch markdown buffers so we know to restart after first save
   vim.api.nvim_create_autocmd({ "BufEnter", "BufNewFile" }, {
     group = aug,
-    pattern = "*.md,*.markdown,*.mdx",
+    pattern = { "*.md", "*.markdown", "*.mdx" },
     callback = function(args)
       if vim.api.nvim_buf_get_name(args.buf) == "" then
         vim.b[args.buf]._md_was_scratch = true
