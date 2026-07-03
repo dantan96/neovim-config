@@ -23,10 +23,22 @@ function M.insert()
   end
   local shebang = M.shebangs[vim.bo.filetype] or M.default
   vim.api.nvim_buf_set_lines(0, 0, 0, false, { shebang })
-  local fname = vim.api.nvim_buf_get_name(0)
-  if fname ~= "" then
-    vim.system({ "chmod", "+x", fname })
-  end
+  -- Defer chmod +x until the buffer is actually written: chmod-ing here
+  -- would target a file that may not exist yet (new buffer never saved).
+  -- The one-shot autocmd fires on the next :w, when the file (and its
+  -- shebang) really are on disk, and also covers unnamed buffers that
+  -- get a name at write time.
+  vim.api.nvim_create_autocmd("BufWritePost", {
+    buffer = 0,
+    once = true,
+    desc = "chmod +x after shebang insertion",
+    callback = function(ev)
+      local fname = vim.api.nvim_buf_get_name(ev.buf)
+      if fname ~= "" then
+        vim.system({ "chmod", "+x", fname })
+      end
+    end,
+  })
 end
 
 function M.setup()

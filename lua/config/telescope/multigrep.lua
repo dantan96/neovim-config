@@ -15,6 +15,10 @@ local live_multigrep = function(opts)
         return nil
       end
 
+      -- Prompt format: <pattern>[  <glob>[  <glob>...]] (two-space separated).
+      -- The first segment is the rg pattern; every following segment is
+      -- passed as a -g file glob (previously segments past the second were
+      -- silently ignored).
       local pieces = vim.split(prompt, "  ")
       local args = { "rg" }
       if pieces[1] then
@@ -22,9 +26,9 @@ local live_multigrep = function(opts)
         table.insert(args, pieces[1])
       end
 
-      if pieces[2] then
+      for i = 2, #pieces do
         table.insert(args, "-g")
-        table.insert(args, pieces[2])
+        table.insert(args, pieces[i])
       end
 
       return vim.iter({
@@ -55,10 +59,12 @@ local live_multigrep = function(opts)
 end
 
 M.setup = function()
-  vim.keymap.set("n", "<leader>fg", live_multigrep)
+  vim.keymap.set("n", "<leader>fg", live_multigrep, {
+    desc = "Multigrep (pattern  glob...)",
+  })
   vim.keymap.set("n", "<leader>fG", function()
     live_multigrep({ cwd = vim.fn.expand("~/.config/nvim") })
-  end)
+  end, { desc = "Multigrep in nvim config" })
 end
 
 return M

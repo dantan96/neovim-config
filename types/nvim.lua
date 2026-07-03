@@ -1,5 +1,12 @@
 ---@meta
 
+-- This file exists only to feed type information to lua-language-server.
+-- It must NEVER be executed: the assignments below (vim.opt = {}, stubbed
+-- vim.fs.find, etc.) would clobber real Neovim tables and destroy the
+-- session. It lives outside lua/ so it is not on the module path, and the
+-- guard below makes any stray require() fail loudly.
+error("Cannot require a meta file")
+
 -- =========================
 -- vim core
 -- =========================

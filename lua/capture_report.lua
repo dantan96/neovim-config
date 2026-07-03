@@ -12,6 +12,11 @@ M._hex = hex
 
 local function collect_semantic_groups(bufnr)
   local sg = {}
+  -- NOTE: __STHighlighter is a PRIVATE Neovim API (double-underscore prefix)
+  -- and may be renamed or removed in any release. The pcall plus the
+  -- `ok and st and st.active` checks below mean we degrade gracefully to an
+  -- empty set if it disappears — M.run() then falls back to enumerating
+  -- '@lsp*' groups via vim.fn.getcompletion(), so the report still works.
   local ok, st = pcall(function()
     return vim.lsp.semantic_tokens and vim.lsp.semantic_tokens.__STHighlighter
   end)
@@ -54,11 +59,13 @@ local function hl(name)
     end
     -- record style flags only the first time
     if not attrs then
-      attrs = table.concat({
-        h.bold and "bold" or nil,
-        h.italic and "italic" or nil,
-        h.underline and "underline" or nil,
-      }, " ")
+      -- Build the list with table.insert: a literal { x or nil, y or nil }
+      -- embeds nils and makes table.concat error (e.g. italic-only groups).
+      local flags = {}
+      if h.bold then table.insert(flags, "bold") end
+      if h.italic then table.insert(flags, "italic") end
+      if h.underline then table.insert(flags, "underline") end
+      attrs = table.concat(flags, " ")
     end
     fg = fg or h.fg or h.foreground
     bg = bg or h.bg or h.background
@@ -219,8 +226,12 @@ function M.run()
   -- avoids altering the user’s files. We mark it unmodifiable to
   -- prevent accidental edits.
   local out = vim.api.nvim_create_buf(false, true)
+  -- Collect all lines first, then replace the whole buffer (0..-1) in one
+  -- call so the scratch buffer's initial empty line does not linger at the
+  -- top of the report.
+  local out_lines = {}
   local function add(line)
-    vim.api.nvim_buf_set_lines(out, -1, -1, false, { line })
+    out_lines[#out_lines + 1] = line
   end
 
   add("┏ Capture‑colour report ┓")
@@ -235,6 +246,7 @@ function M.run()
   for i = 2, #rows do
     add(string.format("%-30s %-9s %-9s %-12s %s", unpack(rows[i])))
   end
+  vim.api.nvim_buf_set_lines(out, 0, -1, false, out_lines)
 
   vim.bo[out].modifiable = false
   vim.bo[out].filetype = "capture_report"
