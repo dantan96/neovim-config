@@ -6,7 +6,9 @@ return {
     cmd = { "ConformInfo" },
     keys = {
       {
-        "<leader>f",
+        -- <leader>F (not <leader>f): telescope's <leader>f* family would
+        -- stall a single-char <leader>f for timeoutlen on every press.
+        "<leader>F",
         function()
           require("conform").format({
             lsp_format = "fallback",

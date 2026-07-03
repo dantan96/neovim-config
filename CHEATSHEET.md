@@ -73,7 +73,7 @@ Leader key: `\` (backslash)
 
 | Keys | Mode | Action |
 |------|------|--------|
-| `<leader>f` | n, v | Format buffer (Conform + LSP fallback) |
+| `<leader>F` | n, v | Format buffer (Conform + LSP fallback) |
 
 ## Multi-Cursor
 
@@ -92,7 +92,7 @@ Leader key: `\` (backslash)
 | `mW` | n | Custom pattern match in range |
 | `<Left>` | n, x | Rotate to next cursor |
 | `<Right>` | n, x | Rotate to previous cursor |
-| `<leader>x` | n, x | Delete main cursor |
+| `<leader>X` | n, x | Delete main cursor |
 | `<C-q>` | n, x | Toggle cursor |
 | `<leader><C-q>` | n, x | Duplicate cursors |
 | `<Esc>` | n | Clear cursors or disable |
@@ -122,7 +122,7 @@ Leader key: `\` (backslash)
 
 | Keys | Mode | Action |
 |------|------|--------|
-| `<leader>st` | n | Open terminal (vertical split) |
+| `<leader>T` | n | Open terminal (vertical split) |
 | `<leader>r` | n | Run current file in terminal |
 
 ## Sessions (Obsession)
@@ -153,7 +153,7 @@ Leader key: `\` (backslash)
 
 | Keys | Mode | Action |
 |------|------|--------|
-| `<leader>S` | n | Insert shebang line |
+| `<leader>#` | n | Insert shebang line |
 | `<leader>hc` | n | Capture colour report |
 
 ## Neovide Only

@@ -15,16 +15,16 @@ T["keymaps"] = new_set({
 -- nvim_get_keymap returns lhs with literal space for <Space>/<leader>
 local keymaps = {
   { "n", "  x" },    -- <space><space>x
-  { "n", " st" },    -- <leader>st
+  { "n", " T" },     -- <leader>T (terminal)
   { "n", " -" },     -- <leader>-
   { "n", " vim" },   -- <leader>vim
   { "n", " p" },     -- <leader>p
   { "n", " y" },     -- <leader>y
   { "n", " d" },     -- <leader>d
   { "n", " lx" },    -- <leader>lx
-  { "n", " S" },     -- <leader>S
+  { "n", " #" },     -- <leader># (shebang)
   { "n", " ts" },    -- <leader>ts
-  { "n", " f" },     -- <leader>f
+  { "n", " F" },     -- <leader>F (format)
   { "n", " ha" },    -- <leader>ha
   { "n", " hh" },    -- <leader>hh
 }

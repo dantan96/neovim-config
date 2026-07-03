@@ -46,8 +46,9 @@ return {
     set({ "n", "x" }, "<left>", mc.nextCursor, { desc = "MC next cursor" })
     set({ "n", "x" }, "<right>", mc.prevCursor, { desc = "MC prev cursor" })
 
-    -- Delete the main cursor.
-    set({ "n", "x" }, "<leader>x", mc.deleteCursor, { desc = "MC delete cursor" })
+    -- Delete the main cursor. <leader>X, not <leader>x: that belongs to
+    -- execute-line-as-Lua in init.lua (mapleader is space).
+    set({ "n", "x" }, "<leader>X", mc.deleteCursor, { desc = "MC delete cursor" })
 
     -- Add and remove cursors with control + left click.
     set("n", "<c-leftmouse>", mc.handleMouse, { desc = "MC add/remove cursor (click)" })

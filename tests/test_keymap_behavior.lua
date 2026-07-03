@@ -18,31 +18,31 @@ T["keymap behavior"] = new_set({
   },
 })
 
-T["keymap behavior"]["<leader>S inserts shebang for sh"] = function()
+T["keymap behavior"]["<leader># inserts shebang for sh"] = function()
   child.lua("vim.bo.filetype = 'sh'")
-  child.type_keys(" S")
+  child.type_keys(" #")
   local line1 = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]")
   expect.equality(line1, "#!/usr/bin/env bash")
 end
 
-T["keymap behavior"]["<leader>S inserts shebang for python"] = function()
+T["keymap behavior"]["<leader># inserts shebang for python"] = function()
   child.lua("vim.bo.filetype = 'python'")
-  child.type_keys(" S")
+  child.type_keys(" #")
   local line1 = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]")
   expect.equality(line1, "#!/usr/bin/env python3.14")
 end
 
-T["keymap behavior"]["<leader>S skips when shebang already present"] = function()
+T["keymap behavior"]["<leader># skips when shebang already present"] = function()
   child.lua("vim.bo.filetype = 'sh'")
   child.lua([[vim.api.nvim_buf_set_lines(0, 0, -1, false, {"#!/bin/sh", "echo hi"})]])
-  child.type_keys(" S")
+  child.type_keys(" #")
   local line1 = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]")
   expect.equality(line1, "#!/bin/sh") -- unchanged
 end
 
-T["keymap behavior"]["<leader>S uses default for unknown filetype"] = function()
+T["keymap behavior"]["<leader># uses default for unknown filetype"] = function()
   child.lua("vim.bo.filetype = 'text'")
-  child.type_keys(" S")
+  child.type_keys(" #")
   local line1 = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]")
   expect.equality(line1, "#!/usr/bin/env sh")
 end

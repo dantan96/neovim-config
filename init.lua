@@ -123,7 +123,9 @@ local function term_alive()
   return job_id ~= 0 and vim.api.nvim_buf_is_valid(term_buf)
 end
 
-vim.keymap.set("n", "<leader>st", open_terminal, { desc = "Open terminal" })
+-- <leader>T (not <leader>st): an st-family map would stall multicursor's
+-- single-char <leader>s for timeoutlen on every press.
+vim.keymap.set("n", "<leader>T", open_terminal, { desc = "Open terminal" })
 
 vim.keymap.set("n", "<leader>r", function()
   if not term_alive() then

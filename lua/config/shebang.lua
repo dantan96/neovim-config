@@ -42,7 +42,8 @@ function M.insert()
 end
 
 function M.setup()
-  vim.keymap.set("n", "<leader>S", M.insert, { desc = "Insert shebang" })
+  -- <leader># (as in #!): <leader>S belongs to multicursor's skip-match.
+  vim.keymap.set("n", "<leader>#", M.insert, { desc = "Insert shebang" })
 end
 
 return M
