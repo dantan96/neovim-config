@@ -130,13 +130,15 @@ function M.set_color(hex)
   pcall(M.refresh, 0)
 end
 
-local done = false
-
+-- Session-global guard (vim.g, not a module-local): `:source %` of
+-- this file runs a FRESH chunk whose local guard is false, so a
+-- module-local flag would let setup() re-run and reset module state
+-- (the <space><space>x mapping makes that a real workflow).
 function M.setup()
-  if done then
+  if vim.g._fsharp_constraints_setup then
     return
   end
-  done = true
+  vim.g._fsharp_constraints_setup = true
 
   -- Refresh on typical edit/parse events (cheap: only scans constraint
   -- nodes; deferred to avoid fast-event yields).

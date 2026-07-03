@@ -135,8 +135,10 @@ T["ownership"]["no cross-file duplicate global keymaps"] = function()
   local defs = {}
 
   local function note(file, mode, lhs, span)
-    -- Skip calls that pass buffer-local opts.
-    if span:find("buffer") then
+    -- Skip calls that pass buffer-local opts. Match the assignment form
+    -- ("buffer =", "buffer=bufnr"), not the bare word: a desc like
+    -- "Delete buffer" must not exempt a global map from the scan.
+    if span:find("buffer%s*=") then
       return
     end
     -- Normalize: <leader>/<space> are the same physical key; special

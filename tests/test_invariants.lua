@@ -101,6 +101,12 @@ T["invariants"]["config autocmds are grouped (or once)"] = function()
   -- MiniTest runs cases in definition order, so every configured
   -- filetype was already visited by the option-leak case and lazily
   -- registered autocmds exist. Belt and braces: visit them again.
+  --
+  -- KNOWN BLIND SPOT: only function callbacks can be attributed to the
+  -- config via debug.getinfo. Autocmds registered with a command STRING
+  -- are invisible here (and Vim's own runtime keeps ~8 ungrouped
+  -- command-string Syntax autocmds, so a blanket check would false-
+  -- positive). Prefer callbacks over `command =` in config autocmds.
   for _, p in ipairs(PROBES) do
     child_edit(p[1])
   end

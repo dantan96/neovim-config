@@ -35,6 +35,13 @@ for _, dir in ipairs({ "queries", "after/queries" }) do
   end
 end
 
+T["queries"]["glob found the query files"] = function()
+  -- Guard against vacuous parametrization: if the collection-time glob
+  -- returns nothing (path rename, wrong cwd), zero cases would be
+  -- generated and the set would pass silently.
+  expect.equality(#config_query_files >= 3, true)
+end
+
 T["queries"]["config query files resolve"] = new_set({
   parametrize = config_query_files,
 }, {

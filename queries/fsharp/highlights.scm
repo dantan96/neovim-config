@@ -11,7 +11,7 @@
 ; inside (cons_pattern) in match arms — the latter is what the base
 ; query's blanket `pattern: (_) @constant` painted orange. Priority 110
 ; so it beats the plugin's captures (default 100) and F#'s semantic
-; tokens (lowered to 95 by config/fsharp-highlights.lua).
+; tokens (lowered to 95 by config/fsharp/semantic_priority.lua).
 ((infix_op) @operator.cons.fsharp
   (#eq? @operator.cons.fsharp "::")
   (#set! priority 110))

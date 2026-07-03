@@ -199,13 +199,15 @@ function M.toggle()
   end
 end
 
-local done = false
-
+-- Session-global guard (vim.g, not a module-local): `:source %` of
+-- this file runs a FRESH chunk whose local guard is false, so a
+-- module-local flag would let setup() re-run and reset module state
+-- (the <space><space>x mapping makes that a real workflow).
 function M.setup()
-  if done then
+  if vim.g._fsharp_fsi_loaded then
     return
   end
-  done = true
+  vim.g._fsharp_fsi_loaded = true
 
   -- ---------- Range-driven command (no Lua mark timing) ----------
   -- When invoked from Visual via ":", Neovim inserts :'<,'> automatically.

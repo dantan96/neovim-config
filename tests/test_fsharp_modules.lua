@@ -95,34 +95,53 @@ T["fsharp modules"]["keymaps survive re-edit of the buffer"] = function()
   expect.equality(buf_has_map("n", "<M-@>"), true)
 end
 
-T["fsharp modules"]["setup is idempotent"] = function()
-  local counts = child.lua_get([[(function()
-    local function n(group)
-      local ok, cmds = pcall(vim.api.nvim_get_autocmds, { group = group })
-      return ok and #cmds or -1
-    end
-    local before = {
-      refresh = n("fs_constraint_names_refresh"),
-      colors = n("fs_constraint_names_colors"),
-      hl = n("fs_hl_reapply"),
-      du = n("fs_du_binder_refs"),
-    }
-    -- Re-run every setup; once-guards must make these no-ops.
-    require("config.fsharp.highlights").setup()
-    require("config.fsharp.constraints").setup()
-    require("config.fsharp.du_refs").setup()
-    require("config.fsharp.fsi").setup()
-    require("config.fsharp.editorconfig").setup()
-    require("config.fsharp.splitter").setup()
-    local after = {
-      refresh = n("fs_constraint_names_refresh"),
-      colors = n("fs_constraint_names_colors"),
-      hl = n("fs_hl_reapply"),
-      du = n("fs_du_binder_refs"),
-    }
-    return { before = before, after = after }
-  end)()]])
-  expect.equality(counts.before, counts.after)
+T["fsharp modules"]["setup is idempotent (incl. :source of modules)"] = function()
+  -- Compare autocmd IDs, not counts: the augroups use clear=true, so a
+  -- re-running setup() REPLACES handlers and counts stay identical —
+  -- but replacement re-registers with fresh IDs. ID stability is the
+  -- falsifiable assertion. :source is exercised too because it runs a
+  -- fresh chunk: a module-LOCAL once-guard resets there (the
+  -- <space><space>x source-current-file mapping makes that a real
+  -- workflow), which is why the guards are vim.g globals.
+  local ids = child.lua_get(string.format(
+    [[(function()
+      local groups = {
+        "fs_constraint_names_refresh",
+        "fs_constraint_names_colors",
+        "fs_hl_reapply",
+        "fs_du_binder_refs",
+      }
+      local function snapshot()
+        local out = {}
+        for _, g in ipairs(groups) do
+          local ok, cmds = pcall(vim.api.nvim_get_autocmds, { group = g })
+          if ok then
+            for _, au in ipairs(cmds) do
+              table.insert(out, au.id)
+            end
+          end
+        end
+        table.sort(out)
+        return out
+      end
+      local before = snapshot()
+      -- Re-run every setup through the module cache...
+      for _, m in ipairs({
+        "highlights", "constraints", "du_refs", "fsi", "editorconfig", "splitter",
+      }) do
+        require("config.fsharp." .. m).setup()
+      end
+      -- ...and :source each module file (fresh chunk, fresh locals).
+      for _, m in ipairs({
+        "highlights", "constraints", "du_refs", "fsi", "editorconfig", "splitter",
+      }) do
+        vim.cmd.source(%q .. "/lua/config/fsharp/" .. m .. ".lua")
+      end
+      return { before = before, after = snapshot() }
+    end)()]],
+    vim.fn.stdpath("config")
+  ))
+  expect.equality(ids.before, ids.after)
 end
 
 T["fsharp modules"]["constraint overlay paints extmarks"] = function()

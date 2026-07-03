@@ -1,4 +1,6 @@
--- lua/config/fsharp-highlights.lua
+-- lua/config/fsharp/semantic_priority.lua (was config/fsharp-highlights.lua,
+-- renamed: it defines no highlights and the old name collided with
+-- config/fsharp/highlights.lua, which does).
 -- Lower semantic-token priority for F# so that Tree-sitter highlighting wins.
 
 vim.api.nvim_create_autocmd("FileType", {

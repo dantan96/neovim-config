@@ -8,8 +8,9 @@ return {
     event = { "BufReadPre", "BufNewFile" },
     opts = {
       -- Keymaps are buffer-local, only in buffers gitsigns attaches to.
-      -- <leader>g* is safe: the only existing <leader>g map is
-      -- multicursor's <leader>gv, which is already multi-char.
+      -- <leader>g* is safe: no single-char <leader>g map exists (the
+      -- other <leader>g* maps — multicursor's gv, snacks' gg — are all
+      -- multi-char, so nothing stalls on timeoutlen).
       on_attach = function(bufnr)
         local gs = require("gitsigns")
         local function map(mode, lhs, rhs, desc)

@@ -32,7 +32,7 @@ local modules = {
   "config.remark_auto",
   "config.shebang",
   "config.uv_init",
-  "config.fsharp-highlights",
+  "config.fsharp.semantic_priority",
   "config.fsharp.highlights",
   "config.fsharp.du_refs",
   "config.fsharp.constraints",

@@ -55,7 +55,7 @@ end
 
 -- Load lazy.nvim plugin manager
 require("config.lazy")
-require("config.fsharp-highlights")
+require("config.fsharp.semantic_priority")
 require("config.remark_auto").setup()
 require("config.shebang").setup()
 require("config.uv_init").setup()
