@@ -10,7 +10,7 @@ return {
       formatters_by_ft = {
         toml = { "taplo", "prettier", stop_after_first = true },
         lua = { "stylua" },
-        python = { "ruff_fix", "ruff_format", "docformatter", "black" },
+        python = { "ruff_fix", "ruff_format" },
         sh = { "shfmt" },
         bash = { "shfmt" },
         -- zsh is intentionally omitted: shfmt has no zsh dialect and can
@@ -61,24 +61,6 @@ return {
         },
         ruff_format = {
           -- line-length comes from pyproject.toml; no overrides needed
-        },
-        docformatter = {
-          command = "docformatter",
-          args = {
-            "--wrap-summaries",
-            "79",
-            "--wrap-descriptions",
-            "72",
-            "-",
-          },
-          stdin = true,
-        },
-        black = {
-          prepend_args = {
-            "--preview",
-            "--enable-unstable-feature",
-            "string_processing",
-          },
         },
         stylua = {
 
