@@ -8,6 +8,16 @@ vim.opt_local.autoindent = false
 vim.opt_local.smartindent = false
 vim.opt_local.cindent = false
 
+-- Comment/format options previously supplied by vim-fsharp's ftplugin
+-- (the plugin was removed: archived upstream, regex syntax superseded by
+-- treesitter). Neovim's runtime ships no fsharp ftplugin, so without
+-- these `gc` commenting has no commentstring.
+vim.opt_local.comments = ":///,://!,://"
+vim.opt_local.commentstring = "// %s"
+vim.opt_local.formatoptions:remove("t")
+vim.opt_local.formatoptions:append("croqnlj")
+vim.opt_local.suffixesadd:append(".fs")
+
 local GOLD = "#FFD700" -- CSS 'gold'
 local g1 = { fg = GOLD, italic = true }
 
@@ -807,7 +817,9 @@ do
       },
     })
 
-    vim.cmd("runtime! syntax/fsharp.vim")
+    -- No `runtime! syntax/fsharp.vim`: that sourced vim-fsharp's regex
+    -- syntax under the treesitter highlighter; the plugin is gone and
+    -- treesitter owns F# highlighting.
     -- No matchadd for "::" here: window matches paint OVER treesitter, and
     -- the cons operator is captured as @operator.cons.fsharp (pink) by
     -- queries/fsharp/highlights.scm. Clean up matches from older sessions.
