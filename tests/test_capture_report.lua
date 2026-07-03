@@ -93,6 +93,12 @@ T["build_rows"] = new_set({
   },
 })
 
+T["build_rows"]["report buffer starts with title, no blank first line"] = function()
+  child.lua([[require("capture_report").run()]])
+  local first = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] ]])
+  expect.equality(first:find("Capture") ~= nil, true)
+end
+
 T["build_rows"]["empty captures returns header only"] = function()
   local result = child.lua_get([[
     require("capture_report")._build_rows({})

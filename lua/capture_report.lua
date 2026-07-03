@@ -221,8 +221,12 @@ function M.run()
   -- avoids altering the user’s files. We mark it unmodifiable to
   -- prevent accidental edits.
   local out = vim.api.nvim_create_buf(false, true)
+  -- Collect all lines first, then replace the whole buffer (0..-1) in one
+  -- call so the scratch buffer's initial empty line does not linger at the
+  -- top of the report.
+  local out_lines = {}
   local function add(line)
-    vim.api.nvim_buf_set_lines(out, -1, -1, false, { line })
+    out_lines[#out_lines + 1] = line
   end
 
   add("┏ Capture‑colour report ┓")
@@ -237,6 +241,7 @@ function M.run()
   for i = 2, #rows do
     add(string.format("%-30s %-9s %-9s %-12s %s", unpack(rows[i])))
   end
+  vim.api.nvim_buf_set_lines(out, 0, -1, false, out_lines)
 
   vim.bo[out].modifiable = false
   vim.bo[out].filetype = "capture_report"
