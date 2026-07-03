@@ -2,6 +2,22 @@
 return {
   {
     "stevearc/conform.nvim",
+    event = { "BufWritePre" },
+    cmd = { "ConformInfo" },
+    keys = {
+      {
+        "<leader>f",
+        function()
+          require("conform").format({
+            lsp_format = "fallback",
+            async = false,
+            timeout_ms = 4000, -- a bit more generous than 2000
+          })
+        end,
+        mode = { "n", "v" },
+        desc = "Format buffer (Conform)",
+      },
+    },
     opts = {
       format_on_save = {
         timeout_ms = 2000,
@@ -65,16 +81,5 @@ return {
         },
       },
     },
-    config = function(_, opts)
-      local conform = require("conform")
-      conform.setup(opts)
-      vim.keymap.set({ "n", "v" }, "<leader>f", function()
-        conform.format({
-          lsp_format = "fallback",
-          async = false,
-          timeout_ms = 4000, -- a bit more generous than 2000
-        })
-      end, { desc = "Format buffer (Conform)" })
-    end,
   },
 }
