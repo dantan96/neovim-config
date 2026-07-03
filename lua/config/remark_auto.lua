@@ -62,7 +62,9 @@ local function ensure_central_install()
   if vim.uv.fs_stat(CENTRAL_PKGS .. "/remark-gfm") then return end
   central_install_triggered = true
 
-  vim.uv.fs_mkdir(REMARKS_DIR, 493, function() end) -- 493 = 0o755
+  -- Synchronous: package.json is written and npm is started in this dir
+  -- immediately below, so the directory must exist before we continue.
+  vim.fn.mkdir(REMARKS_DIR, "p")
 
   if not vim.uv.fs_stat(REMARKS_DIR .. "/package.json") then
     local f = io.open(REMARKS_DIR .. "/package.json", "w")
