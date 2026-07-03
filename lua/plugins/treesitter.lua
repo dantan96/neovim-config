@@ -11,7 +11,35 @@ return {
   },
 
   config = function()
+    -- Custom parser sources must be registered BEFORE configs.setup(), which
+    -- consumes ensure_installed — otherwise a fresh install of fsharp would
+    -- use upstream's default install_info instead of these overrides.
+    ---@class MyParserConfigs: table<string, any>
+    local parser_config =
+      require("nvim-treesitter.parsers").get_parser_configs()
+    parser_config.spthy = {
+      install_info = {
+        url = vim.fn.expand("~") .. "/tamarin-prover/tree-sitter/tree-sitter-spthy",
+        files = { "src/parser.c", "src/scanner.c" },
+        branch = "develop",
+        requires_generate_from_grammar = false,
+      },
+    }
+    parser_config.fsharp = {
+      install_info = {
+        url = "https://github.com/ionide/tree-sitter-fsharp",
+        branch = "main",
+        files = { "src/scanner.c", "src/parser.c" },
+        location = "fsharp",
+      },
+      requires_generate_from_grammar = false,
+      filetype = "fsharp",
+    }
+
     -- Basic treesitter setup
+    -- NOTE: deliberately pinned to nvim-treesitter's frozen `master` branch
+    -- (configs.setup / ensure_installed / module-style textobjects only exist
+    -- there). Migrating to the `main` rewrite is a planned rework, not a fix.
     require("nvim-treesitter.configs").setup({
       sync_install = false,
       ignore_install = {},
@@ -54,27 +82,5 @@ return {
         },
       },
     })
-
-    ---@class MyParserConfigs: table<string, any>
-    local parser_config =
-      require("nvim-treesitter.parsers").get_parser_configs()
-    parser_config.spthy = {
-      install_info = {
-        url = vim.fn.expand("~") .. "/tamarin-prover/tree-sitter/tree-sitter-spthy",
-        files = { "src/parser.c", "src/scanner.c" },
-        branch = "develop",
-        requires_generate_from_grammar = false,
-      },
-    }
-    parser_config.fsharp = {
-      install_info = {
-        url = "https://github.com/ionide/tree-sitter-fsharp",
-        branch = "main",
-        files = { "src/scanner.c", "src/parser.c" },
-        location = "fsharp",
-      },
-      requires_generate_from_grammar = false,
-      filetype = "fsharp",
-    }
   end,
 }
