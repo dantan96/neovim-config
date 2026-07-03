@@ -24,6 +24,9 @@ local function apply_fsharp_highlights()
   vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
   vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
   vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
+  -- Cons operator "::" only (captured by queries/fsharp/highlights.scm in
+  -- both expression and match-pattern positions): catppuccin pink.
+  vim.api.nvim_set_hl(0, "@operator.cons.fsharp", { fg = "#f5c2e7" })
   vim.api.nvim_set_hl(
     0,
     "@lsp.type.type.fsharp",
@@ -765,11 +768,30 @@ do
     local root = util.root_pattern("*.sln", "*.fsproj", ".git")(fname)
       or vim.fs.dirname(fname)
 
+    -- A .fs file with no *.fsproj/*.sln ancestor can never belong to a
+    -- loaded FSAC project, so every semantic-tokens request for it fails
+    -- with -32603 ("Couldn't find <file> in LoadedProjects"). Neovim 0.12
+    -- issues semanticTokens/range requests whenever the visible range
+    -- changes, so those failures fire on every scroll. Dropping the
+    -- provider in on_attach (before the deferred capability init) means
+    -- no request is ever sent for such buffers.
+    local proj_root = util.root_pattern("*.sln", "*.fsproj")(fname)
+
+    -- Raw vim.lsp.start() bypasses vim.lsp.config("*"), so the blink.cmp
+    -- capabilities applied to every other server must be passed here.
+    local caps_ok, blink = pcall(require, "blink.cmp")
+
     vim.lsp.start({
       name = "fsautocomplete",
       cmd = { "fsautocomplete" },
       filetypes = { "fsharp", "fs", "fsx", "fsi" },
       root_dir = root,
+      capabilities = caps_ok and blink.get_lsp_capabilities() or nil,
+      on_attach = function(client)
+        if not proj_root then
+          client.server_capabilities.semanticTokensProvider = nil
+        end
+      end,
       init_options = { AutomaticWorkspaceInit = true },
       settings = {
         FSharp = {
@@ -787,7 +809,7 @@ do
 
     vim.cmd("runtime! syntax/fsharp.vim")
     -- No matchadd for "::" here: window matches paint OVER treesitter, and
-    -- the cons operator is captured as @operator.fsharp (teal) by
+    -- the cons operator is captured as @operator.cons.fsharp (pink) by
     -- queries/fsharp/highlights.scm. Clean up matches from older sessions.
     for _, id in ipairs(vim.w.fsharp_match_ids or {}) do
       pcall(vim.fn.matchdelete, id)
