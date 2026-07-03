@@ -11,8 +11,20 @@ function M.has_latex(text)
   ) ~= nil
 end
 
+local did_setup = false
+
 function M.setup()
+  -- Idempotent: setup() is called from after/ftplugin/markdown.lua for
+  -- every markdown buffer; only register the autocmd once.
+  if did_setup then
+    return
+  end
+  did_setup = true
+
+  local aug = vim.api.nvim_create_augroup("PeekAutoOpen", { clear = true })
+
   vim.api.nvim_create_autocmd("BufReadPost", {
+    group = aug,
     pattern = "*.md",
     callback = function()
       if vim.b.peek_triggered then
