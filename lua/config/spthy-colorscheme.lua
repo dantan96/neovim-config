@@ -20,6 +20,8 @@ M.colors = {
   brightBlue                               = { fg = "#006bff", bold = false },                                    -- Dodger Blue - vibrant blue for linear facts
   brightBlueUnderlined                     = { fg = "#006bff", bold = false, underline = true },                  -- Same blue with underline for builtin facts
   brownPlain                               = { fg = "#8B4513", bold = false },                                    -- SaddleBrown - for number variables
+  brownPlainItalic                         = { fg = "#8B4513", bold = false, italic = true },                     -- SaddleBrown italic - for number variables/arities
+  brownNoStyle                             = { fg = "#8B4513" },                                                  -- SaddleBrown - for numbers
   deepBlueGreen                            = { fg = "#006B5B" },                                                  -- Deep teal/blue-green for public variables
   deeperPurple                             = { fg = "#8877BB", bold = false },                                    -- Muted purple for preprocessor identifiers
   deepGreen                                = { fg = "#006400", bold = false },                                    -- Deep green for public variables, rich and forest-like
