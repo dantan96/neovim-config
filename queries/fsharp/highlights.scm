@@ -6,9 +6,12 @@
 ; after/ftplugin/fsharp.lua colors. The old full replacement query
 ; targeted a pre-2024 grammar and no longer parsed.
 
-; Cons operator, colored via @operator.fsharp (teal).
+; Cons operator, colored via @operator.fsharp (teal). Priority 110 so it
+; beats the plugin's @operator capture (default 100) and F#'s semantic
+; tokens (lowered to 95 by config/fsharp-highlights.lua).
 ((infix_op) @operator.fsharp
-  (#eq? @operator.fsharp "::"))
+  (#eq? @operator.fsharp "::")
+  (#set! priority 110))
 
 ; Option DU cases, colored via @enum.member.fsharp (pink).
 ((identifier) @enum.member.fsharp
