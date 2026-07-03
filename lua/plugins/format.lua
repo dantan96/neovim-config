@@ -32,8 +32,8 @@ return {
         bash = { "shfmt" },
         -- zsh is intentionally omitted: shfmt has no zsh dialect and can
         -- corrupt zsh scripts.
-        -- fsharp: no conform entry; falls back to LSP formatting. Re-add
-        -- fsharp = { "fantomas" } if fantomas/dotnet gets installed.
+        -- fantomas lives in ~/.dotnet/tools (on the login-shell PATH).
+        fsharp = { "fantomas" },
 
         markdown = { "remark", "prettier", stop_after_first = true },
         ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },

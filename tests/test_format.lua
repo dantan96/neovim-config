@@ -34,11 +34,10 @@ T["format"]["sh -> shfmt"] = function()
   expect.equality(vim.tbl_contains(fmts, "shfmt"), true)
 end
 
-T["format"]["fsharp has no conform formatter (falls back to LSP)"] = function()
-  -- fantomas is not installed; fsharp must not have a conform entry so
-  -- formatting falls through to the LSP via lsp_format fallback.
+T["format"]["fsharp -> fantomas"] = function()
+  -- fantomas is installed as a dotnet global tool in ~/.dotnet/tools.
   local fmts = get_formatters("fsharp")
-  expect.equality(fmts == vim.NIL or fmts == nil or #fmts == 0, true)
+  expect.equality(vim.tbl_contains(fmts, "fantomas"), true)
 end
 
 T["format"]["toml -> taplo"] = function()
