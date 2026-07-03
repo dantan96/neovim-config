@@ -30,12 +30,18 @@ function M.find(start, markers)
     start = vim.fn.getcwd()
   end
 
+  -- start may be a file (use its directory) or already a directory, e.g.
+  -- the getcwd() fallback for unnamed buffers (use it as-is — dirname
+  -- would wrongly land one level too high).
+  local start_dir = vim.fn.isdirectory(start) == 1 and start
+    or vim.fs.dirname(start)
+
   local hit = vim.fs.find(markers, { path = start, upward = true })[1]
-  local root = hit and vim.fs.dirname(hit) or vim.fs.dirname(start)
+  local root = hit and vim.fs.dirname(hit) or start_dir
 
   -- avoid accidentally rooting to Neovim config dir
   if not start:find(cfgdir, 1, true) and root:find(cfgdir, 1, true) then
-    root = vim.fs.dirname(start)
+    root = start_dir
   end
 
   -- avoid using ~ as workspace root (marksman scans everything and crashes)

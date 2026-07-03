@@ -42,16 +42,13 @@ function M.setup()
   })
 
   vim.api.nvim_create_user_command("ExportToGippity", function()
-    local buf = vim.api.nvim_get_current_buf()
-    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-    local input = table.concat(lines, "\n")
-
-    local out = vim.fn.systemlist({ "mathdelim.py", "--to-latex" }, input)
-    if vim.v.shell_error ~= 0 then
-      vim.notify(
-        ("ExportToGippity: mathdelim.py failed (exit %d)"):format(vim.v.shell_error),
-        vim.log.levels.ERROR
-      )
+    -- Reuse the shared runner; write=false keeps the buffer unchanged
+    -- (it notifies on failure).
+    local out = require("config.markdown.math_delims").run_mathdelim(
+      { "--to-latex" },
+      { write = false }
+    )
+    if not out then
       return
     end
 

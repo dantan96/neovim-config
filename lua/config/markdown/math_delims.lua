@@ -5,9 +5,12 @@
 --   :DelimToggle          – auto-detect and toggle via mathdelim.py
 --   :DelimDollars         – force to dollar style
 --   :DelimParens          – force to LaTeX style
---   :ExportToGippity      – copy buffer as LaTeX delimiters to clipboard
 --
--- Auto-save: BufWritePre silently converts \( / \[ → $ on markdown files.
+-- (:ExportToGippity lives in config.markdown.export and reuses
+-- M.run_mathdelim from this module.)
+--
+-- Auto-save: BufWritePre converts \( / \[ → $ on markdown files (warns on
+-- failure; opt out per buffer with vim.b.mathdelim_disable = true).
 
 local M = {}
 
@@ -43,13 +46,20 @@ local function math_delims_to_dollars()
   )
 end
 
---- Run `mathdelim.py [args…]` on buf in-place.
---- Returns true on success, false on failure.
-local function run_mathdelim(args, buf)
-  buf = buf or vim.api.nvim_get_current_buf()
+--- Run `mathdelim.py [args…]` on a buffer's contents.
+---@param args string[]|nil  extra CLI arguments
+---@param opts { buf?: integer, write?: boolean }|nil
+---  buf:   buffer to read (default: current)
+---  write: replace the buffer with the output on success (default: true)
+---@return string[]|nil out  output lines on success, nil on failure
+---  (a WARN notification is emitted on failure)
+function M.run_mathdelim(args, opts)
+  args = args or {}
+  opts = opts or {}
+  local buf = opts.buf or vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local input = table.concat(lines, "\n")
-  local cmd = vim.list_extend({ "mathdelim.py" }, args or {})
+  local cmd = vim.list_extend({ "mathdelim.py" }, args)
   local out = vim.fn.systemlist(cmd, input)
   if vim.v.shell_error ~= 0 then
     local hint = (#args == 0) and "; use :DelimDollars or :DelimParens" or ""
@@ -57,11 +67,15 @@ local function run_mathdelim(args, buf)
       ("mathdelim: conversion failed (exit %d)%s"):format(vim.v.shell_error, hint),
       vim.log.levels.WARN
     )
-    return false
+    return nil
   end
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
-  return true
+  if opts.write ~= false then
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
+  end
+  return out
 end
+
+local run_mathdelim = M.run_mathdelim
 
 function M.setup()
   vim.api.nvim_create_user_command(
@@ -94,7 +108,10 @@ function M.setup()
     desc = "Convert math delimiters to LaTeX style (\\(…\\) / \\[…\\])",
   })
 
-  -- On every save: silently convert LaTeX-style delimiters to dollars
+  -- On every save: convert LaTeX-style delimiters to dollars, warning on
+  -- failure. Set vim.b.mathdelim_disable = true to skip for a buffer.
+  -- (mathdelim.py itself is markdown-it based and leaves fenced code
+  -- blocks untouched, so a \( inside a fence only costs a no-op run.)
   local aug =
     vim.api.nvim_create_augroup("MarkdownMathDelims", { clear = true })
 
@@ -102,15 +119,15 @@ function M.setup()
     group = aug,
     pattern = { "*.md", "*.markdown", "*.mdx" },
     callback = function(ev)
+      if vim.b[ev.buf].mathdelim_disable then
+        return
+      end
       local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
       local text = table.concat(lines, "\n")
       if not (text:find("\\%(") or text:find("\\%[")) then
         return
       end
-      local out = vim.fn.systemlist({ "mathdelim.py", "--to-dollar" }, text)
-      if vim.v.shell_error == 0 then
-        vim.api.nvim_buf_set_lines(ev.buf, 0, -1, false, out)
-      end
+      run_mathdelim({ "--to-dollar" }, { buf = ev.buf })
     end,
   })
 end

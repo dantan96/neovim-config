@@ -11,8 +11,20 @@ function M.has_latex(text)
   ) ~= nil
 end
 
+local did_setup = false
+
 function M.setup()
+  -- Idempotent: setup() is called from after/ftplugin/markdown.lua for
+  -- every markdown buffer; only register the autocmd once.
+  if did_setup then
+    return
+  end
+  did_setup = true
+
+  local aug = vim.api.nvim_create_augroup("PeekAutoOpen", { clear = true })
+
   vim.api.nvim_create_autocmd("BufReadPost", {
+    group = aug,
     pattern = "*.md",
     callback = function()
       if vim.b.peek_triggered then
@@ -24,7 +36,12 @@ function M.setup()
 
       if M.has_latex(text) then
         vim.b.peek_triggered = true
-        pcall(vim.cmd, "Markview Stop")
+        -- Stop markview rendering only if the plugin is actually loaded.
+        -- It is lazy-loaded on keys, so usually it is not; calling the
+        -- command unconditionally would just silently fail via pcall.
+        if package.loaded["markview"] then
+          pcall(vim.cmd, "Markview Stop")
+        end
         if pcall(require, "peek") then
           require("peek").open()
         end

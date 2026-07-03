@@ -62,7 +62,9 @@ local function ensure_central_install()
   if vim.uv.fs_stat(CENTRAL_PKGS .. "/remark-gfm") then return end
   central_install_triggered = true
 
-  vim.uv.fs_mkdir(REMARKS_DIR, 493, function() end) -- 493 = 0o755
+  -- Synchronous: package.json is written and npm is started in this dir
+  -- immediately below, so the directory must exist before we continue.
+  vim.fn.mkdir(REMARKS_DIR, "p")
 
   if not vim.uv.fs_stat(REMARKS_DIR .. "/package.json") then
     local f = io.open(REMARKS_DIR .. "/package.json", "w")
@@ -117,6 +119,8 @@ end
 
 -- ── main entry ────────────────────────────────────────────────────────────────
 
+local notified_write = false
+
 local function remarkify(root)
   if done[root] then return end
   done[root] = true
@@ -127,7 +131,18 @@ local function remarkify(root)
   local rc = root .. "/" .. REMARKRC
   if not vim.uv.fs_stat(rc) then
     local f = io.open(rc, "w")
-    if f then f:write(REMARKRC_BODY) f:close() end
+    if f then
+      f:write(REMARKRC_BODY)
+      f:close()
+      -- One-time heads-up per session that files are being written.
+      if not notified_write then
+        notified_write = true
+        vim.notify(
+          ("remark_auto: wrote %s (set vim.g.remark_auto_disable = true to opt out)"):format(rc),
+          vim.log.levels.INFO
+        )
+      end
+    end
   end
 
   index_add(root)
@@ -139,6 +154,9 @@ function M.setup()
   vim.api.nvim_create_autocmd("FileType", {
     pattern = "markdown",
     callback = function(args)
+      -- Opt-out: skip all filesystem writes (checked per-event so it can
+      -- be toggled at runtime, not just before setup).
+      if vim.g.remark_auto_disable then return end
       local path = vim.api.nvim_buf_get_name(args.buf)
       if path == "" then return end
       local root = find_init_root(path)
