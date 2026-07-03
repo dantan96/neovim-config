@@ -15,7 +15,8 @@ return {
         bash = { "shfmt" },
         -- zsh is intentionally omitted: shfmt has no zsh dialect and can
         -- corrupt zsh scripts.
-        fsharp = { "fantomas" },
+        -- fsharp: no conform entry; falls back to LSP formatting. Re-add
+        -- fsharp = { "fantomas" } if fantomas/dotnet gets installed.
 
         markdown = { "remark", "prettier", stop_after_first = true },
         ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },
@@ -60,12 +61,6 @@ return {
         },
         shfmt = {
           prepend_args = { "-i", "2", "-ci" }, -- 2-space indent, indent switch cases
-        },
-
-        -- You can also tweak fantomas defaults here. Example: longer timeout.
-        fantomas = {
-          -- leave stdin handling to Conform’s builtin for fantomas
-          -- but we can tone down timeouts by raising conform.format() timeout instead
         },
       },
     },
