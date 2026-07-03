@@ -13,7 +13,8 @@ return {
         python = { "ruff_fix", "ruff_format", "docformatter", "black" },
         sh = { "shfmt" },
         bash = { "shfmt" },
-        zsh = { "shfmt" },
+        -- zsh is intentionally omitted: shfmt has no zsh dialect and can
+        -- corrupt zsh scripts.
         fsharp = { "fantomas" },
 
         markdown = { "remark", "prettier", stop_after_first = true },
