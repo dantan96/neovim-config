@@ -2,9 +2,9 @@
 return {
   {
     "lervag/vimtex",
-    -- Load only when editing TeX files
-    ft   = { "tex", "plaintex" },
-    cmd  = { "VimtexInverseSearch" },
+    -- VimTeX lazy-loads itself and ft-loading skips its ftdetect
+    -- refinements, so load it eagerly per upstream advice.
+    lazy = false,
 
     -- Options *must* be set before VimTeX loads
     init = function()
