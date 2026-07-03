@@ -750,9 +750,15 @@ do
     })
 
     vim.cmd("runtime! syntax/fsharp.vim")
-    vim.fn.clearmatches()
-    vim.fn.matchadd("fsharpOperator", "::", 150)
-    vim.fn.matchadd("Operator", "::", 200)
+    -- Remove only OUR previous matches in this window (clearmatches() would
+    -- also nuke matches added by other plugins), then re-add and re-track.
+    for _, id in ipairs(vim.w.fsharp_match_ids or {}) do
+      pcall(vim.fn.matchdelete, id)
+    end
+    vim.w.fsharp_match_ids = {
+      vim.fn.matchadd("fsharpOperator", "::", 150),
+      vim.fn.matchadd("Operator", "::", 200),
+    }
 
     -- Mappings: Ex-command so Visual gets :'<,'> automatically
     local map_opts = { buffer = bufnr, desc = "F# Interactive" }
