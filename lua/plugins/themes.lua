@@ -1,6 +1,8 @@
 return {
   "catppuccin/nvim",
   name = "catppuccin",
+  lazy = false,
+  priority = 1000, -- load the colorscheme before other start plugins
   config = function()
     require("catppuccin").setup({
       flavour = "mocha",
@@ -16,7 +18,7 @@ return {
           enabled = true,
           underlines = { errors = { "undercurl" } },
         },
-        cmp = true, -- since you use blink.cmp
+        blink_cmp = true, -- blink.cmp integration (`cmp` is the nvim-cmp key)
         gitsigns = true,
       },
       color_overrides = {

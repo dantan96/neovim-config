@@ -14,7 +14,7 @@ return {
         nerd_font_variant = 'mono'
       },
 
-      signature  = { enabled = true },
+      signature  = { enabled = false }, -- noice.nvim owns signature help (lsp.signature)
       snippets   = { preset = "luasnip" },
     },
   },

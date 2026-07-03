@@ -13,7 +13,8 @@ return {
       "winsize", -- window sizes
       "winpos", -- window positions (GUI/kitty-only effect)
       "terminal", -- terminal buffers
-      "localoptions", -- local window/buf options
+      -- NOTE: "localoptions" intentionally omitted: it misbehaves with
+      -- lazy-loaded ftplugins on session restore.
     }
 
     -- in the same plugin spec's config/init, or anywhere in your config
@@ -24,7 +25,10 @@ return {
           local root = vim.fn.getcwd()
           -- opt-in sentinel: start only if ".obsession" exists in the project root
           if vim.uv.fs_stat(root .. "/.obsession") then
-            vim.cmd("silent! Obsession")
+            -- The spec is lazy (VeryLazy/keys) and VimEnter fires before
+            -- VeryLazy, so :Obsession would not exist yet: load it first.
+            require("lazy").load({ plugins = { "vim-obsession" } })
+            vim.cmd("Obsession")
           end
         end
       end,

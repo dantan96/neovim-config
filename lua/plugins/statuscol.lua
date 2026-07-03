@@ -18,6 +18,11 @@
 return {
   "luukvbaal/statuscol.nvim",
   lazy = false,
+  init = function()
+    -- The foldfunc segment below renders nothing while 'foldcolumn' is "0";
+    -- reserve one cell so the clickable fold column actually shows.
+    vim.opt.foldcolumn = "1"
+  end,
   config = function()
     local builtin = require("statuscol.builtin")
 
@@ -101,7 +106,8 @@ return {
         -- Sign column (git, diagnostics, ...). `auto = true` hides it when empty.
         { sign = { namespace = { ".*" }, maxwidth = 2, auto = true, wrap = true }, click = "v:lua.ScSa" },
         -- Our visual-relative number column.
-        { text = { vnum }, condition = { true, builtin.not_empty }, click = "v:lua.ScLa" },
+        -- `condition` pairs positionally with `text`; one text entry -> one condition.
+        { text = { vnum }, condition = { true }, click = "v:lua.ScLa" },
       },
     })
   end,
