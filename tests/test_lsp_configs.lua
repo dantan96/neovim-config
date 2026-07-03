@@ -18,9 +18,11 @@ T["lsp configs"]["marksman has root_dir function"] = function()
   expect.equality(type(c.root_dir), "function")
 end
 
-T["lsp configs"]["marksman has single_file_support"] = function()
-  local c = load_lsp("marksman")
-  expect.equality(c.single_file_support, true)
+T["lsp configs"]["no config uses single_file_support (not a vim.lsp.config field)"] = function()
+  for _, name in ipairs({ "marksman", "remark_ls" }) do
+    local c = load_lsp(name)
+    expect.equality(c.single_file_support, nil)
+  end
 end
 
 T["lsp configs"]["remark_ls filetypes includes markdown"] = function()
