@@ -8,91 +8,78 @@ vim.opt_local.autoindent = false
 vim.opt_local.smartindent = false
 vim.opt_local.cindent = false
 
-local cp = require("catppuccin.palettes").get_palette("mocha")
-local sky = cp.sky
-
--- UI tweaks (yours)
-vim.api.nvim_set_hl(
-  0,
-  "@variable.parameter.fsharp",
-  { fg = "#f38ba8", bold = false, underline = false }
-)
-vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
-vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
-vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.type.fsharp",
-  { fg = "#f9e2af", underline = false, bold = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@type.fsharp",
-  { fg = "#f9e2af", underline = false, bold = false }
-)
-local limegreen = { fg = "#aaff00", italic = true, bold = true }
-local electriccyan = { fg = "#00ffff", italic = true }
-local deepteal = { fg = "#008080", italic = true }
-local deepteal2 = { fg = "#00cccc", italic = true }
-local brightmagenta = { fg = "#ff00ff", italic = true }
-local brightmagentabold = { fg = "#ff00ff", italic = true, bold = true }
 local GOLD = "#FFD700" -- CSS 'gold'
-local AMBER500 = "#FFC107" -- Material Amber 500
-local GOLDENROD = "#DAA520" -- CSS 'goldenrod'
 local g1 = { fg = GOLD, italic = true }
-local g2 = { fg = AMBER500, italic = true }
-local g3 = { fg = GOLDENROD, italic = true }
--- Retrieve the sky color from Catppuccin palette
-vim.api.nvim_set_hl(0, "@lsp.type.typeParameter.fsharp", g1)
 
-vim.api.nvim_set_hl(
-  0,
-  "@keyword.modifier.fsharp",
-  { fg = "#f2cdcd", bold = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@module.builtin.fsharp",
-  { fg = "#f9e2af", italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.module.fsharp",
-  { fg = "#f9e2af", italic = true, underline = true }
-)
+-- UI tweaks (yours). Highlight groups are global, so define them once per
+-- session (guarded below) instead of on every F# buffer open, and re-apply
+-- them when the colorscheme changes.
+local function apply_fsharp_highlights()
+  vim.api.nvim_set_hl(
+    0,
+    "@variable.parameter.fsharp",
+    { fg = "#f38ba8", bold = false, underline = false }
+  )
+  vim.api.nvim_set_hl(0, "@enum.member.fsharp", { fg = "#ff69b4" })
+  vim.api.nvim_set_hl(0, "@lsp.type.enumMember.fsharp", { fg = "#ff69b4" })
+  vim.api.nvim_set_hl(0, "@operator.fsharp", { fg = "#94e2d5" })
+  vim.api.nvim_set_hl(0, "@lsp.type.operator.fsharp", { fg = "#94e2d5" })
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.type.type.fsharp",
+    { fg = "#f9e2af", underline = false, bold = false }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@type.fsharp",
+    { fg = "#f9e2af", underline = false, bold = false }
+  )
+  vim.api.nvim_set_hl(0, "@lsp.type.typeParameter.fsharp", g1)
 
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.typemod.property.readonly",
-  { fg = "#fab387", italic = true }
-)
+  vim.api.nvim_set_hl(
+    0,
+    "@keyword.modifier.fsharp",
+    { fg = "#f2cdcd", bold = true }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@module.builtin.fsharp",
+    { fg = "#f9e2af", italic = true }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.type.module.fsharp",
+    { fg = "#f9e2af", italic = true, underline = true }
+  )
 
-vim.api.nvim_set_hl(
-  0,
-  "@lsp.type.namespace.fsharp",
-  { fg = "#f9e2af", italic = true }
-)
-vim.api.nvim_set_hl(
-  0,
-  "DiagnosticUnnecessary",
-  { underline = nil, fg = nil, bg = nil, default = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@variable.enum_member.fsharp",
-  { fg = "#f5c2e7", underline = false }
-)
-vim.api.nvim_set_hl(
-  0,
-  "@punctuation.special",
-  { fg = "#9399b2", underline = false }
-)
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.typemod.property.readonly",
+    { fg = "#fab387", italic = true }
+  )
 
----------------------------------------------------------------------------
--- ==========  BEEFING UP SEMANTIC COLOURING  ==========
----------------------------------------------------------------------------
-local function link_binder_hl()
+  vim.api.nvim_set_hl(
+    0,
+    "@lsp.type.namespace.fsharp",
+    { fg = "#f9e2af", italic = true }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "DiagnosticUnnecessary",
+    { underline = nil, fg = nil, bg = nil, default = false }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@variable.enum_member.fsharp",
+    { fg = "#f5c2e7", underline = false }
+  )
+  vim.api.nvim_set_hl(
+    0,
+    "@punctuation.special",
+    { fg = "#9399b2", underline = false }
+  )
+
+  -- ==========  BEEFING UP SEMANTIC COLOURING  ==========
   vim.api.nvim_set_hl(
     0,
     "@lsp.variable.enum_member.fsharp",
@@ -100,198 +87,238 @@ local function link_binder_hl()
   )
 end
 
-link_binder_hl()
-vim.api.nvim_create_autocmd("ColorScheme", {
-  group = vim.api.nvim_create_augroup("fs_du_binder_hl", { clear = true }),
-  callback = link_binder_hl,
-})
+if not vim.g._fsharp_hl_setup then
+  vim.g._fsharp_hl_setup = true
+  apply_fsharp_highlights()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("fs_hl_reapply", { clear = true }),
+    callback = apply_fsharp_highlights,
+  })
+end
 
 local ts = vim.treesitter
-local ns_refs = vim.api.nvim_create_namespace("fs_du_binder_refs")
 
--- Per-buffer state so multiple binders don't clear each other
-local _du_state = {}
-local function _bufstate(bufnr)
-  local s = _du_state[bufnr]
-  if not s then
-    s = { marks = {}, gen = {} }
-    _du_state[bufnr] = s
-  end
-  return s
-end
+-- The DU-binder reference machinery below is session-global (an
+-- LspTokenUpdate handler plus its extmark bookkeeping). Create it exactly
+-- once: this ftplugin is re-sourced for every F# buffer, and re-creating
+-- the state while clearing the augroup left stale extmark bookkeeping for
+-- other buffers and re-registered the handler each time.
+if not vim.g._fsharp_du_refs_setup then
+  vim.g._fsharp_du_refs_setup = true
 
--- Rightmost identifier under a node (handles Type.Case)
-local function rightmost_ident(node)
-  local last
-  local function walk(n)
-    if n:type() == "identifier" then
-      last = n
-    end
-    for c in n:iter_children() do
-      walk(c)
-    end
-  end
-  walk(node)
-  return last
-end
+  local ns_refs = vim.api.nvim_create_namespace("fs_du_binder_refs")
 
--- Is this token a binder in `Case binder`? If yes, return the CASE coords.
-local function case_coords_for_binder(buf, row, col)
-  local node =
-    ts.get_node({ bufnr = buf, pos = { row, col }, ignore_injections = true })
-  if not node then
-    local p = ts.get_parser(buf)
-    if p then
-      p:parse()
+  -- Per-buffer state so multiple binders don't clear each other
+  local _du_state = {}
+  local function _bufstate(bufnr)
+    local s = _du_state[bufnr]
+    if not s then
+      s = { marks = {}, gen = {}, tick = {} }
+      _du_state[bufnr] = s
     end
-    node = ts.get_node({
-      bufnr = buf,
-      pos = { row, col },
-      ignore_injections = true,
-    })
+    return s
   end
-  while node do
-    if node:type() == "identifier_pattern" then
-      local kids = {}
-      for c in node:iter_children() do
-        table.insert(kids, c)
+
+  -- Free a buffer's bookkeeping when the buffer goes away
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = vim.api.nvim_create_augroup(
+      "fs_du_binder_state_gc",
+      { clear = true }
+    ),
+    callback = function(args)
+      _du_state[args.buf] = nil
+    end,
+  })
+
+  -- Rightmost identifier under a node (handles Type.Case)
+  local function rightmost_ident(node)
+    local last
+    local function walk(n)
+      if n:type() == "identifier" then
+        last = n
       end
-      if #kids >= 2 and kids[1]:type() == "long_identifier_or_op" then
-        local id = rightmost_ident(kids[1])
-        if id then
-          local r, c0 = id:start()
-          return r, c0
+      for c in n:iter_children() do
+        walk(c)
+      end
+    end
+    walk(node)
+    return last
+  end
+
+  -- Is this token a binder in `Case binder`? If yes, return the CASE coords.
+  local function case_coords_for_binder(buf, row, col)
+    local node =
+      ts.get_node({ bufnr = buf, pos = { row, col }, ignore_injections = true })
+    if not node then
+      local p = ts.get_parser(buf)
+      if p then
+        p:parse()
+      end
+      node = ts.get_node({
+        bufnr = buf,
+        pos = { row, col },
+        ignore_injections = true,
+      })
+    end
+    while node do
+      if node:type() == "identifier_pattern" then
+        local kids = {}
+        for c in node:iter_children() do
+          table.insert(kids, c)
+        end
+        if #kids >= 2 and kids[1]:type() == "long_identifier_or_op" then
+          local id = rightmost_ident(kids[1])
+          if id then
+            local r, c0 = id:start()
+            return r, c0
+          end
         end
       end
+      node = node:parent()
     end
-    node = node:parent()
   end
-end
 
--- Convert an LSP Position (utf-16/32) -> byte col for extmarks
+  -- Convert between LSP Positions and byte columns using the client's actual
+  -- offset encoding, via the Neovim 0.11+ signatures:
+  --   vim.str_byteindex(s, encoding, index, strict_indexing)
+  --   vim.str_utfindex(s, encoding, index, strict_indexing)
+  -- (The old numeric use_utf16 third argument is deprecated; worse, `0` is
+  -- truthy in Lua, so the previous code always took the utf-16 branch.)
 
--- LSP character -> byte column (Neovim 0.12)
-local function lsp_pos_to_bytes(bufnr, pos, enc)
-  local line = vim.api.nvim_buf_get_lines(bufnr, pos.line, pos.line + 1, true)[1]
-    or ""
-  local use_utf16 = (enc == "utf-16") and 1 or 0
-  return pos.line, vim.str_byteindex(line, pos.character, use_utf16)
-end
+  -- LSP character -> byte column (for extmarks)
+  local function lsp_pos_to_bytes(bufnr, pos, enc)
+    local line = vim.api.nvim_buf_get_lines(bufnr, pos.line, pos.line + 1, true)[1]
+      or ""
+    -- strict_indexing=false clamps out-of-range positions to the line end.
+    return pos.line, vim.str_byteindex(line, enc or "utf-16", pos.character, false)
+  end
 
--- Buffer byte column -> LSP character (Neovim 0.12)
-local function lsp_char_from_byte(bufnr, line_nr, bytecol, enc)
-  local line = vim.api.nvim_buf_get_lines(bufnr, line_nr, line_nr + 1, true)[1]
-    or ""
-  local use_utf16 = (enc == "utf-16") and 1 or nil
-  return vim.str_utfindex(line, bytecol, use_utf16)
-end
+  -- Buffer byte column -> LSP character
+  local function lsp_char_from_byte(bufnr, line_nr, bytecol, enc)
+    local line = vim.api.nvim_buf_get_lines(bufnr, line_nr, line_nr + 1, true)[1]
+      or ""
+    return vim.str_utfindex(line, enc or "utf-16", bytecol, false)
+  end
 
--- Highlight all references in the current buffer for ONE binder key
-local function paint_refs_for_pos(bufnr, client, pos_byte, key)
-  local base = vim.lsp.util.make_position_params(0, client.offset_encoding)
-  local params = {
-    textDocument = base.textDocument,
-    position = {
-      line = pos_byte.line,
+  -- Highlight all references in the current buffer for ONE binder key
+  local function paint_refs_for_pos(bufnr, client, pos_byte, key)
+    local base = vim.lsp.util.make_position_params(0, client.offset_encoding)
+    local params = {
+      textDocument = base.textDocument,
+      position = {
+        line = pos_byte.line,
 
-      character = lsp_char_from_byte(
-        bufnr,
-        pos_byte.line,
-        pos_byte.byte,
-        client.offset_encoding
-      ),
-    },
-    context = { includeDeclaration = true },
-  }
+        character = lsp_char_from_byte(
+          bufnr,
+          pos_byte.line,
+          pos_byte.byte,
+          client.offset_encoding
+        ),
+      },
+      context = { includeDeclaration = true },
+    }
 
-  local s = _bufstate(bufnr)
+    local s = _bufstate(bufnr)
 
-  -- Generation token per binder; ignore stale callbacks (no req_id tracking)
-  s.gen[key] = (s.gen[key] or 0) + 1
-  local gen = s.gen[key]
+    -- Generation token per binder; ignore stale callbacks (no req_id tracking)
+    s.gen[key] = (s.gen[key] or 0) + 1
+    local gen = s.gen[key]
 
-  client:request("textDocument/references", params, function(err, result, _)
-    if gen ~= s.gen[key] then
-      return
-    end
-    if err or not result then
-      return
-    end
-
-    -- Clear ONLY this binder's previous marks
-    if s.marks[key] then
-      for _, id in ipairs(s.marks[key]) do
-        pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_refs, id)
+    client:request("textDocument/references", params, function(err, result, _)
+      if gen ~= s.gen[key] then
+        return
       end
-    end
-    s.marks[key] = {}
-
-    for _, loc in ipairs(result) do
-      if vim.uri_to_bufnr(loc.uri) == bufnr then
-        local sL, sB =
-          lsp_pos_to_bytes(bufnr, loc.range.start, client.offset_encoding)
-        local eL, eB =
-          lsp_pos_to_bytes(bufnr, loc.range["end"], client.offset_encoding)
-        local id = vim.api.nvim_buf_set_extmark(bufnr, ns_refs, sL, sB, {
-          end_row = eL,
-          end_col = eB,
-          hl_group = "@variable.enum_member.fsharp",
-          hl_mode = "combine",
-          priority = vim.hl.priorities.semantic_tokens + 3,
-        })
-        table.insert(s.marks[key], id)
+      if err or not result then
+        return
       end
-    end
-  end, bufnr)
-end
 
-vim.api.nvim_create_autocmd("LspTokenUpdate", {
-  group = vim.api.nvim_create_augroup("fs_du_binder_refs", { clear = true }),
-  callback = function(args)
-    if vim.bo[args.buf].filetype ~= "fsharp" then
-      return
-    end
-    local tok = args.data.token
-    if tok.type ~= "variable" and tok.type ~= "parameter" then
-      return
-    end
-
-    -- 1) Structurally: are we a binder after a case?
-    local case_r, case_c =
-      case_coords_for_binder(args.buf, tok.line, tok.start_col)
-    if not case_r then
-      return
-    end
-
-    -- 2) Semantically: is that preceding node actually an enumMember?
-    local case_tokens =
-      vim.lsp.semantic_tokens.get_at_pos(args.buf, case_r, case_c)
-    local ok = false
-    for _, t in ipairs(case_tokens or {}) do
-      if t.client_id == args.data.client_id and t.type == "enumMember" then
-        ok = true
-        break
+      -- Clear ONLY this binder's previous marks
+      if s.marks[key] then
+        for _, id in ipairs(s.marks[key]) do
+          pcall(vim.api.nvim_buf_del_extmark, bufnr, ns_refs, id)
+        end
       end
-    end
-    if not ok then
-      return
-    end
+      s.marks[key] = {}
 
-    -- 3) Fetch ALL references for this binder and paint them (without nuking others)
-    local client = vim.lsp.get_client_by_id(args.data.client_id)
-    if not client then
-      return
-    end
+      for _, loc in ipairs(result) do
+        if vim.uri_to_bufnr(loc.uri) == bufnr then
+          local sL, sB =
+            lsp_pos_to_bytes(bufnr, loc.range.start, client.offset_encoding)
+          local eL, eB =
+            lsp_pos_to_bytes(bufnr, loc.range["end"], client.offset_encoding)
+          local id = vim.api.nvim_buf_set_extmark(bufnr, ns_refs, sL, sB, {
+            end_row = eL,
+            end_col = eB,
+            hl_group = "@variable.enum_member.fsharp",
+            hl_mode = "combine",
+            priority = vim.hl.priorities.semantic_tokens + 3,
+          })
+          table.insert(s.marks[key], id)
+        end
+      end
+    end, bufnr)
+  end
 
-    local key = string.format("%d:%d", tok.line, tok.start_col)
-    paint_refs_for_pos(
-      args.buf,
-      client,
-      { line = tok.line, byte = tok.start_col },
-      key
-    )
-  end,
-})
+  vim.api.nvim_create_autocmd("LspTokenUpdate", {
+    group = vim.api.nvim_create_augroup("fs_du_binder_refs", { clear = true }),
+    callback = function(args)
+      if vim.bo[args.buf].filetype ~= "fsharp" then
+        return
+      end
+      local tok = args.data.token
+      if tok.type ~= "variable" and tok.type ~= "parameter" then
+        return
+      end
+
+      -- Cheap cache: LspTokenUpdate fires per token on every semantic-tokens
+      -- refresh. If we already issued a references request for this binder
+      -- position and the buffer hasn't changed since, skip the treesitter
+      -- walk and the duplicate request. (Only successful requests are
+      -- cached, below, so partial token data is re-evaluated.)
+      local key = string.format("%d:%d", tok.line, tok.start_col)
+      local tick = vim.api.nvim_buf_get_changedtick(args.buf)
+      if _bufstate(args.buf).tick[key] == tick then
+        return
+      end
+
+      -- 1) Structurally: are we a binder after a case?
+      local case_r, case_c =
+        case_coords_for_binder(args.buf, tok.line, tok.start_col)
+      if not case_r then
+        return
+      end
+
+      -- 2) Semantically: is that preceding node actually an enumMember?
+      local case_tokens =
+        vim.lsp.semantic_tokens.get_at_pos(args.buf, case_r, case_c)
+      local ok = false
+      for _, t in ipairs(case_tokens or {}) do
+        if t.client_id == args.data.client_id and t.type == "enumMember" then
+          ok = true
+          break
+        end
+      end
+      if not ok then
+        return
+      end
+
+      -- 3) Fetch ALL references for this binder and paint them (without nuking others)
+      local client = vim.lsp.get_client_by_id(args.data.client_id)
+      if not client then
+        return
+      end
+
+      _bufstate(args.buf).tick[key] = tick
+      paint_refs_for_pos(
+        args.buf,
+        client,
+        { line = tok.line, byte = tok.start_col },
+        key
+      )
+    end,
+  })
+
+end -- vim.g._fsharp_du_refs_setup once-guard
 
 -- -- Optional: if you want to refresh on edits, uncomment this (not required)
 -- vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
@@ -317,13 +344,20 @@ local CONSTRAINT_PATTERNS = {
   "%f[%w_]not%f[^%w_]%s+%f[%w_]struct%f[^%w_]",
 }
 
--- Treesitter query to grab constraint nodes
-local constraint_query = ts.query.parse(
+-- Treesitter query to grab constraint nodes. pcall'd: if the fsharp parser
+-- is not (yet) registered — e.g. nvim-treesitter has not been loaded by
+-- lazy.nvim at the time this ftplugin is sourced — degrade to "no
+-- constraint overlay" instead of aborting the whole ftplugin.
+local constraint_query_ok, constraint_query = pcall(
+  ts.query.parse,
   "fsharp",
   [[
   (constraint) @c
 ]]
 )
+if not constraint_query_ok then
+  constraint_query = nil
+end
 
 -- === extmark highlighter (replacement for deprecated add_highlight) =========
 local function hl_add(buf, lnum, start_col, end_col)
@@ -354,6 +388,9 @@ end
 
 -- Use iter_captures() so we always get a TSNode, never a table/nil
 local function refresh_constraint_names(buf)
+  if not constraint_query then
+    return
+  end
   buf = buf or vim.api.nvim_get_current_buf()
   if vim.bo[buf].filetype ~= "fsharp" then
     return
@@ -361,8 +398,8 @@ local function refresh_constraint_names(buf)
 
   vim.api.nvim_buf_clear_namespace(buf, ns_constraints, 0, -1)
 
-  local parser = ts.get_parser(buf, "fsharp")
-  if not parser then
+  local parser_ok, parser = pcall(ts.get_parser, buf, "fsharp")
+  if not parser_ok or not parser then
     return
   end
 
@@ -412,15 +449,24 @@ vim.api.nvim_create_autocmd(
   }
 )
 
--- Also refresh after colorscheme (so highlight group exists) and when TS reparses
-vim.api.nvim_create_autocmd({ "ColorScheme", "BufWritePost" }, {
-  group = vim.api.nvim_create_augroup(
-    "fs_constraint_names_colors",
-    { clear = true }
-  ),
+-- Also refresh after colorscheme (so highlight group exists) and after
+-- writes. These need separate autocmds: ColorScheme matches the colorscheme
+-- NAME while BufWritePost matches file PATHS, so a single autocmd with
+-- pattern "catppuccin" meant the write-refresh never fired.
+local constraint_colors_group =
+  vim.api.nvim_create_augroup("fs_constraint_names_colors", { clear = true })
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = constraint_colors_group,
   pattern = "catppuccin",
   callback = function()
     refresh_constraint_names(0)
+  end,
+})
+vim.api.nvim_create_autocmd("BufWritePost", {
+  group = constraint_colors_group,
+  pattern = { "*.fs", "*.fsx", "*.fsi" },
+  callback = function(args)
+    refresh_constraint_names(args.buf)
   end,
 })
 
@@ -695,19 +741,27 @@ if not vim.g._fsharp_fsi_loaded then
   end
 end
 
--- LSP boot (unchanged aside from mappings)
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "fsharp", "fs", "fsx", "fsi" },
-  callback = function(args)
-    -- Don’t start a second client if one is already active
-    for _, client in pairs(vim.lsp.get_clients({ bufnr = args.buf })) do
-      if client.name == "fsautocomplete" then
-        return
-      end
-    end
+-- LSP boot. This ftplugin is itself sourced on FileType for every F#
+-- buffer, so run the boot logic directly instead of registering a nested
+-- FileType autocmd (which never fired for the first F# buffer of a session
+-- and duplicated itself on every subsequent one).
+do
+  local bufnr = vim.api.nvim_get_current_buf()
 
-    local fname = vim.api.nvim_buf_get_name(args.buf)
+  -- Don’t start a second client if one is already active for this buffer
+  local already_attached = false
+  for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+    if client.name == "fsautocomplete" then
+      already_attached = true
+      break
+    end
+  end
+
+  if not already_attached then
+    local fname = vim.api.nvim_buf_get_name(bufnr)
     local util = require("lspconfig.util")
+    -- vim.lsp.start also dedups per (name, root_dir): a second buffer in
+    -- the same root reuses the running client instead of starting another.
     local root = util.root_pattern("*.sln", "*.fsproj", ".git")(fname)
       or vim.fs.dirname(fname)
 
@@ -732,17 +786,23 @@ vim.api.nvim_create_autocmd("FileType", {
     })
 
     vim.cmd("runtime! syntax/fsharp.vim")
-    vim.fn.clearmatches()
-    vim.fn.matchadd("fsharpOperator", "::", 150)
-    vim.fn.matchadd("Operator", "::", 200)
+    -- Remove only OUR previous matches in this window (clearmatches() would
+    -- also nuke matches added by other plugins), then re-add and re-track.
+    for _, id in ipairs(vim.w.fsharp_match_ids or {}) do
+      pcall(vim.fn.matchdelete, id)
+    end
+    vim.w.fsharp_match_ids = {
+      vim.fn.matchadd("fsharpOperator", "::", 150),
+      vim.fn.matchadd("Operator", "::", 200),
+    }
 
     -- Mappings: Ex-command so Visual gets :'<,'> automatically
-    local map_opts = { buffer = args.buf, desc = "F# Interactive" }
+    local map_opts = { buffer = bufnr, desc = "F# Interactive" }
     vim.keymap.set("n", "<M-CR>", [[:FsiSend<CR>]], map_opts) -- Normal: current line (then move down)
     vim.keymap.set("x", "<M-CR>", [[:FsiSend<CR>]], map_opts) -- Visual: current selection
     vim.keymap.set("n", "<M-@>", _FSharpToggleFsi, map_opts)
-  end,
-})
+  end
+end
 
 -- ------------------------------------------------------------
 -- Ensure a suitable .editorconfig for this F# project
@@ -830,6 +890,20 @@ set_constraint(BRIGHTMAGENTA)
 -- vim.keymap.set("n", "<leader>fr", function()
 --   set_constraint_gold(GOLDENROD)
 -- end, { desc = "Constraint → goldenrod (deeper)" })
+
+-- Buffer-local command to split long string literals so they fit within
+-- the project's max_line_length (see custom.fsharp_helpers).
+vim.api.nvim_buf_create_user_command(0, "FSharpSplitStrings", function()
+  local helpers = require("custom.fsharp_helpers")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local new_lines = helpers.split_long_strings_in_buffer(bufnr)
+  if new_lines then
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+    vim.notify("FSharp: long strings split.", vim.log.levels.INFO)
+  else
+    vim.notify("FSharp: no strings needed splitting.", vim.log.levels.INFO)
+  end
+end, { desc = "Split long F# string literals to fit max_line_length" })
 
 -- Command to easily view the string splitter's log file
 vim.api.nvim_create_user_command("FSharpSplitterLog", function()

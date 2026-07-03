@@ -49,14 +49,18 @@ function M.find_editorconfig(start_dir)
   return (#found > 0) and found[1] or nil
 end
 
+-- Single fallback width, matching the max_line_length that
+-- :FSharpEnsureEditorConfig writes into a fresh .editorconfig.
+local DEFAULT_MAX_LINE_LENGTH = 79
+
 function M.get_max_line_length()
   local root = M.project_root()
   if not root then
-    return 80
+    return DEFAULT_MAX_LINE_LENGTH
   end
   local editorconfig_path = M.find_editorconfig(root)
   if not editorconfig_path then
-    return 79
+    return DEFAULT_MAX_LINE_LENGTH
   end
   local lines = vim.fn.readfile(editorconfig_path)
   for _, line in ipairs(lines) do
@@ -65,7 +69,7 @@ function M.get_max_line_length()
       return tonumber(len)
     end
   end
-  return 79
+  return DEFAULT_MAX_LINE_LENGTH
 end
 
 -- =============================================================================
@@ -226,9 +230,9 @@ function M.split_long_strings_in_buffer(bufnr)
   local max_len = M.get_max_line_length()
   log("Using max_line_length: %d", max_len)
 
-  local parser_ok, parser = pcall(function()
-    return require("nvim-treesitter.parsers").get_parser(bufnr, "fsharp")
-  end)
+  -- nvim-treesitter's parsers.get_parser was removed on the `main` branch;
+  -- use the core API instead.
+  local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, "fsharp")
   if not parser_ok or not parser then
     log("ERROR: F# Tree-sitter parser not available.")
     return nil
