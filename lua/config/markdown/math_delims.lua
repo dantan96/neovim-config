@@ -46,10 +46,11 @@ end
 --- Run `mathdelim.py [args…]` on buf in-place.
 --- Returns true on success, false on failure.
 local function run_mathdelim(args, buf)
+  args = args or {}
   buf = buf or vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local input = table.concat(lines, "\n")
-  local cmd = vim.list_extend({ "mathdelim.py" }, args or {})
+  local cmd = vim.list_extend({ "mathdelim.py" }, args)
   local out = vim.fn.systemlist(cmd, input)
   if vim.v.shell_error ~= 0 then
     local hint = (#args == 0) and "; use :DelimDollars or :DelimParens" or ""
