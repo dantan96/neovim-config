@@ -3,7 +3,18 @@ local H = {}
 local cfg = vim.fn.stdpath("config")
 
 H.cfg = cfg
-H.child_args = { "-u", cfg .. "/init.lua", "--cmd", "set rtp^=" .. cfg }
+-- noswapfile + shortmess+=A: test children may open files that other
+-- (possibly killed) test/probe sessions also touched; without these, an
+-- existing swap file triggers the ATTENTION path and a headless child
+-- silently ends up with an empty buffer — flaky tests.
+H.child_args = {
+  "-u",
+  cfg .. "/init.lua",
+  "--cmd",
+  "set rtp^=" .. cfg,
+  "--cmd",
+  "set noswapfile shortmess+=A",
+}
 
 -- Start child neovim with full config loaded
 function H.setup_child(child)
