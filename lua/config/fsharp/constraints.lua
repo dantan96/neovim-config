@@ -111,8 +111,16 @@ function M.refresh(buf)
   end
 end
 
+M.DEFAULT_COLOR = "#ff00ff" -- bright magenta
+
+-- Remembered so the ColorScheme handler can re-apply it: :colorscheme
+-- clears user-defined groups, and with setup() once-guarded there is no
+-- per-buffer re-source to heal FsharpConstraint afterwards.
+local current_color = M.DEFAULT_COLOR
+
 --- Set the FsharpConstraint color and repaint.
 function M.set_color(hex)
+  current_color = hex
   vim.api.nvim_set_hl(0, "FsharpConstraint", {
     fg = hex,
     italic = true,
@@ -121,8 +129,6 @@ function M.set_color(hex)
   })
   pcall(M.refresh, 0)
 end
-
-M.DEFAULT_COLOR = "#ff00ff" -- bright magenta
 
 local done = false
 
@@ -152,17 +158,17 @@ function M.setup()
     }
   )
 
-  -- Also refresh after colorscheme (so highlight group exists) and after
-  -- writes. These need separate autocmds: ColorScheme matches the
-  -- colorscheme NAME while BufWritePost matches file PATHS, so a single
-  -- autocmd with pattern "catppuccin" meant the write-refresh never fired.
+  -- Re-apply the group and repaint after any colorscheme change:
+  -- :colorscheme clears FsharpConstraint, so a refresh alone would paint
+  -- extmarks with an empty group (invisible). Separate autocmds because
+  -- ColorScheme matches the colorscheme NAME while BufWritePost matches
+  -- file PATHS.
   local colors_group =
     vim.api.nvim_create_augroup("fs_constraint_names_colors", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = colors_group,
-    pattern = "catppuccin",
     callback = function()
-      M.refresh(0)
+      M.set_color(current_color)
     end,
   })
   vim.api.nvim_create_autocmd("BufWritePost", {

@@ -32,17 +32,17 @@ return {
           end
         end, "Prev git hunk")
 
-        -- Hunk operations
-        map("n", "<leader>gs", gs.stage_hunk, "Stage hunk")
+        -- Hunk operations. stage_hunk TOGGLES: running it on a staged
+        -- hunk unstages it (undo_stage_hunk is deprecated upstream).
+        map("n", "<leader>gs", gs.stage_hunk, "Stage/unstage hunk")
         map("n", "<leader>gr", gs.reset_hunk, "Reset hunk")
         map("v", "<leader>gs", function()
           gs.stage_hunk({ vim.fn.line("."), vim.fn.line("v") })
-        end, "Stage selected lines")
+        end, "Stage/unstage selected lines")
         map("v", "<leader>gr", function()
           gs.reset_hunk({ vim.fn.line("."), vim.fn.line("v") })
         end, "Reset selected lines")
         map("n", "<leader>gS", gs.stage_buffer, "Stage buffer")
-        map("n", "<leader>gu", gs.undo_stage_hunk, "Undo stage hunk")
         map("n", "<leader>gp", gs.preview_hunk, "Preview hunk")
 
         -- Blame / diff

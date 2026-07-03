@@ -139,6 +139,18 @@ T["fsharp modules"]["constraint overlay paints extmarks"] = function()
   expect.equality(marks > 0, true)
 end
 
+T["fsharp modules"]["FsharpConstraint survives colorscheme reload"] = function()
+  -- :colorscheme clears user-defined groups; with setup() once-guarded
+  -- there is no per-buffer re-source to heal FsharpConstraint, so the
+  -- ColorScheme handler must re-apply it (regression: it only repainted
+  -- extmarks, leaving them on an empty group).
+  local fg = child.lua_get([[(function()
+    vim.cmd.colorscheme("catppuccin")
+    return vim.api.nvim_get_hl(0, { name = "FsharpConstraint", link = false }).fg
+  end)()]])
+  expect.equality(fg, 16711935) -- 0xff00ff
+end
+
 T["fsharp modules"]["cons hl group defined pink"] = function()
   local fg = child.lua_get(
     [[vim.api.nvim_get_hl(0, { name = "@operator.cons.fsharp", link = false }).fg]]

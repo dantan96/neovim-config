@@ -171,9 +171,31 @@ T["invariants"]["no deprecation warnings from config paths"] = function()
   -- By this point the child has visited every configured filetype,
   -- opened a terminal and yanked. The vim.deprecate override in
   -- init.lua only silences plugin-originated warnings, so any config
-  -- deprecation would be in :messages.
-  local msgs = child.lua_get([[vim.fn.execute("messages")]])
-  expect.equality(msgs:lower():find("deprecated", 1, true) == nil, true)
+  -- deprecation would surface via vim.notify. snacks.notifier OWNS
+  -- vim.notify in this config (such messages never reach :messages), so
+  -- scan both :messages and the snacks history. To prove the detector
+  -- is not vacuous, inject a sentinel first and require exactly it.
+  local hits = child.lua_get([[(function()
+    vim.notify("SENTINEL_fn is deprecated", vim.log.levels.WARN)
+    local hits = {}
+    local msgs = vim.fn.execute("messages"):lower()
+    if msgs:find("deprecated", 1, true) then
+      table.insert(hits, "messages")
+    end
+    local ok, hist = pcall(function()
+      return Snacks.notifier.get_history()
+    end)
+    if ok and hist then
+      for _, n in ipairs(hist) do
+        local text = tostring(n.msg or ""):lower()
+        if text:find("deprecated", 1, true) then
+          table.insert(hits, text:sub(1, 80))
+        end
+      end
+    end
+    return hits
+  end)()]])
+  expect.equality(hits, { "sentinel_fn is deprecated" })
 end
 
 return T
