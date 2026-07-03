@@ -18,9 +18,11 @@ T["lsp configs"]["marksman has root_dir function"] = function()
   expect.equality(type(c.root_dir), "function")
 end
 
-T["lsp configs"]["marksman has single_file_support"] = function()
-  local c = load_lsp("marksman")
-  expect.equality(c.single_file_support, true)
+T["lsp configs"]["no config uses single_file_support (not a vim.lsp.config field)"] = function()
+  for _, name in ipairs({ "marksman", "remark_ls" }) do
+    local c = load_lsp(name)
+    expect.equality(c.single_file_support, nil)
+  end
 end
 
 T["lsp configs"]["remark_ls filetypes includes markdown"] = function()
@@ -34,11 +36,13 @@ T["lsp configs"]["remark_ls has root_dir function"] = function()
   expect.equality(type(c.root_dir), "function")
 end
 
-T["lsp configs"]["bashls filetypes includes sh bash zsh"] = function()
+T["lsp configs"]["bashls filetypes includes sh and bash but not zsh"] = function()
   local c = load_lsp("bashls")
-  for _, ft in ipairs({ "sh", "bash", "zsh" }) do
+  for _, ft in ipairs({ "sh", "bash" }) do
     expect.equality(vim.tbl_contains(c.filetypes, ft), true)
   end
+  -- shellcheck/shfmt do not support zsh; bashls must not attach to it
+  expect.equality(vim.tbl_contains(c.filetypes, "zsh"), false)
 end
 
 T["lsp configs"]["basedpyright has typeCheckingMode"] = function()

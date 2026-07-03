@@ -2,47 +2,65 @@
 return {
   {
     "stevearc/conform.nvim",
+    event = { "BufWritePre" },
+    cmd = { "ConformInfo" },
+    keys = {
+      {
+        "<leader>f",
+        function()
+          require("conform").format({
+            lsp_format = "fallback",
+            async = false,
+            timeout_ms = 4000, -- a bit more generous than 2000
+          })
+        end,
+        mode = { "n", "v" },
+        desc = "Format buffer (Conform)",
+      },
+    },
     opts = {
       format_on_save = {
         timeout_ms = 2000,
+        lsp_format = "fallback", -- use LSP formatting when no formatter matches
         quiet = true, -- suppress "Formatters unavailable" when no formatter matches
       },
       formatters_by_ft = {
-        toml = { "taplo", "prettier", stop_after_first = true },
+        toml = { "taplo" },
         lua = { "stylua" },
-        python = { "ruff_fix", "ruff_format", "docformatter", "black" },
+        python = { "ruff_fix", "ruff_format" },
         sh = { "shfmt" },
         bash = { "shfmt" },
-        zsh = { "shfmt" },
-        fsharp = { "fantomas" },
+        -- zsh is intentionally omitted: shfmt has no zsh dialect and can
+        -- corrupt zsh scripts.
+        -- fsharp: no conform entry; falls back to LSP formatting. Re-add
+        -- fsharp = { "fantomas" } if fantomas/dotnet gets installed.
 
         markdown = { "remark", "prettier", stop_after_first = true },
         ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },
       },
       formatters = {
-        taplo = {
-          command = "taplo",
-          args = { "fmt", "--stdin-filepath", "$FILENAME" },
-          stdin = true,
-        },
-        prettier = {
-          command = "prettier",
-          args = {
-            "--plugin=prettier-plugin-toml",
-            "--stdin-filepath",
-            "$FILENAME",
-          },
-          stdin = true,
-        },
-        -- remark-cli loads .remarkrc.mjs which imports remark-gfm etc. via ESM.
-        -- Those packages must be installed in the project's node_modules; without
-        -- them Node exits with a module-not-found error and conform shows a crash.
-        -- This condition skips the formatter silently when they're absent.
+        -- taplo and prettier use conform's builtin definitions. Do not add
+        -- --plugin=prettier-plugin-toml to prettier: mason's prettier shadows
+        -- PATH inside nvim and lacks that plugin, so resolution would fail
+        -- for every filetype prettier runs on.
+        -- remark-cli loads .remarkrc.json which references remark-gfm etc.
+        -- Those packages must be resolvable — either from the project's own
+        -- node_modules or from the shared ~/.config/.remarks/node_modules
+        -- (maintained by config/remark_auto.lua). Without them Node exits
+        -- with a module-not-found error and conform shows a crash. This
+        -- condition skips the formatter silently when they're absent.
         remark = {
           command = "remark",
-          args = { "--no-color", "--quiet", "--frail" },
+          -- No --frail: it makes remark exit non-zero on any lint warning,
+          -- which conform treats as failure and discards the output.
+          args = { "--no-color", "--quiet" },
           stdin = true,
           condition = function(_, ctx)
+            local shared =
+              vim.fn.expand("~/.config/.remarks/node_modules/remark-gfm")
+            if vim.fn.isdirectory(shared) == 1 then
+              return true
+            end
             local found = vim.fs.find("node_modules", {
               path = ctx.dirname,
               upward = true,
@@ -61,24 +79,6 @@ return {
         ruff_format = {
           -- line-length comes from pyproject.toml; no overrides needed
         },
-        docformatter = {
-          command = "docformatter",
-          args = {
-            "--wrap-summaries",
-            "79",
-            "--wrap-descriptions",
-            "72",
-            "-",
-          },
-          stdin = true,
-        },
-        black = {
-          prepend_args = {
-            "--preview",
-            "--enable-unstable-feature",
-            "string_processing",
-          },
-        },
         stylua = {
 
           prepend_args = { "--column-width", "79" },
@@ -86,29 +86,7 @@ return {
         shfmt = {
           prepend_args = { "-i", "2", "-ci" }, -- 2-space indent, indent switch cases
         },
-
-        -- You can also tweak fantomas defaults here. Example: longer timeout.
-        fantomas = {
-          -- leave stdin handling to Conform’s builtin for fantomas
-          -- but we can tone down timeouts by raising conform.format() timeout instead
-        },
       },
     },
-    config = function(_, opts)
-      local conform = require("conform")
-      conform.setup(opts)
-      -- ------------- Register our Lua formatter -------------
-      -- This mirrors how builtin Lua formatters (e.g. trim_whitespace) are defined:
-      --   format = function(self, ctx, lines, callback) ... end
-      -- Reference: trim_whitespace.lua in conform.nvim.  (See GitHub)
-      -- https://github.com/stevearc/conform.nvim/blob/master/lua/conform/formatters/trim_whitespace.lua
-      vim.keymap.set({ "n", "v" }, "<leader>f", function()
-        conform.format({
-          lsp_fallback = true,
-          async = false,
-          timeout_ms = 4000, -- a bit more generous than 2000
-        })
-      end, { desc = "Format buffer (Conform)" })
-    end,
   },
 }

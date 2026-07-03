@@ -34,9 +34,16 @@ T["format"]["sh -> shfmt"] = function()
   expect.equality(vim.tbl_contains(fmts, "shfmt"), true)
 end
 
-T["format"]["fsharp -> fantomas"] = function()
+T["format"]["fsharp has no conform formatter (falls back to LSP)"] = function()
+  -- fantomas is not installed; fsharp must not have a conform entry so
+  -- formatting falls through to the LSP via lsp_format fallback.
   local fmts = get_formatters("fsharp")
-  expect.equality(vim.tbl_contains(fmts, "fantomas"), true)
+  expect.equality(fmts == vim.NIL or fmts == nil or #fmts == 0, true)
+end
+
+T["format"]["toml -> taplo"] = function()
+  local fmts = get_formatters("toml")
+  expect.equality(vim.tbl_contains(fmts, "taplo"), true)
 end
 
 T["format"]["markdown includes remark"] = function()
