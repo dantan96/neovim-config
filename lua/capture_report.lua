@@ -54,11 +54,13 @@ local function hl(name)
     end
     -- record style flags only the first time
     if not attrs then
-      attrs = table.concat({
-        h.bold and "bold" or nil,
-        h.italic and "italic" or nil,
-        h.underline and "underline" or nil,
-      }, " ")
+      -- Build the list with table.insert: a literal { x or nil, y or nil }
+      -- embeds nils and makes table.concat error (e.g. italic-only groups).
+      local flags = {}
+      if h.bold then table.insert(flags, "bold") end
+      if h.italic then table.insert(flags, "italic") end
+      if h.underline then table.insert(flags, "underline") end
+      attrs = table.concat(flags, " ")
     end
     fg = fg or h.fg or h.foreground
     bg = bg or h.bg or h.background

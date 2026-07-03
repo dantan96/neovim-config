@@ -52,6 +52,24 @@ T["hl"]["nonexistent group returns empty colors"] = function()
   expect.equality(result.bg, "")
 end
 
+T["hl"]["italic-only group does not crash and reports italic"] = function()
+  -- Regression: attrs was built as { bold or nil, italic or nil, ... },
+  -- embedding nils; table.concat crashed for italic-only groups.
+  child.lua([[vim.api.nvim_set_hl(0, "TestCapRepItalicOnly", { italic = true })]])
+  local result = child.lua_get([[
+    require("capture_report")._hl("TestCapRepItalicOnly")
+  ]])
+  expect.equality(result.attrs, "italic")
+end
+
+T["hl"]["bold+underline group reports both flags"] = function()
+  child.lua([[vim.api.nvim_set_hl(0, "TestCapRepBoldUl", { bold = true, underline = true })]])
+  local result = child.lua_get([[
+    require("capture_report")._hl("TestCapRepBoldUl")
+  ]])
+  expect.equality(result.attrs, "bold underline")
+end
+
 T["hl"]["follows link chain"] = function()
   -- Create a link: TestCapRepLink → Normal
   child.lua([[vim.api.nvim_set_hl(0, "TestCapRepLink", { link = "Normal" })]])
