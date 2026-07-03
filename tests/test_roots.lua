@@ -74,6 +74,39 @@ T["find"]["nil start falls back without error"] = function()
   end)
 end
 
+T["find"]["directory start with no markers returns the directory itself"] = function()
+  H.with_temp_dir(function(dir)
+    vim.fn.mkdir(dir .. "/sub", "p")
+    -- start is a directory, not a file: fallback must be that directory,
+    -- not its parent
+    local result = roots.find(dir .. "/sub", { ".nonexistent_marker" })
+    expect.equality(result, dir .. "/sub")
+  end)
+end
+
+T["find"]["unnamed buffer falls back to cwd, not its parent"] = function()
+  H.with_temp_dir(function(dir)
+    vim.fn.mkdir(dir .. "/sub", "p")
+    local prev_buf = vim.api.nvim_get_current_buf()
+    local prev_cwd = vim.fn.getcwd()
+    local buf = vim.api.nvim_create_buf(false, false) -- unnamed, listed=false
+    vim.api.nvim_set_current_buf(buf)
+    vim.cmd.cd(vim.fn.fnameescape(dir .. "/sub"))
+    MiniTest.finally(function()
+      vim.cmd.cd(vim.fn.fnameescape(prev_cwd))
+      vim.api.nvim_set_current_buf(prev_buf)
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+    local result = roots.find(nil, { ".nonexistent_marker" })
+    -- getcwd() may resolve symlinks (/var -> /private/var on macOS), so
+    -- compare realpaths; the point is: cwd itself, NOT its parent.
+    expect.equality(
+      result and vim.uv.fs_realpath(result),
+      vim.uv.fs_realpath(dir .. "/sub")
+    )
+  end)
+end
+
 -- ── find_marksman_config() ─────────────────────────────────────────────────
 T["find_marksman_config"] = new_set()
 
