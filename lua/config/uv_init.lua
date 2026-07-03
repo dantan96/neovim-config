@@ -27,12 +27,21 @@ local function err(msg)
   vim.notify("UvInit: " .. msg, vim.log.levels.ERROR)
 end
 
+-- Progress message for the blocking vim.system():wait() steps below.
+-- redraw() forces the message to actually appear before the UI freezes
+-- (cold uvx runs can block for tens of seconds).
+local function progress(msg)
+  vim.notify("UvInit: " .. msg, vim.log.levels.INFO)
+  vim.cmd.redraw()
+end
+
 -- Run vermin on `filepath` and return the minimum Python version string
 -- (e.g. "3.8"), or nil if it cannot be determined.
 -- Vermin may output "2.0, 3.0" for scripts with no Python-3-specific syntax;
 -- "3.0" is not a useful floor, so we only return a version when vermin finds
 -- a meaningful Python 3 minimum (3.1 or higher).
 local function detect_min_python(filepath)
+  progress("detecting minimum Python version (uvx vermin)...")
   local r = vim.system(
     { "uvx", "vermin", "--no-tips", "--eval-annotations", filepath },
     { text = true }
@@ -55,6 +64,7 @@ end
 
 -- Run pipreqs --print on `dir` and return a list of package names.
 local function detect_packages(dir)
+  progress("detecting third-party imports (uvx pipreqs)...")
   local r = vim.system(
     { "uvx", "pipreqs", "--print", "--ignore", ".venv", dir },
     { text = true }
@@ -114,13 +124,16 @@ end
 local function repair(src, proj_dir)
   -- Ensure .venv exists
   if vim.fn.isdirectory(proj_dir .. "/.venv") == 0 then
+    progress("creating .venv (uv venv)...")
     vim.system({ "uv", "venv" }, { cwd = proj_dir, text = true }):wait()
+    progress("syncing dependencies (uv sync)...")
     vim.system({ "uv", "sync" }, { cwd = proj_dir, text = true }):wait()
   end
 
   -- Detect and add any missing deps
   local packages = detect_packages(proj_dir)
   if #packages > 0 then
+    progress("adding " .. #packages .. " packages (uv add)...")
     local add_cmd = vim.list_extend({ "uv", "add" }, packages)
     local add = vim.system(add_cmd, { cwd = proj_dir, text = true }):wait()
     if add.code ~= 0 then
@@ -196,6 +209,7 @@ function M.run(name_arg)
   if not in_place then vim.list_extend(init_cmd, { proj_dir }) end
 
   -- Step 2: uv init
+  progress("initialising project (uv init)...")
   local init_result = vim.system(init_cmd, { cwd = parent_dir, text = true }):wait()
   if init_result.code ~= 0 then
     return err("uv init failed:\n" .. (init_result.stderr or ""))
@@ -222,7 +236,7 @@ function M.run(name_arg)
 
   -- Step 6: uv add detected packages (also creates .venv)
   if #packages > 0 then
-    vim.notify("UvInit: adding " .. #packages .. " packages and creating .venv...", vim.log.levels.INFO)
+    progress("adding " .. #packages .. " packages and creating .venv (uv add)...")
     local add_cmd = vim.list_extend({ "uv", "add" }, packages)
     local add = vim.system(add_cmd, { cwd = proj_dir, text = true }):wait()
     if add.code ~= 0 then
@@ -232,7 +246,7 @@ function M.run(name_arg)
       )
     end
   else
-    vim.notify("UvInit: creating .venv...", vim.log.levels.INFO)
+    progress("creating .venv (uv venv)...")
     vim.system({ "uv", "venv" }, { cwd = proj_dir, text = true }):wait()
   end
 
@@ -243,7 +257,16 @@ function M.run(name_arg)
   if not in_place then
     vim.cmd("edit " .. vim.fn.fnameescape(new_path))
     if vim.api.nvim_buf_is_valid(old_bufnr) then
-      vim.cmd("bdelete " .. old_bufnr)
+      -- Plain :bdelete throws E89 on a modified buffer. Only force-delete
+      -- when unmodified; otherwise keep the buffer and tell the user.
+      if vim.bo[old_bufnr].modified == false then
+        pcall(vim.cmd, "bdelete! " .. old_bufnr)
+      else
+        vim.notify(
+          "UvInit: old buffer has unsaved changes; not deleting it",
+          vim.log.levels.WARN
+        )
+      end
     end
   else
     vim.cmd("edit!") -- just reload the current file to pick up shebang changes
