@@ -5,7 +5,9 @@
 -- 'textwidth'): after/ftplugin/markdown.lua appends "aw" and the
 -- runtime ftplugin contributes 't'. "Off" removes 'a' and 't' so
 -- nvim stops rewriting lines while you type — 'textwidth', the
--- colorcolumn guide and manual gq/gw formatting stay intact.
+-- colorcolumn guide and manual gq/gw formatting stay intact. Conform's
+-- format-on-save (lua/plugins/format.lua) also checks vim.b.hardwrap_off
+-- and skips remark/prettier while off, so saving cannot reflow either.
 --
 -- The choice is recorded in vim.b.hardwrap_off so a :e reload (which
 -- re-runs both ftplugins) restores it instead of silently re-enabling

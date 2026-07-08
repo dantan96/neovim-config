@@ -21,11 +21,18 @@ return {
       },
     },
     opts = {
-      format_on_save = {
-        timeout_ms = 2000,
-        lsp_format = "fallback", -- use LSP formatting when no formatter matches
-        quiet = true, -- suppress "Formatters unavailable" when no formatter matches
-      },
+      format_on_save = function(bufnr)
+        -- Markdown with hard-wrap toggled off (<leader>tw): saving must
+        -- not reflow what typing no longer reflows.
+        if vim.b[bufnr].hardwrap_off then
+          return nil
+        end
+        return {
+          timeout_ms = 2000,
+          lsp_format = "fallback", -- use LSP formatting when no formatter matches
+          quiet = true, -- suppress "Formatters unavailable" when no formatter matches
+        }
+      end,
       formatters_by_ft = {
         toml = { "taplo" },
         lua = { "stylua" },
