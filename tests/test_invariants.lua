@@ -204,4 +204,19 @@ T["invariants"]["no deprecation warnings from config paths"] = function()
   expect.equality(hits, { "sentinel_fn is deprecated" })
 end
 
+T["invariants"]["LineNrWrap distinguishes soft-wrap gutter rows"] = function()
+  -- The vnum statuscolumn segment (lua/plugins/statuscol.lua) emits
+  -- %#LineNrWrap# on continuation rows; the group must exist (defined
+  -- in the catppuccin overrides so it survives colorscheme reloads)
+  -- and must differ from LineNr, or the distinction silently vanishes.
+  local fgs = child.lua_get([[(function()
+    local wrap = vim.api.nvim_get_hl(0, { name = "LineNrWrap", link = false })
+    local base = vim.api.nvim_get_hl(0, { name = "LineNr", link = false })
+    return { wrap = wrap.fg or "MISSING", base = base.fg or "MISSING" }
+  end)()]])
+  expect.no_equality(fgs.wrap, "MISSING")
+  expect.no_equality(fgs.base, "MISSING")
+  expect.no_equality(fgs.wrap, fgs.base)
+end
+
 return T

@@ -86,7 +86,10 @@ return {
           + tv
           - cvirt
 
-        local hl = (d == 0) and "%#CursorLineNr#" or "%#LineNr#"
+        -- Soft-wrap continuation rows (virtnum > 0) get their own dimmer
+        -- group so true lines and wrap segments are distinguishable.
+        local hl = (d == 0) and "%#CursorLineNr#"
+          or (args.virtnum > 0 and "%#LineNrWrap#" or "%#LineNr#")
         -- Hybrid: cursor's own row shows absolute line number, others relative.
         local n = (d == 0) and args.lnum or math.abs(d)
         return hl .. "%=" .. n .. " "

@@ -35,6 +35,10 @@ return {
         mocha = function(C)
           return {
             TabLineSel = { bg = C.pink },
+            -- Gutter numbers on soft-wrap continuation rows (see the vnum
+            -- segment in lua/plugins/statuscol.lua): one step dimmer than
+            -- LineNr (surface1) so true lines stand out from wrap segments.
+            LineNrWrap = { fg = C.surface0 },
             CmpBorder = { fg = C.surface2 },
             Pmenu = { bg = C.none },
             TelescopeBorder = { link = "FloatBorder" },
