@@ -17,6 +17,15 @@ local INDEX_FILE     = REMARKS_DIR .. "/index.json"
 local REMARKRC       = ".remarkrc.json"
 local REMARKRC_BODY  = '{\n  "plugins": ["' .. CENTRAL_PKGS .. '/remark-gfm/index.js"]\n}\n'
 
+-- Everything the hub must provide: remark-gfm for this module's minimal
+-- rc, plus the plugins config_ensure.lua references in the fuller
+-- .remarkrc.json it generates.
+local CENTRAL_PLUGINS = {
+  "remark-gfm",
+  "remark-frontmatter",
+  "remark-preset-lint-recommended",
+}
+
 -- Roots processed this session — avoid redundant work.
 local done = {} ---@type table<string, true>
 
@@ -57,9 +66,16 @@ end
 
 local central_install_triggered = false
 
+local function central_complete()
+  for _, pkg in ipairs(CENTRAL_PLUGINS) do
+    if not vim.uv.fs_stat(CENTRAL_PKGS .. "/" .. pkg) then return false end
+  end
+  return true
+end
+
 local function ensure_central_install()
   if central_install_triggered then return end
-  if vim.uv.fs_stat(CENTRAL_PKGS .. "/remark-gfm") then return end
+  if central_complete() then return end
   central_install_triggered = true
 
   -- Synchronous: package.json is written and npm is started in this dir
@@ -72,7 +88,7 @@ local function ensure_central_install()
   end
 
   -- Fire async: npm runs in background, notifies on failure.
-  vim.fn.jobstart({ "npm", "install", "remark-gfm" }, {
+  vim.fn.jobstart(vim.list_extend({ "npm", "install" }, vim.deepcopy(CENTRAL_PLUGINS)), {
     cwd = REMARKS_DIR,
     detach = true,
     on_exit = function(_, code)
@@ -149,6 +165,11 @@ local function remarkify(root)
 end
 
 M._find_init_root = find_init_root
+
+-- Shared with config.markdown.config_ensure: its generated
+-- .remarkrc.json points plugins at the hub by absolute path.
+M.CENTRAL_PKGS = CENTRAL_PKGS
+M.ensure_central_install = ensure_central_install
 
 function M.setup()
   vim.api.nvim_create_autocmd("FileType", {
