@@ -45,12 +45,13 @@ T["format"]["toml -> taplo"] = function()
   expect.equality(vim.tbl_contains(fmts, "taplo"), true)
 end
 
-T["format"]["hardwrap_off suppresses format_on_save"] = function()
+T["format"]["disable_autoformat suppresses format_on_save"] = function()
   -- format_on_save is a function; it must return nil (skip) when the
-  -- buffer's hard-wrap toggle is off, and a table otherwise.
+  -- buffer opts out, and a table otherwise. For markdown this is the
+  -- only way to save without prettier reflowing.
   local on = child.lua_get([[
     (function()
-      vim.b.hardwrap_off = nil
+      vim.b.disable_autoformat = nil
       local p = require("lazy.core.config").plugins["conform.nvim"]
       local fos = require("lazy.core.plugin").values(p, "opts", false).format_on_save
       return type(fos) == "function" and type(fos(0)) == "table"
@@ -59,29 +60,28 @@ T["format"]["hardwrap_off suppresses format_on_save"] = function()
   expect.equality(on, true)
   local off = child.lua_get([[
     (function()
-      vim.b.hardwrap_off = true
+      vim.b.disable_autoformat = true
       local p = require("lazy.core.config").plugins["conform.nvim"]
       local fos = require("lazy.core.plugin").values(p, "opts", false).format_on_save
       local r = fos(0) == nil
-      vim.b.hardwrap_off = nil
+      vim.b.disable_autoformat = nil
       return r
     end)()
   ]])
   expect.equality(off, true)
 end
 
-T["format"]["markdown includes remark"] = function()
-  -- markdown entry has stop_after_first=true mixed in; check via child
-  local has = child.lua_get([[
-    (function()
-      local fmts = require("conform").formatters_by_ft["markdown"]
-      for _, v in ipairs(fmts) do
-        if v == "remark" then return true end
-      end
-      return false
-    end)()
-  ]])
-  expect.equality(has, true)
+T["format"]["markdown -> prettier with prose-wrap at textwidth"] = function()
+  -- prettier is the markdown hard-wrap engine: it must be in the
+  -- chain, wrap prose, and its width must match the markdown
+  -- textwidth (65) so the colorcolumn guide stays truthful.
+  local fmts = get_formatters("markdown")
+  expect.equality(vim.tbl_contains(fmts, "prettier"), true)
+  local args = child.lua_get(
+    [[table.concat(require("conform").formatters.prettier.prepend_args, " ")]]
+  )
+  expect.equality(args:find("--prose-wrap always", 1, true) ~= nil, true)
+  expect.equality(args:find("--print-width 65", 1, true) ~= nil, true)
 end
 
 return T

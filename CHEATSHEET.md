@@ -139,7 +139,7 @@ Leader key: `\` (backslash)
 | `<leader>ts` | n | Toggle statusline (global) |
 | `<leader>tS` | n | Toggle statusline (buffer) |
 | `<leader>tv` | n | Toggle Markview (markdown) |
-| `<leader>tw` | n | Toggle hard-wrap (markdown, buffer) |
+| `<leader>tw` | n | Toggle live hard-wrap (markdown, buffer; prettier wraps on save either way) |
 | `<leader>ct` | n | Toggle Colorizer |
 
 ## F# (ftplugin)

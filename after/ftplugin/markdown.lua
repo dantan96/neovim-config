@@ -5,12 +5,19 @@ require("config.markdown.peek_auto").setup()
 
 -- Buffer-local options: must run for EVERY markdown buffer, so keep
 -- them above the once-guard below.
+-- textwidth is the gq/colorcolumn guide and must match prettier's
+-- --print-width (lua/plugins/format.lua), which does the actual
+-- hard-wrapping on save. Live wrap while typing is OFF by default
+-- (hardwrap.attach() strips the 'a'/'t' flags, including the 't' the
+-- runtime ftplugin adds); 'w' only matters when live wrap is toggled
+-- on, and is kept so toggled-on behaviour keeps trailing-blank
+-- paragraph semantics.
 vim.opt_local.textwidth = 65
-vim.opt_local.formatoptions:append("aw")
+vim.opt_local.formatoptions:append("w")
 vim.opt_local.colorcolumn = "+1"
 
--- Hard-wrap toggle: re-assert this buffer's saved on/off choice (a
--- :e reload re-runs ftplugins) and map <leader>tw / :HardWrapToggle.
+-- Live hard-wrap toggle: enforce this buffer's saved choice (a :e
+-- reload re-runs ftplugins) and map <leader>tw / :HardWrapToggle.
 require("config.markdown.hardwrap").attach()
 
 -- Guard: only register global commands/autocmds once

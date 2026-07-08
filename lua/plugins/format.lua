@@ -22,9 +22,10 @@ return {
     },
     opts = {
       format_on_save = function(bufnr)
-        -- Markdown with hard-wrap toggled off (<leader>tw): saving must
-        -- not reflow what typing no longer reflows.
-        if vim.b[bufnr].hardwrap_off then
+        -- Escape hatch: for markdown, save-time prettier IS the
+        -- hard-wrap engine (see formatters.prettier below), so this is
+        -- the only way to save without reflow.
+        if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
           return nil
         end
         return {
@@ -44,43 +45,28 @@ return {
         -- fantomas lives in ~/.dotnet/tools (on the login-shell PATH).
         fsharp = { "fantomas" },
 
-        markdown = { "remark", "prettier", stop_after_first = true },
-        ["markdown.mdx"] = { "remark", "prettier", stop_after_first = true },
+        -- prettier, not remark: prettier's --prose-wrap does the
+        -- markdown hard-wrapping (width = 'textwidth') and never
+        -- breaks inside a `backtick span`, unlike Vim's internal
+        -- formatter — live typing-wrap is therefore off by default
+        -- (config.markdown.hardwrap). remark still serves the lint /
+        -- LSP ecosystem (config.remark_auto, remark_ls); it just no
+        -- longer formats on save.
+        markdown = { "prettier" },
+        ["markdown.mdx"] = { "prettier" },
       },
       formatters = {
         -- taplo and prettier use conform's builtin definitions. Do not add
         -- --plugin=prettier-plugin-toml to prettier: mason's prettier shadows
         -- PATH inside nvim and lacks that plugin, so resolution would fail
         -- for every filetype prettier runs on.
-        -- remark-cli loads .remarkrc.json which references remark-gfm etc.
-        -- Those packages must be resolvable — either from the project's own
-        -- node_modules or from the shared ~/.config/.remarks/node_modules
-        -- (maintained by config/remark_auto.lua). Without them Node exits
-        -- with a module-not-found error and conform shows a crash. This
-        -- condition skips the formatter silently when they're absent.
-        remark = {
-          command = "remark",
-          -- No --frail: it makes remark exit non-zero on any lint warning,
-          -- which conform treats as failure and discards the output.
-          args = { "--no-color", "--quiet" },
-          stdin = true,
-          condition = function(_, ctx)
-            local shared =
-              vim.fn.expand("~/.config/.remarks/node_modules/remark-gfm")
-            if vim.fn.isdirectory(shared) == 1 then
-              return true
-            end
-            local found = vim.fs.find("node_modules", {
-              path = ctx.dirname,
-              upward = true,
-              type = "directory",
-              limit = 1,
-            })
-            if #found == 0 then
-              return false
-            end
-            return vim.fn.isdirectory(found[1] .. "/remark-gfm") == 1
-          end,
+        -- CLI flags override project .prettierrc files, so markdown
+        -- wraps at 65 everywhere nvim formats it — deliberate, to
+        -- match the global markdown textwidth/colorcolumn. prettier
+        -- only appears in the markdown/mdx chains above, so these
+        -- args reach no other filetype.
+        prettier = {
+          prepend_args = { "--prose-wrap", "always", "--print-width", "65" },
         },
         ruff_fix = {
           prepend_args = { "--fix-only", "--unsafe-fixes" },

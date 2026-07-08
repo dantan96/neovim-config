@@ -86,16 +86,18 @@ T["keymap behavior"]["<leader>ts toggles statusline"] = function()
   expect.no_equality(before, after)
 end
 
-T["keymap behavior"]["<leader>tw toggles markdown hard-wrap"] = function()
+T["keymap behavior"]["<leader>tw toggles markdown live hard-wrap"] = function()
   child.lua("vim.bo.filetype = 'markdown'")
   local enabled = [[require("config.markdown.hardwrap").enabled()]]
-  expect.equality(child.lua_get(enabled), true) -- ftplugin default: on
-  child.type_keys(" tw") -- off: fo loses 'a' and 't'
+  -- Default OFF: prettier wraps on save; typing must not auto-wrap
+  -- (Vim's internal formatter splits `backtick spans`).
   expect.equality(child.lua_get(enabled), false)
+  child.type_keys(" tw") -- on: fo gains 'a' and 't'
+  expect.equality(child.lua_get(enabled), true)
   -- textwidth (and thus the colorcolumn guide) must survive
   expect.equality(child.lua_get("vim.bo.textwidth"), 65)
-  child.type_keys(" tw") -- back on
-  expect.equality(child.lua_get(enabled), true)
+  child.type_keys(" tw") -- back off
+  expect.equality(child.lua_get(enabled), false)
 end
 
 T["keymap behavior"]["<leader>tw is markdown-only (buffer-local)"] = function()
