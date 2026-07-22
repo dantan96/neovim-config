@@ -16,7 +16,7 @@ local ensure_installed = {
   "css", "dockerfile", "fish", "fsharp",
   "go", "haskell", "html", "javascript", "json",
   "lua", "luadoc", "make", "markdown", "markdown_inline",
-  "ocaml", "python", "query", "regex", "ruby", "rust",
+  "nu", "ocaml", "python", "query", "regex", "ruby", "rust",
   "toml", "tsx", "typescript", "vim", "vimdoc", "yaml",
 }
 

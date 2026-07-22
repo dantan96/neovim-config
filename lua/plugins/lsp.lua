@@ -19,6 +19,7 @@ return {
       vim.lsp.enable("ruff")      -- installed via uv
       vim.lsp.enable("marksman")  -- installed at /usr/local/bin
       vim.lsp.enable("bashls")    -- installed at /usr/local/bin
+      vim.lsp.enable("nushell")   -- nushell's built-in LSP (nu --lsp)
 
       -- Disable formatting for servers that aren't the formatting authority.
       vim.api.nvim_create_autocmd("LspAttach", {
