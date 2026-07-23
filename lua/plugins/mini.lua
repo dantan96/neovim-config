@@ -4,7 +4,42 @@ return {
     "echasnovski/mini.nvim",
     version = false,
     config = function()
-      require("mini.statusline").setup()
+      -- Statusline: stock sections, two deliberate changes. (1) The
+      -- location cluster gets its OWN group (MiniStatuslineLocation) —
+      -- stock mini paints it with the mode color, which reads as three
+      -- disconnected mode-colored boxes. Default-links to Fileinfo
+      -- (neutral); profile themes may restyle it. (2) Narrow windows show
+      -- the file tail instead of a mid-path %< amputation.
+      local sl = require("mini.statusline")
+      sl.setup({
+        content = {
+          active = function()
+            local mode, mode_hl = sl.section_mode({ trunc_width = 120 })
+            local git = sl.section_git({ trunc_width = 40 })
+            local diff = sl.section_diff({ trunc_width = 75 })
+            local diagnostics = sl.section_diagnostics({ trunc_width = 75 })
+            local lsp = sl.section_lsp({ icon = "LSP", trunc_width = 75 })
+            local filename = vim.api.nvim_win_get_width(0) < 100 and "%t%m%r"
+              or "%f%m%r"
+            local fileinfo = sl.section_fileinfo({ trunc_width = 120 })
+            local search = sl.section_searchcount({ trunc_width = 75 })
+            return sl.combine_groups({
+              { hl = mode_hl, strings = { mode } },
+              { hl = "MiniStatuslineDevinfo", strings = { git, diff, diagnostics, lsp } },
+              "%<",
+              { hl = "MiniStatuslineFilename", strings = { filename } },
+              "%=",
+              { hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
+              { hl = "MiniStatuslineLocation", strings = { search, "%l/%L:%2c" } },
+            })
+          end,
+        },
+      })
+      vim.api.nvim_set_hl(
+        0,
+        "MiniStatuslineLocation",
+        { link = "MiniStatuslineFileinfo", default = true }
+      )
       require("mini.operators").setup()
       require("mini.ai").setup({
         custom_textobjects = {
