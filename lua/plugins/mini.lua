@@ -25,6 +25,9 @@ return {
             -- as an amputated "<rofile.lua".
             local fileinfo = sl.section_fileinfo({ trunc_width = 120 })
             local search = sl.section_searchcount({ trunc_width = 75 })
+            -- Line box rides the mode color (the decoupling experiment is
+            -- over); the column box is its own group for a two-tone pair.
+            -- Bare numbers only.
             return sl.combine_groups({
               { hl = mode_hl, strings = { mode } },
               { hl = "MiniStatuslineDevinfo", strings = { git, diff, diagnostics, lsp } },
@@ -32,7 +35,8 @@ return {
               "%<",
               "%=",
               { hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
-              { hl = "MiniStatuslineLocation", strings = { search, "%l/%L:%2c" } },
+              { hl = mode_hl, strings = { search, "%l" } },
+              { hl = "MiniStatuslineLocation", strings = { "%v" } },
             })
           end,
         },
