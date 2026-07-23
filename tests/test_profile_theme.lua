@@ -97,10 +97,10 @@ T["guards"]["headless forces plain"] = function()
   )
 end
 
-T["guards"]["embed (GUI) forces plain"] = function()
+T["guards"]["embed alone does NOT force plain (TUI servers are --embed)"] = function()
   expect.equality(
-    _theme({ env_theme = "vellum", argv = { "nvim", "--embed" } }) == nil,
-    true
+    _theme({ env_theme = "vellum", argv = { "nvim", "--embed", "file.lua" } }),
+    "vellum"
   )
 end
 

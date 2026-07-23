@@ -27,11 +27,14 @@ function M._theme(ctx)
   if ctx.tmux ~= nil then
     return nil
   end
-  -- Only a real TUI sits behind the glass. GUIs embed (--embed) and render
-  -- opaque windows; --headless has no UI at all. Note nvim_list_uis() is
-  -- useless here: it is empty during startup even for TUI sessions.
+  -- --headless has no UI to theme. NOTE: --embed must NOT be treated as
+  -- "GUI" — since the TUI client/server split, every ordinary terminal
+  -- session's server process carries --embed (empirically: v:argv of a
+  -- plain `nvim file` session). GUI detection is therefore flag-based
+  -- (neovide) rather than argv-based. nvim_list_uis() is useless here:
+  -- it is empty during startup even for TUI sessions.
   for _, arg in ipairs(ctx.argv) do
-    if arg == "--embed" or arg == "--headless" then
+    if arg == "--headless" then
       return nil
     end
   end
