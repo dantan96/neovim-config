@@ -14,6 +14,12 @@ H.child_args = {
   "set rtp^=" .. cfg,
   "--cmd",
   "set noswapfile shortmess+=A",
+  -- Children inherit the parent environment: without this scrub, running the
+  -- suite from a derived Ghostty profile (GhosttyNu/GhosttyXonsh inject
+  -- GHOSTTY_NVIM_THEME) would flip the profile-theme path mid-suite. Empty
+  -- string reads as "absent" in config.ghostty_profile.
+  "--cmd",
+  "let $GHOSTTY_NVIM_THEME = ''",
 }
 
 -- Start child neovim with full config loaded
