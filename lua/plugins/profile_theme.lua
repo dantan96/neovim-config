@@ -47,6 +47,65 @@ local function anchor_statusline(bar, raised, inactive_fg)
   restyle("MiniStatuslineInactive", { bg = bar, fg = inactive_fg })
 end
 
+-- nu-glass statusline pill palettes live in statusline_palettes.toml (one
+-- entry per beloved-theme lift, citations there). Tiny TOML-subset reader:
+-- [section] headers and key = "string" pairs; anything else is ignored. A
+-- real parser dependency isn't worth it for this shape.
+local function read_pill_palettes()
+  local path = vim.fn.stdpath("config") .. "/statusline_palettes.toml"
+  local f = io.open(path, "r")
+  if f == nil then
+    return nil
+  end
+  local palettes, order, section, default = {}, {}, nil, nil
+  for line in f:lines() do
+    local name = line:match("^%s*%[([%w%-_]+)%]%s*$")
+    if name ~= nil then
+      section = {}
+      palettes[name] = section
+      order[#order + 1] = name
+    else
+      local k, v = line:match('^%s*([%w_]+)%s*=%s*"([^"]*)"')
+      if k ~= nil then
+        if section ~= nil then
+          section[k] = v
+        elseif k == "default" then
+          default = v
+        end
+      end
+    end
+  end
+  f:close()
+  if #order == 0 then
+    return nil
+  end
+  return { palettes = palettes, order = order, default = default }
+end
+
+-- Fallback = tokyonight-storm's lualine b/c (the committed baseline), so a
+-- missing/garbled toml degrades to a known-good bar, and partial entries
+-- inherit storm values per key.
+local PILL_FALLBACK = {
+  devinfo_fg = "#7aa2f7",
+  devinfo_bg = "#3b4261",
+  filename_fg = "#a9b1d6",
+  filename_bg = "#1f2335",
+  fileinfo_fg = "#a9b1d6",
+  fileinfo_bg = "#1f2335",
+  inactive_fg = "#737aa2",
+  inactive_bg = "#1f2335",
+}
+
+local function current_pills()
+  local cfg = read_pill_palettes()
+  if cfg == nil then
+    return PILL_FALLBACK
+  end
+  local name = vim.g.nu_glass_pill_palette or cfg.default or cfg.order[1]
+  local entry = cfg.palettes[name] or cfg.palettes[cfg.order[1]]
+  return vim.tbl_extend("force", PILL_FALLBACK, entry or {})
+end
+
 local RECIPES = {
   vellum = {
     plugin = "kepano/flexoki-neovim",
@@ -147,22 +206,46 @@ local RECIPES = {
         -- line boxes) — nu opts in; other profiles keep the neutral default.
         vim.api.nvim_set_hl(0, group .. "Col", { link = group })
       end
-      -- Floating pills: tokyonight-storm's lualine b/c sections, lifted
-      -- verbatim (folke/tokyonight.nvim lua/lualine/themes/_tokyonight.lua
-      -- normal.b/c + colors/storm.lua). Devinfo = section b (blue on
-      -- fg_gutter), Filename/Fileinfo = section c (fg_dark on bg_dark),
-      -- mirroring lualine's b|c...x layout. Gaps transparent.
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#7aa2f7", bg = "#3b4261" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#a9b1d6", bg = "#1f2335" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#a9b1d6", bg = "#1f2335" })
+      -- Floating pills: whichever statusline_palettes.toml entry is active
+      -- (each a beloved theme's lualine/airline b/c sections, citations in
+      -- the toml; <leader>tp cycles). Gaps transparent.
+      local p = current_pills()
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = p.devinfo_fg, bg = p.devinfo_bg })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = p.filename_fg, bg = p.filename_bg })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = p.fileinfo_fg, bg = p.fileinfo_bg })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#b4b7b4", bg = "#282a2e" })
-      -- Inactive: storm bg_statusline; fg is dark5 (not the shipped
-      -- fg_gutter — near-invisible through 0.75-alpha glass).
-      restyle("MiniStatuslineInactive", { bg = "#1f2335", fg = "#737aa2" })
+      restyle("MiniStatuslineInactive", { bg = p.inactive_bg, fg = p.inactive_fg })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#586394" })
+    end,
+    keymaps = function()
+      vim.keymap.set("n", "<leader>tp", function()
+        local cfg = read_pill_palettes()
+        if cfg == nil then
+          vim.notify(
+            "statusline_palettes.toml missing/empty; storm fallback in use",
+            vim.log.levels.WARN
+          )
+          return
+        end
+        local cur = vim.g.nu_glass_pill_palette or cfg.default or cfg.order[1]
+        local idx = 0
+        for i, name in ipairs(cfg.order) do
+          if name == cur then
+            idx = i
+            break
+          end
+        end
+        local nxt = cfg.order[idx % #cfg.order + 1]
+        vim.g.nu_glass_pill_palette = nxt
+        -- Refire only our repaint pass (transparency + decorate).
+        vim.api.nvim_exec_autocmds("ColorScheme", {
+          group = "ghostty_profile_transparency",
+        })
+        vim.notify("statusline palette: " .. nxt)
+      end, { desc = "Cycle statusline pill palette (nu-glass)" })
     end,
   },
 }

@@ -1,0 +1,79 @@
+# Statusline pill palettes for the nu-glass profile: the three middle
+# mini.statusline segments (Devinfo = git, Filename, Fileinfo = filetype)
+# plus the inactive bar. Each entry is a real theme's lualine/airline
+# b/c-section treatment, lifted verbatim from the cited source (adaptations
+# noted inline). Parsed by lua/plugins/profile_theme.lua — TOML subset only:
+# [section] headers and key = "string" pairs, nothing fancier.
+#
+# `default` picks the startup palette; <leader>tp cycles entries live in
+# file order.
+
+default = "tokyonight-storm"
+
+# folke/tokyonight.nvim — lua/lualine/themes/_tokyonight.lua normal.b/c,
+# palette lua/tokyonight/colors/storm.lua (bg_statusline = bg_dark,
+# fg_sidebar = fg_dark per colors/init.lua). Devinfo = section b (blue on
+# fg_gutter), Filename/Fileinfo = section c. Inactive fg adapted: storm's
+# dark5 instead of shipped fg_gutter, which vanishes through 0.75 glass.
+[tokyonight-storm]
+devinfo_fg = "#7aa2f7"
+devinfo_bg = "#3b4261"
+filename_fg = "#a9b1d6"
+filename_bg = "#1f2335"
+fileinfo_fg = "#a9b1d6"
+fileinfo_bg = "#1f2335"
+inactive_fg = "#737aa2"
+inactive_bg = "#1f2335"
+
+# Same storm pills, a dash more colour: Filename fg = storm cyan, Fileinfo
+# fg = storm magenta (magenta-on-fg_gutter is tokyonight's own visual.b
+# pair). All values from lua/tokyonight/colors/storm.lua.
+[tokyonight-storm-accents]
+devinfo_fg = "#7aa2f7"
+devinfo_bg = "#3b4261"
+filename_fg = "#7dcfff"
+filename_bg = "#1f2335"
+fileinfo_fg = "#bb9af7"
+fileinfo_bg = "#1f2335"
+inactive_fg = "#737aa2"
+inactive_bg = "#1f2335"
+
+# dracula/vim — autoload/airline/themes/dracula.vim, normal mode:
+# b = fg on comment (periwinkle), c/x = fg on selection. Inactive on
+# bgdark; its fg adapted to comment (shipped white reads active).
+[dracula-airline]
+devinfo_fg = "#f8f8f2"
+devinfo_bg = "#6272a4"
+filename_fg = "#f8f8f2"
+filename_bg = "#44475a"
+fileinfo_fg = "#f8f8f2"
+fileinfo_bg = "#44475a"
+inactive_fg = "#6272a4"
+inactive_bg = "#21222c"
+
+# catppuccin/nvim — lua/catppuccin/utils/lualine.lua normal.b/c and
+# inactive.c, palette lua/catppuccin/palettes/mocha.lua: b = blue on
+# surface0, c = text on mantle, inactive = overlay0 on mantle.
+[catppuccin-mocha]
+devinfo_fg = "#89b4fa"
+devinfo_bg = "#313244"
+filename_fg = "#cdd6f4"
+filename_bg = "#181825"
+fileinfo_fg = "#cdd6f4"
+fileinfo_bg = "#181825"
+inactive_fg = "#6c7086"
+inactive_bg = "#181825"
+
+# rebelot/kanagawa.nvim — lua/lualine/themes/kanagawa.lua (wave theme):
+# b = syn.fun (crystalBlue) on diff.change (winterBlue), c = ui.fg
+# (fujiWhite) on ui.bg_p1 (sumiInk4), inactive = fg_dim (oldWhite) on
+# bg_m3 (sumiInk0).
+[kanagawa-wave]
+devinfo_fg = "#7e9cd8"
+devinfo_bg = "#252535"
+filename_fg = "#dcd7ba"
+filename_bg = "#2a2a37"
+fileinfo_fg = "#dcd7ba"
+fileinfo_bg = "#2a2a37"
+inactive_fg = "#c8c093"
+inactive_bg = "#16161d"
