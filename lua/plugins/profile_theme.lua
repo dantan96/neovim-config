@@ -153,8 +153,8 @@ local RECIPES = {
       -- fg_gutter), Filename/Fileinfo = section c (fg_dark on bg_dark),
       -- mirroring lualine's b|c...x layout. Gaps transparent.
       vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#7aa2f7", bg = "#3b4261" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#a9b1d6", bg = "#1f2335" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#a9b1d6", bg = "#1f2335" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#7dcfff", bg = "#1f2335" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#bb9af7", bg = "#1f2335" })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#b4b7b4", bg = "#282a2e" })
       -- Inactive: storm bg_statusline; fg is dark5 (not the shipped
       -- fg_gutter — near-invisible through 0.75-alpha glass).
