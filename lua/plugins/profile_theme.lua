@@ -147,18 +147,18 @@ local RECIPES = {
         -- line boxes) — nu opts in; other profiles keep the neutral default.
         vim.api.nvim_set_hl(0, group .. "Col", { link = group })
       end
-      -- Floating pills: ONE shared ground under all three starship neons,
-      -- the synthwave move (neon over dark desaturated purple — Synthwave
-      -- '84 grounds this same pink/cyan/violet trio on #2a2139). #211731 is
-      -- that ground darkened one step so violet and pink clear 4.5:1, hue
-      -- 263 = the circular mean of the three fg hues (259) — the color the
-      -- neons already agree on, so no pill echoes any single fg and no
-      -- per-pill ladder quilts the bar. Gaps transparent.
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#332450" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#332450" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#332450" })
+      -- Floating pills: tokyonight-storm's lualine b/c sections, lifted
+      -- verbatim (folke/tokyonight.nvim lua/lualine/themes/_tokyonight.lua
+      -- normal.b/c + colors/storm.lua). Devinfo = section b (blue on
+      -- fg_gutter), Filename/Fileinfo = section c (fg_dark on bg_dark),
+      -- mirroring lualine's b|c...x layout. Gaps transparent.
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#7aa2f7", bg = "#3b4261" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#a9b1d6", bg = "#1f2335" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#a9b1d6", bg = "#1f2335" })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#b4b7b4", bg = "#282a2e" })
-      restyle("MiniStatuslineInactive", { bg = "#241a38", fg = "#969896" })
+      -- Inactive: storm bg_statusline; fg is dark5 (not the shipped
+      -- fg_gutter — near-invisible through 0.75-alpha glass).
+      restyle("MiniStatuslineInactive", { bg = "#1f2335", fg = "#737aa2" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
