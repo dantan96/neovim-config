@@ -71,6 +71,9 @@ vim.opt.shiftwidth = 4
 vim.opt.relativenumber = true
 vim.opt.number = true
 vim.opt.wrap = false
+-- One-row bottom chrome: the command line appears only when summoned
+-- (noice.nvim hosts cmdline UI in popups, the standard companion).
+vim.opt.cmdheight = 0
 
 -- Visual-line vertical motion: pairs with the visual-relative numbers rendered
 -- by statuscol.nvim (lua/plugins/statuscol.lua). With these, a count like 3<j>
