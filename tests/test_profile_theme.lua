@@ -150,17 +150,12 @@ T["recipes"]["flexoki-dark maps to flexoki"] = function()
   expect.equality(spec_for("flexoki-dark")[1], "kepano/flexoki-neovim")
 end
 
-T["recipes"]["nu-glass contributes no spec (apply-based, no warning)"] = function()
-  -- Must NOT anchor mini.nvim: a second spec for an already-configured
-  -- plugin merges in lazy and clobbers the real config. Distinguished from
-  -- the unknown-theme case by the absence of a warning.
-  local notified = false
-  local prev_notify = vim.notify
-  vim.notify = function() notified = true end
+T["recipes"]["nu-glass maps to base16-nvim (designed Tomorrow Night)"] = function()
   local spec = spec_for("nu-glass")
-  vim.notify = prev_notify
-  expect.equality(next(spec) == nil, true)
-  expect.equality(notified, false)
+  expect.equality(spec[1], "RRethy/base16-nvim")
+  -- Regression guard for the mini.nvim clobber bug: recipes must never
+  -- anchor a plugin that already has its own configured spec.
+  expect.no_equality(spec[1], "echasnovski/mini.nvim")
 end
 
 T["recipes"]["unknown theme contributes nothing"] = function()
