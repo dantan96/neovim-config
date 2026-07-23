@@ -150,10 +150,10 @@ T["recipes"]["flexoki-dark maps to flexoki"] = function()
   expect.equality(spec_for("flexoki-dark")[1], "kepano/flexoki-neovim")
 end
 
-T["recipes"]["nu-glass maps to fluoromachine"] = function()
+T["recipes"]["nu-glass maps to mini.base16 (ANSI mirror)"] = function()
   local spec = spec_for("nu-glass")
-  expect.equality(spec[1], "maxmx03/fluoromachine.nvim")
-  expect.equality(spec.name, "fluoromachine")
+  expect.equality(spec[1], "echasnovski/mini.nvim")
+  expect.equality(spec.name, "mini.nvim")
 end
 
 T["recipes"]["unknown theme contributes nothing"] = function()
