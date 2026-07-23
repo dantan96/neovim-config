@@ -1,6 +1,11 @@
 return {
   "catppuccin/nvim",
   name = "catppuccin",
+  -- Derived Ghostty profiles (see lua/config/ghostty_profile.lua) bring
+  -- their own colorscheme via lua/plugins/profile_theme.lua; catppuccin
+  -- stands down there and ONLY there. tests/test_profile_theme.lua pins
+  -- the plain-Ghostty baseline against this condition ever inverting.
+  enabled = require("config.ghostty_profile").theme() == nil,
   lazy = false,
   priority = 1000, -- load the colorscheme before other start plugins
   config = function()
