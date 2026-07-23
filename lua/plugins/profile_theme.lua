@@ -65,6 +65,8 @@ local RECIPES = {
       for group, bg in pairs(chips) do
         vim.api.nvim_set_hl(0, group, { fg = "#0d0e1a", bg = bg, bold = true })
       end
+      -- mini.base16 does not set colors_name; name it for debuggability.
+      vim.g.colors_name = "nu-glass-ansi"
     end,
   },
 }
