@@ -19,15 +19,17 @@ return {
             local diff = sl.section_diff({ trunc_width = 75 })
             local diagnostics = sl.section_diagnostics({ trunc_width = 75 })
             local lsp = sl.section_lsp({ icon = "LSP", trunc_width = 75 })
-            local filename = vim.api.nvim_win_get_width(0) < 100 and "%t%m%r"
-              or "%f%m%r"
+            -- Filename: the bare untruncated name, always ("%t"). The "%<"
+            -- truncation point sits AFTER it, so when space runs out the
+            -- right-hand clusters get cut — the name itself never renders
+            -- as an amputated "<rofile.lua".
             local fileinfo = sl.section_fileinfo({ trunc_width = 120 })
             local search = sl.section_searchcount({ trunc_width = 75 })
             return sl.combine_groups({
               { hl = mode_hl, strings = { mode } },
               { hl = "MiniStatuslineDevinfo", strings = { git, diff, diagnostics, lsp } },
+              { hl = "MiniStatuslineFilename", strings = { "%t%m%r" } },
               "%<",
-              { hl = "MiniStatuslineFilename", strings = { filename } },
               "%=",
               { hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
               { hl = "MiniStatuslineLocation", strings = { search, "%l/%L:%2c" } },

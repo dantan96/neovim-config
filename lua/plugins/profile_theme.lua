@@ -122,8 +122,11 @@ local RECIPES = {
       -- the gaps between them stay truly transparent (StatusLine remains
       -- cleared). Islands of light on glass.
       vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#232638" })
-      restyle("MiniStatuslineFilename", { bg = "#1a1c2b" })
-      restyle("MiniStatuslineFileinfo", { bg = "#1a1c2b" })
+      -- Filename vs filetype: distinct in BOTH channels. Filename takes
+      -- the starship-cyan spice on the raised tone; fileinfo stays muted
+      -- Tomorrow gray on the near-glass tone.
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#232638" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#969896", bg = "#1a1c2b" })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#c5c8c6", bg = "#232638" })
       restyle("MiniStatuslineInactive", { bg = "#1a1c2b", fg = "#586394" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
