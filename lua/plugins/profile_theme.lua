@@ -144,15 +144,18 @@ local RECIPES = {
       for group, bg in pairs(chips) do
         vim.api.nvim_set_hl(0, group, { fg = "#0d0e1a", bg = bg, bold = true })
       end
-      -- Floating pills on Tomorrow's own neutrals — the grays Kempson
-      -- designed to sit together: base01 #282a2e for the quiet segments,
-      -- base02 #373b41 for the filename (one step up), base00 #1d1f21 for
-      -- inactive. Starship accents stay foreground-only. Gaps transparent.
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#282a2e" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#373b41" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#282a2e" })
+      -- Floating pills: ONE shared ground under all three starship neons,
+      -- the synthwave move (neon over dark desaturated purple — Synthwave
+      -- '84 grounds this same pink/cyan/violet trio on #2a2139). #211731 is
+      -- that ground darkened one step so violet and pink clear 4.5:1, hue
+      -- 263 = the circular mean of the three fg hues (259) — the color the
+      -- neons already agree on, so no pill echoes any single fg and no
+      -- per-pill ladder quilts the bar. Gaps transparent.
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#211731" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#211731" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#211731" })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#b4b7b4", bg = "#282a2e" })
-      restyle("MiniStatuslineInactive", { bg = "#1d1f21", fg = "#969896" })
+      restyle("MiniStatuslineInactive", { bg = "#17111f", fg = "#969896" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
