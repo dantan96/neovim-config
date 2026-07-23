@@ -147,20 +147,22 @@ local RECIPES = {
       -- Floating pills: every segment carries its own near-glass ground;
       -- the gaps between them stay truly transparent (StatusLine remains
       -- cleared). Islands of light on glass.
-      -- Fg-echo pill system: each pill is a very dark tint of its OWN
-      -- accent (hue borrowed from the fg, chroma locked low ~26-30%), so
-      -- every segment glows from within instead of sitting on arbitrary
-      -- blues. Discipline comes from a value ladder anchored to the glass
-      -- ground #0d0e1a: filename (primary identity) rides the lightest
-      -- pill and advances; devinfo/fileinfo/location share one mid tier;
-      -- inactive sinks almost to the glass. Location joins the family as
-      -- the starship-slate pill (lightened slate ink on slate-black).
-      -- All active fg/bg pairs >= 4.5:1; inactive 3.1:1 (quiet chrome).
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#201a2e" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#1b2e32" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#2a1921" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#9aa5c8", bg = "#191b2a" })
-      restyle("MiniStatuslineInactive", { bg = "#121521", fg = "#586394" })
+      -- One-ground-family pill system: every established statusline theme
+      -- (tokyonight fg_gutter/bg_statusline, catppuccin surface0/mantle,
+      -- rose-pine overlay/surface, the lualine "bubbles" grey) keeps its
+      -- multi-colored content on a SINGLE neutral surface family — accents
+      -- are figures, never grounds. So all pills here are lightness tints
+      -- of the glass ground itself (hue 235, the indigo of #0d0e1a),
+      -- elevation by value, not hue: filename (primary identity) rides
+      -- the lightest tier; devinfo/fileinfo/location share one mid tier;
+      -- inactive sinks almost to the glass. The starship accents supply
+      -- all the color as foregrounds on that unified indigo ground.
+      -- Verified: active fg/bg >= 4.5:1, inactive 3.19:1 (quiet chrome).
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#1a1c30" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#212440" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#1a1c30" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#9aa5c8", bg = "#1a1c30" })
+      restyle("MiniStatuslineInactive", { bg = "#11131f", fg = "#586394" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
