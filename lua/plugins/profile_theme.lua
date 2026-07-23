@@ -110,6 +110,41 @@ local function make_transparent()
   end
 end
 
+local function transparency_autocmd()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup(
+      "ghostty_profile_transparency",
+      { clear = true }
+    ),
+    callback = make_transparent,
+  })
+end
+
+if recipe.apply then
+  -- Apply-based recipes (nu-glass) paint over plugins that already have
+  -- their own lazy specs (mini.nvim). They MUST NOT contribute a plugin
+  -- spec: a second spec for the same plugin would merge in lazy.nvim and
+  -- our config would silently replace the plugin's real config (this
+  -- happened: mini.statusline setup never ran). Instead: no spec at all,
+  -- and a one-shot UIEnter apply after startup is fully assembled.
+  vim.api.nvim_create_autocmd("UIEnter", {
+    once = true,
+    callback = function()
+      vim.o.background = recipe.background
+      transparency_autocmd()
+      if not pcall(recipe.apply) then
+        vim.notify(
+          "profile_theme: recipe apply failed; using default colors",
+          vim.log.levels.WARN
+        )
+      end
+      make_transparent()
+      vim.o.pumblend = 10 -- popup legibility over glass
+    end,
+  })
+  return {}
+end
+
 return {
   recipe.plugin,
   name = recipe.name,
@@ -122,37 +157,19 @@ return {
     if recipe.setup then
       pcall(recipe.setup)
     end
-    vim.api.nvim_create_autocmd("ColorScheme", {
-      group = vim.api.nvim_create_augroup(
-        "ghostty_profile_transparency",
-        { clear = true }
-      ),
-      callback = make_transparent,
-    })
-    if recipe.apply then
-      -- Recipe applies its scheme directly (mini.base16 paints immediately,
-      -- no :colorscheme involved, so run the transparency pass ourselves).
-      if not pcall(recipe.apply) then
-        vim.notify(
-          "profile_theme: recipe apply failed; using default colors",
-          vim.log.levels.WARN
-        )
-      end
+    transparency_autocmd()
+    -- First launch in a profile installs the scheme from the network; if
+    -- that ever fails, degrade to default colors rather than erroring on
+    -- every startup.
+    local ok = pcall(vim.cmd.colorscheme, recipe.colorscheme)
+    if not ok then
+      vim.notify(
+        ("profile_theme: colorscheme %q unavailable (offline first launch?); using default colors"):format(
+          recipe.colorscheme
+        ),
+        vim.log.levels.WARN
+      )
       make_transparent()
-    else
-      -- First launch in a profile installs the scheme from the network; if
-      -- that ever fails, degrade to default colors rather than erroring on
-      -- every startup.
-      local ok = pcall(vim.cmd.colorscheme, recipe.colorscheme)
-      if not ok then
-        vim.notify(
-          ("profile_theme: colorscheme %q unavailable (offline first launch?); using default colors"):format(
-            recipe.colorscheme
-          ),
-          vim.log.levels.WARN
-        )
-        make_transparent()
-      end
     end
     vim.o.pumblend = 10 -- popup legibility over glass
   end,
