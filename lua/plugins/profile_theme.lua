@@ -22,6 +22,31 @@ end
 --   background   'light'|'dark', pre-set to keep OSC-11 autodetect a no-op
 --   decorate     optional highlight touch-ups, reapplied on every
 --                ColorScheme so they survive reloads
+-- Merge new attributes onto a group's existing definition (nvim_set_hl
+-- REPLACES wholesale; this preserves e.g. a theme's segment fg colors).
+local function restyle(group, opts)
+  local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+  for k, v in pairs(opts) do
+    hl[k] = v
+  end
+  vim.api.nvim_set_hl(0, group, hl)
+end
+
+-- Statusline model (lualine A/B/C gradient): A = mode chip (accent bg),
+-- B = devinfo/fileinfo/location (one tone raised), C = filename (on the
+-- bar). Two material treatments: paper profiles ANCHOR (continuous bar,
+-- furniture on the page); glass profiles FLOAT (pill segments, gaps stay
+-- transparent — islands of light).
+local function anchor_statusline(bar, raised, inactive_fg)
+  restyle("StatusLine", { bg = bar })
+  restyle("StatusLineNC", { bg = bar })
+  restyle("MiniStatuslineFilename", { bg = bar })
+  restyle("MiniStatuslineDevinfo", { bg = raised })
+  restyle("MiniStatuslineFileinfo", { bg = raised })
+  vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { bg = raised, fg = inactive_fg })
+  restyle("MiniStatuslineInactive", { bg = bar, fg = inactive_fg })
+end
+
 local RECIPES = {
   vellum = {
     plugin = "kepano/flexoki-neovim",
@@ -33,6 +58,8 @@ local RECIPES = {
       -- conservatively darken ONLY legibility-critical groups.
       vim.api.nvim_set_hl(0, "Comment", { fg = "#6f6e69", italic = true })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#878580" })
+      -- Anchored bar: Flexoki base-50 sill, base-100 raised segments.
+      anchor_statusline("#f2f0e5", "#e6e4d9", "#6f6e69")
     end,
   },
   ["flexoki-dark"] = {
@@ -40,6 +67,10 @@ local RECIPES = {
     name = "flexoki",
     colorscheme = "flexoki-dark",
     background = "dark",
+    decorate = function()
+      -- Same anchor, night materials: base-850 sill, base-800 raised.
+      anchor_statusline("#1c1b1a", "#282726", "#878580")
+    end,
   },
   ["nu-glass"] = {
     -- Ghostty's stock palette IS Tomorrow Night, so use the maintained,
@@ -87,7 +118,14 @@ local RECIPES = {
       for group, bg in pairs(chips) do
         vim.api.nvim_set_hl(0, group, { fg = "#0d0e1a", bg = bg, bold = true })
       end
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff" })
+      -- Floating pills: every segment carries its own near-glass ground;
+      -- the gaps between them stay truly transparent (StatusLine remains
+      -- cleared). Islands of light on glass.
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#232638" })
+      restyle("MiniStatuslineFilename", { bg = "#1a1c2b" })
+      restyle("MiniStatuslineFileinfo", { bg = "#1a1c2b" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#c5c8c6", bg = "#232638" })
+      restyle("MiniStatuslineInactive", { bg = "#1a1c2b", fg = "#586394" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
