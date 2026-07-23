@@ -35,19 +35,28 @@ return {
               "%=",
               { hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
               { hl = mode_hl, strings = { search, "%l" } },
-              { hl = mode_hl, strings = { "%v" } },
+              { hl = mode_hl .. "Col", strings = { "%v" } },
             })
           end,
         },
       })
-      -- No longer used by the content function above, but profile themes
-      -- (profile_theme.lua) still set MiniStatuslineLocation, so keep the
+      -- Profile themes still restyle MiniStatuslineLocation; keep the
       -- neutral default link.
       vim.api.nvim_set_hl(
         0,
         "MiniStatuslineLocation",
         { link = "MiniStatuslineFileinfo", default = true }
       )
+      -- Column box, per-profile: <Mode>Col groups default to the neutral
+      -- Location styling (plain Ghostty and GhosttyXonsh keep their exact
+      -- previous look); a profile theme may re-link them to the mode chip
+      -- for full mode treatment (GhosttyNu does).
+      for _, m in ipairs({ "Normal", "Insert", "Visual", "Replace", "Command", "Other" }) do
+        vim.api.nvim_set_hl(0, "MiniStatuslineMode" .. m .. "Col", {
+          link = "MiniStatuslineLocation",
+          default = true,
+        })
+      end
       require("mini.operators").setup()
       require("mini.ai").setup({
         custom_textobjects = {
