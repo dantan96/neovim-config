@@ -41,13 +41,17 @@ function M.setup()
       -- Keys in tamarin-colors.lua use plain capture names (e.g.
       -- "@keyword"); the query captures are namespaced as "@spthy<name>".
       -- Skip keys that already carry the prefix.
-      local highlights = tc.highlights
-      for group, color in pairs(highlights) do
-        local spthyGroup = group
-        if not vim.startswith(group, "@spthy") then
-          spthyGroup = "@spthy" .. string.sub(group, 2)
+      -- Derived Ghostty profiles skip the hardcoded (catppuccin-matched)
+      -- colors; treesitter itself stays on so structure survives.
+      if not require("config.ghostty_profile").theme() then
+        local highlights = tc.highlights
+        for group, color in pairs(highlights) do
+          local spthyGroup = group
+          if not vim.startswith(group, "@spthy") then
+            spthyGroup = "@spthy" .. string.sub(group, 2)
+          end
+          vim.api.nvim_set_hl(0, spthyGroup, color)
         end
-        vim.api.nvim_set_hl(0, spthyGroup, color)
       end
     end,
   })

@@ -89,6 +89,13 @@ end
 -- module-local flag would let setup() re-run and reset module state
 -- (the <space><space>x mapping makes that a real workflow).
 function M.setup()
+  -- Derived Ghostty profiles: these hexes are catppuccin-matched; let the
+  -- profile colorscheme's capture defaults color F# instead (accepted
+  -- trade: thematic consistency over hand-tuned colors). Queries stay
+  -- active; only the color bindings stand down.
+  if require("config.ghostty_profile").theme() then
+    return
+  end
   if vim.g._fsharp_hl_setup then
     return
   end
