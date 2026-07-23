@@ -55,11 +55,37 @@ local RECIPES = {
     background = "light",
     decorate = function()
       -- Flexoki Light's faintest grays vanish over translucent paper;
-      -- conservatively darken ONLY legibility-critical groups.
-      vim.api.nvim_set_hl(0, "Comment", { fg = "#6f6e69", italic = true })
+      -- conservatively darken ONLY legibility-critical groups. The comment
+      -- darkening is toggleable (<leader>tc): sometimes melting-into-the-
+      -- paper is the wanted mood.
+      if vim.g.vellum_comment_soft_fg == nil then
+        -- Remember flexoki's own faint ink before darkening: the toggle's
+        -- "soft" state restores the theme's true value, not a guess.
+        local orig = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
+        vim.g.vellum_comment_soft_fg = orig.fg
+          and string.format("#%06x", orig.fg)
+          or "#b7b5ac"
+      end
+      if vim.g.vellum_comments_soft ~= true then
+        vim.api.nvim_set_hl(0, "Comment", { fg = "#6f6e69", italic = true })
+      end
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#878580" })
       -- Anchored bar: Flexoki base-50 sill, base-100 raised segments.
       anchor_statusline("#f2f0e5", "#e6e4d9", "#6f6e69")
+    end,
+    keymaps = function()
+      vim.keymap.set("n", "<leader>tc", function()
+        vim.g.vellum_comments_soft = not vim.g.vellum_comments_soft
+        if vim.g.vellum_comments_soft then
+          -- The theme's own faint ink: melts into the paper.
+          vim.api.nvim_set_hl(0, "Comment", {
+            fg = vim.g.vellum_comment_soft_fg or "#b7b5ac",
+            italic = true,
+          })
+        else
+          vim.api.nvim_set_hl(0, "Comment", { fg = "#6f6e69", italic = true })
+        end
+      end, { desc = "Toggle comment softness (vellum)" })
     end,
   },
   ["flexoki-dark"] = {
@@ -121,12 +147,13 @@ local RECIPES = {
       -- Floating pills: every segment carries its own near-glass ground;
       -- the gaps between them stay truly transparent (StatusLine remains
       -- cleared). Islands of light on glass.
+      -- Pill ladder, no two adjacent alike: git violet on raised slate;
+      -- filename starship-cyan on a cyan-tinted raised tone; filetype
+      -- starship-pink on near-glass; line box rides the mode color
+      -- (content-level); column box quiet on raised slate.
       vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#232638" })
-      -- Filename vs filetype: distinct in BOTH channels. Filename takes
-      -- the starship-cyan spice on the raised tone; fileinfo stays muted
-      -- Tomorrow gray on the near-glass tone.
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#232638" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#969896", bg = "#1a1c2b" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#1a2a38" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#1a1c2b" })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#c5c8c6", bg = "#232638" })
       restyle("MiniStatuslineInactive", { bg = "#1a1c2b", fg = "#586394" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
@@ -201,6 +228,9 @@ return {
       ),
       callback = repaint,
     })
+    if recipe.keymaps then
+      pcall(recipe.keymaps)
+    end
     if recipe.apply then
       -- Setup-style schemes paint directly; :colorscheme never fires, so
       -- run the repaint pass ourselves.
