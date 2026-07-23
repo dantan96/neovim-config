@@ -72,21 +72,26 @@ local RECIPES = {
       vim.g.colors_name = "nu-glass-tomorrow"
     end,
     decorate = function()
-      -- Starship-neon decoration, statusline only (never syntax): one neon
-      -- per mode, mirroring the prompt's palette.
+      -- Chrome only, never syntax. Mode chips stay consonant (Tomorrow's
+      -- own accents — hot neon proved jarring); starship's palette spices
+      -- the quieter chrome instead: slate line numbers with a cyan cursor
+      -- line, slate tildes and separators, violet git segment.
       local chips = {
-        MiniStatuslineModeNormal = "#ff2e97",
-        MiniStatuslineModeInsert = "#00e5ff",
-        MiniStatuslineModeVisual = "#9d6bff",
-        MiniStatuslineModeReplace = "#ff5566",
-        MiniStatuslineModeCommand = "#b8ff5c",
-        MiniStatuslineModeOther = "#586394",
+        MiniStatuslineModeNormal = "#81a2be",
+        MiniStatuslineModeInsert = "#b5bd68",
+        MiniStatuslineModeVisual = "#b294bb",
+        MiniStatuslineModeReplace = "#cc6666",
+        MiniStatuslineModeCommand = "#f0c674",
+        MiniStatuslineModeOther = "#8abeb7",
       }
       for group, bg in pairs(chips) do
         vim.api.nvim_set_hl(0, group, { fg = "#0d0e1a", bg = bg, bold = true })
       end
-      -- Git/diagnostics segment: violet accent on cleared ground.
       vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff" })
+      vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
+      vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
+      vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
+      vim.api.nvim_set_hl(0, "WinSeparator", { fg = "#586394" })
     end,
   },
 }
