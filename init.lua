@@ -74,6 +74,12 @@ vim.opt.wrap = false
 -- One-row bottom chrome: the command line appears only when summoned
 -- (noice.nvim hosts cmdline UI in popups, the standard companion).
 vim.opt.cmdheight = 0
+-- ... and exactly ONE statusline, ever. The default laststatus=2 draws a
+-- bar per window, so a bottom split (terminal, quickfix) stacks its own
+-- bar on top of the screen-bottom one — the chrome reads 2-3 rows tall.
+-- 3 = single global statusline; mini.statusline supports it natively and
+-- the <leader>ts toggle below already restores this value.
+vim.opt.laststatus = 3
 
 -- Visual-line vertical motion: pairs with the visual-relative numbers rendered
 -- by statuscol.nvim (lua/plugins/statuscol.lua). With these, a count like 3<j>
