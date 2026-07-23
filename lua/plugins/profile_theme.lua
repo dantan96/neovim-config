@@ -143,6 +143,9 @@ local RECIPES = {
       }
       for group, bg in pairs(chips) do
         vim.api.nvim_set_hl(0, group, { fg = "#0d0e1a", bg = bg, bold = true })
+        -- Column box: full mode treatment (same bg and fg as the mode and
+        -- line boxes) — nu opts in; other profiles keep the neutral default.
+        vim.api.nvim_set_hl(0, group .. "Col", { link = group })
       end
       -- Floating pills: ONE shared ground under all three starship neons,
       -- the synthwave move (neon over dark desaturated purple — Synthwave
