@@ -122,4 +122,48 @@ T["guards"]["force override beats guards"] = function()
   )
 end
 
+-- Recipe spec shape: import the plugin module under a forced theme and
+-- assert what lazy would receive. No child, no network.
+local function spec_for(force)
+  local prev = vim.g.ghostty_profile_theme_force
+  vim.g.ghostty_profile_theme_force = force
+  package.loaded["plugins.profile_theme"] = nil
+  local spec = require("plugins.profile_theme")
+  package.loaded["plugins.profile_theme"] = nil
+  vim.g.ghostty_profile_theme_force = prev
+  return spec
+end
+
+T["recipes"] = new_set()
+
+T["recipes"]["plain contributes nothing"] = function()
+  expect.equality(next(spec_for("")) == nil, true)
+end
+
+T["recipes"]["vellum maps to flexoki-light"] = function()
+  local spec = spec_for("vellum")
+  expect.equality(spec[1], "kepano/flexoki-neovim")
+  expect.equality(spec.name, "flexoki")
+end
+
+T["recipes"]["flexoki-dark maps to flexoki"] = function()
+  expect.equality(spec_for("flexoki-dark")[1], "kepano/flexoki-neovim")
+end
+
+T["recipes"]["nu-glass maps to fluoromachine"] = function()
+  local spec = spec_for("nu-glass")
+  expect.equality(spec[1], "maxmx03/fluoromachine.nvim")
+  expect.equality(spec.name, "fluoromachine")
+end
+
+T["recipes"]["unknown theme contributes nothing"] = function()
+  local notified = false
+  local prev_notify = vim.notify
+  vim.notify = function() notified = true end
+  local spec = spec_for("no-such-theme")
+  vim.notify = prev_notify
+  expect.equality(next(spec) == nil, true)
+  expect.equality(notified, true)
+end
+
 return T
