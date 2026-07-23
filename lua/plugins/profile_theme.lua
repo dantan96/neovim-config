@@ -144,25 +144,15 @@ local RECIPES = {
       for group, bg in pairs(chips) do
         vim.api.nvim_set_hl(0, group, { fg = "#0d0e1a", bg = bg, bold = true })
       end
-      -- Floating pills: every segment carries its own near-glass ground;
-      -- the gaps between them stay truly transparent (StatusLine remains
-      -- cleared). Islands of light on glass.
-      -- One-ground-family pill system: every established statusline theme
-      -- (tokyonight fg_gutter/bg_statusline, catppuccin surface0/mantle,
-      -- rose-pine overlay/surface, the lualine "bubbles" grey) keeps its
-      -- multi-colored content on a SINGLE neutral surface family — accents
-      -- are figures, never grounds. So all pills here are lightness tints
-      -- of the glass ground itself (hue 235, the indigo of #0d0e1a),
-      -- elevation by value, not hue: filename (primary identity) rides
-      -- the lightest tier; devinfo/fileinfo/location share one mid tier;
-      -- inactive sinks almost to the glass. The starship accents supply
-      -- all the color as foregrounds on that unified indigo ground.
-      -- Verified: active fg/bg >= 4.5:1, inactive 3.19:1 (quiet chrome).
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#1a1c30" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#212440" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#1a1c30" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#9aa5c8", bg = "#1a1c30" })
-      restyle("MiniStatuslineInactive", { bg = "#11131f", fg = "#586394" })
+      -- Floating pills on Tomorrow's own neutrals — the grays Kempson
+      -- designed to sit together: base01 #282a2e for the quiet segments,
+      -- base02 #373b41 for the filename (one step up), base00 #1d1f21 for
+      -- inactive. Starship accents stay foreground-only. Gaps transparent.
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#282a2e" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#373b41" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#282a2e" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#b4b7b4", bg = "#282a2e" })
+      restyle("MiniStatuslineInactive", { bg = "#1d1f21", fg = "#969896" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
