@@ -154,11 +154,11 @@ local RECIPES = {
       -- 263 = the circular mean of the three fg hues (259) — the color the
       -- neons already agree on, so no pill echoes any single fg and no
       -- per-pill ladder quilts the bar. Gaps transparent.
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#211731" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#211731" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#211731" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#332450" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#332450" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#332450" })
       vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#b4b7b4", bg = "#282a2e" })
-      restyle("MiniStatuslineInactive", { bg = "#17111f", fg = "#969896" })
+      restyle("MiniStatuslineInactive", { bg = "#241a38", fg = "#969896" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
