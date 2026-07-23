@@ -147,15 +147,20 @@ local RECIPES = {
       -- Floating pills: every segment carries its own near-glass ground;
       -- the gaps between them stay truly transparent (StatusLine remains
       -- cleared). Islands of light on glass.
-      -- Pill ladder, no two adjacent alike: git violet on raised slate;
-      -- filename starship-cyan on a cyan-tinted raised tone; filetype
-      -- starship-pink on near-glass; line box rides the mode color
-      -- (content-level); column box quiet on raised slate.
-      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#232638" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#1a2a38" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#1a1c2b" })
-      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#c5c8c6", bg = "#232638" })
-      restyle("MiniStatuslineInactive", { bg = "#1a1c2b", fg = "#586394" })
+      -- Fg-echo pill system: each pill is a very dark tint of its OWN
+      -- accent (hue borrowed from the fg, chroma locked low ~26-30%), so
+      -- every segment glows from within instead of sitting on arbitrary
+      -- blues. Discipline comes from a value ladder anchored to the glass
+      -- ground #0d0e1a: filename (primary identity) rides the lightest
+      -- pill and advances; devinfo/fileinfo/location share one mid tier;
+      -- inactive sinks almost to the glass. Location joins the family as
+      -- the starship-slate pill (lightened slate ink on slate-black).
+      -- All active fg/bg pairs >= 4.5:1; inactive 3.1:1 (quiet chrome).
+      vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = "#9d6bff", bg = "#201a2e" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = "#00e5ff", bg = "#1b2e32" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = "#ff2e97", bg = "#2a1921" })
+      vim.api.nvim_set_hl(0, "MiniStatuslineLocation", { fg = "#9aa5c8", bg = "#191b2a" })
+      restyle("MiniStatuslineInactive", { bg = "#121521", fg = "#586394" })
       vim.api.nvim_set_hl(0, "LineNr", { fg = "#586394" })
       vim.api.nvim_set_hl(0, "CursorLineNr", { fg = "#00e5ff", bold = true })
       vim.api.nvim_set_hl(0, "EndOfBuffer", { fg = "#586394" })
