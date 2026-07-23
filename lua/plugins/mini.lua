@@ -5,11 +5,10 @@ return {
     version = false,
     config = function()
       -- Statusline: stock sections, two deliberate changes. (1) The
-      -- location cluster gets its OWN group (MiniStatuslineLocation) —
-      -- stock mini paints it with the mode color, which reads as three
-      -- disconnected mode-colored boxes. Default-links to Fileinfo
-      -- (neutral); profile themes may restyle it. (2) Narrow windows show
-      -- the file tail instead of a mid-path %< amputation.
+      -- location cluster is split into line and column boxes — separate
+      -- groups so they render as two boxes, both painted with the mode
+      -- color. (2) Narrow windows show the file tail instead of a
+      -- mid-path %< amputation.
       local sl = require("mini.statusline")
       sl.setup({
         content = {
@@ -25,9 +24,9 @@ return {
             -- as an amputated "<rofile.lua".
             local fileinfo = sl.section_fileinfo({ trunc_width = 120 })
             local search = sl.section_searchcount({ trunc_width = 75 })
-            -- Line box rides the mode color (the decoupling experiment is
-            -- over); the column box is its own group for a two-tone pair.
-            -- Bare numbers only.
+            -- Line and column boxes both ride the mode color, matching
+            -- the mode chip; kept as two groups so they stay visually
+            -- separate boxes. Bare numbers only.
             return sl.combine_groups({
               { hl = mode_hl, strings = { mode } },
               { hl = "MiniStatuslineDevinfo", strings = { git, diff, diagnostics, lsp } },
@@ -36,11 +35,14 @@ return {
               "%=",
               { hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
               { hl = mode_hl, strings = { search, "%l" } },
-              { hl = "MiniStatuslineLocation", strings = { "%v" } },
+              { hl = mode_hl, strings = { "%v" } },
             })
           end,
         },
       })
+      -- No longer used by the content function above, but profile themes
+      -- (profile_theme.lua) still set MiniStatuslineLocation, so keep the
+      -- neutral default link.
       vim.api.nvim_set_hl(
         0,
         "MiniStatuslineLocation",
