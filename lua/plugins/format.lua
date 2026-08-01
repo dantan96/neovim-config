@@ -19,6 +19,14 @@ return {
         mode = { "n", "v" },
         desc = "Format buffer (Conform)",
       },
+      {
+        "<leader>tf",
+        function()
+          vim.b.disable_autoformat = not vim.b.disable_autoformat
+          vim.notify("format-on-save " .. (vim.b.disable_autoformat and "off" or "on") .. " (buffer)")
+        end,
+        desc = "Toggle format-on-save (buffer)",
+      },
     },
     opts = {
       format_on_save = function(bufnr)
