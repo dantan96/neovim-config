@@ -86,18 +86,36 @@ T["keymap behavior"]["<leader>ts toggles statusline"] = function()
   expect.no_equality(before, after)
 end
 
-T["keymap behavior"]["<leader>tw toggles markdown live hard-wrap"] = function()
+T["keymap behavior"]["<leader>tw toggles markdown format-on-pause"] = function()
   child.lua("vim.bo.filetype = 'markdown'")
-  local enabled = [[require("config.markdown.hardwrap").enabled()]]
-  -- Default OFF: prettier wraps on save; typing must not auto-wrap
-  -- (Vim's internal formatter splits `backtick spans`).
-  expect.equality(child.lua_get(enabled), false)
-  child.type_keys(" tw") -- on: fo gains 'a' and 't'
-  expect.equality(child.lua_get(enabled), true)
+  local active = [[require("config.markdown.pauseformat").active()]]
+  -- Default ON: live formatting mirrors save-time formatting.
+  expect.equality(child.lua_get(active), true)
+  child.type_keys(" tw") -- pause off, save-format untouched
+  expect.equality(child.lua_get(active), false)
   -- textwidth (and thus the colorcolumn guide) must survive
   expect.equality(child.lua_get("vim.bo.textwidth"), 65)
-  child.type_keys(" tw") -- back off
-  expect.equality(child.lua_get(enabled), false)
+  -- Vim's native typing-wrap must stay off: prettier on pause/save is
+  -- the only wrap engine (native 't'/'a' split `backtick spans`).
+  expect.equality(child.lua_get([[vim.bo.formatoptions:find("[at]")]]), vim.NIL)
+  child.type_keys(" tw") -- back on
+  expect.equality(child.lua_get(active), true)
+end
+
+T["keymap behavior"]["<leader>tf silences pause even with pause toggled on"] = function()
+  child.lua("vim.bo.filetype = 'markdown'")
+  local active = [[require("config.markdown.pauseformat").active()]]
+  -- disable_autoformat gates BOTH save and pause: with it set, pause
+  -- stays off regardless of the <leader>tw flag...
+  child.lua("vim.b.disable_autoformat = true")
+  expect.equality(child.lua_get(active), false)
+  -- ...and clearing it restores whatever <leader>tw state was left.
+  child.lua("vim.b.disable_autoformat = nil")
+  expect.equality(child.lua_get(active), true)
+  child.lua("vim.b.disable_pauseformat = true")
+  child.lua("vim.b.disable_autoformat = true")
+  child.lua("vim.b.disable_autoformat = nil")
+  expect.equality(child.lua_get(active), false)
 end
 
 T["keymap behavior"]["<leader>tw is markdown-only (buffer-local)"] = function()

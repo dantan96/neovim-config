@@ -20,19 +20,23 @@ return {
         desc = "Format buffer (Conform)",
       },
       {
+        -- Master formatting switch: gates save (format_on_save below)
+        -- AND pause (config.markdown.pauseformat). <leader>tw narrows
+        -- to pause-only.
         "<leader>tf",
         function()
           vim.b.disable_autoformat = not vim.b.disable_autoformat
-          vim.notify("format-on-save " .. (vim.b.disable_autoformat and "off" or "on") .. " (buffer)")
+          vim.notify("formatting " .. (vim.b.disable_autoformat and "off" or "on") .. " (save+pause, buffer)")
         end,
-        desc = "Toggle format-on-save (buffer)",
+        desc = "Toggle formatting (save+pause, buffer)",
       },
     },
     opts = {
       format_on_save = function(bufnr)
-        -- Escape hatch: for markdown, save-time prettier IS the
+        -- Escape hatch (<leader>tf; auto-set by config.prettier_ignore
+        -- for .prettierignore'd files): for markdown, prettier IS the
         -- hard-wrap engine (see formatters.prettier below), so this is
-        -- the only way to save without reflow.
+        -- the way to save without reflow.
         if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
           return nil
         end
@@ -56,10 +60,11 @@ return {
         -- prettier, not remark: prettier's --prose-wrap does the
         -- markdown hard-wrapping (width = 'textwidth') and never
         -- breaks inside a `backtick span`, unlike Vim's internal
-        -- formatter — live typing-wrap is therefore off by default
-        -- (config.markdown.hardwrap). remark still serves the lint /
-        -- LSP ecosystem (config.remark_auto, remark_ls); it just no
-        -- longer formats on save.
+        -- formatter — Vim's own typing-wrap stays off, and live
+        -- formatting is conform-on-pause instead
+        -- (config.markdown.pauseformat), same chain as save. remark
+        -- still serves the lint / LSP ecosystem (config.remark_auto,
+        -- remark_ls); it just no longer formats on save.
         markdown = { "prettier" },
         ["markdown.mdx"] = { "prettier" },
       },
@@ -75,6 +80,17 @@ return {
         -- args reach no other filetype.
         prettier = {
           prepend_args = { "--prose-wrap", "always", "--print-width", "65" },
+          -- Prettier resolves .prettierignore relative to CWD only (no
+          -- upward walk), so run from the ignore file's root when one
+          -- exists: ignored files then pass through unchanged. Config
+          -- resolution is unaffected (.prettierrc is found by walking
+          -- up from --stdin-filepath, and the args above override it
+          -- anyway). config.prettier_ignore probes the same root.
+          -- Deferred require: a bare one here would force-load conform
+          -- at spec-parse time, defeating the BufWritePre lazy-load.
+          cwd = function(self, ctx)
+            return require("conform.util").root_file({ ".prettierignore" })(self, ctx)
+          end,
         },
         ruff_fix = {
           prepend_args = { "--fix-only", "--unsafe-fixes" },

@@ -111,25 +111,11 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 })
 
 
--- Format-on-save opt-outs by project: markdown in these directories is
--- parsed line-by-line by a build script, so prettier's prose-wrap reflow
--- (see plugins/format.lua) is unwanted there. Defaults the existing
--- vim.b.disable_autoformat escape hatch to on; <leader>tf re-enables
--- per buffer.
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = "markdown",
-  group = vim.api.nvim_create_augroup("project-noformat", { clear = true }),
-  callback = function(args)
-    local noformat_dirs = { vim.fn.expand("~/ResumeProject/") }
-    local name = vim.api.nvim_buf_get_name(args.buf)
-    for _, dir in ipairs(noformat_dirs) do
-      if name:find(dir, 1, true) == 1 then
-        vim.b[args.buf].disable_autoformat = true
-        return
-      end
-    end
-  end,
-})
+-- Formatting opt-outs by project: a .prettierignore at a project root
+-- (e.g. ~/ResumeProject) defaults vim.b.disable_autoformat on for the
+-- files it covers, silencing save AND pause formatting; <leader>tf
+-- re-enables per buffer. Asks prettier itself — no hardcoded paths.
+require("config.prettier_ignore").setup()
 
 -- Terminal
 vim.api.nvim_create_autocmd("TermOpen", {

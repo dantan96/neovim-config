@@ -36,7 +36,7 @@ local md_cmds = {
   "MarkdownEnsureConfigs",
   "MathDelimsToDollars",
   "DelimToggle",
-  "HardWrapToggle",
+  "PauseFormatToggle",
   "ExportHTML",
   "ExportToGippity",
 }
