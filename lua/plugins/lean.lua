@@ -24,45 +24,55 @@ return {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope.nvim", -- :Telescope loogle
     },
+    -- Configured through vim.g.lean_config in `init`, NOT lazy's `opts`.
+    -- lean.nvim self-activates on load and reads this global; `opts` would make
+    -- lazy call require("lean").setup(), which is deprecated and warns:
+    --   "require(\"lean\").setup is deprecated, use vim.g.lean_config instead.
+    --    Feature will be removed in lean.nvim v2026.9.1"
+    -- `init` runs at startup, before the plugin loads on the event below, so
+    -- the global is in place by the time lean.nvim reads it.
+    --
     -- blink.cmp's capabilities reach this server without being named here:
     -- plugins/lsp.lua applies them via vim.lsp.config("*"), and lean.nvim
     -- starts leanls through vim.lsp, so the "*" defaults merge in. Verified
     -- by diffing the live client's completionList capability against
     -- require("blink.cmp").get_lsp_capabilities() — they match exactly.
-    opts = {
-      mappings = true,
+    init = function()
+      vim.g.lean_config = {
+        mappings = true,
 
-      infoview = {
-        autoopen = true,
-        -- Goal states are wide (mathlib hypotheses run long), so give the
-        -- infoview a fixed column count rather than a fraction of a window
-        -- that may itself already be split.
-        width = 55,
-        horizontal_position = "bottom",
-        indicators = "auto",
-      },
-
-      lsp = {
-        enhanced_handlers = { hover = true, diagnostics = true },
-        init_options = {
-          editDelay = 10,
-          hasWidgets = true,
+        infoview = {
+          autoopen = true,
+          -- Goal states are wide (mathlib hypotheses run long), so give the
+          -- infoview a fixed column count rather than a fraction of a window
+          -- that may itself already be split.
+          width = 55,
+          horizontal_position = "bottom",
+          indicators = "auto",
         },
-      },
 
-      abbreviations = {
-        enable = true,
-        leader = "\\",
-      },
+        lsp = {
+          enhanced_handlers = { hover = true, diagnostics = true },
+          init_options = {
+            editDelay = 10,
+            hasWidgets = true,
+          },
+        },
 
-      -- Widget graphics render through the Kitty protocol, which Ghostty
-      -- speaks. SVG output additionally needs resvg on PATH (installed via
-      -- brew); raster images work without it.
-      graphics = { enabled = true },
+        abbreviations = {
+          enable = true,
+          leader = "\\",
+        },
 
-      goal_markers = { unsolved = " ⚒ ", accomplished = "🎉" },
-      progress_bars = { enable = true },
-      stderr = { enable = true },
-    },
+        -- Widget graphics render through the Kitty protocol, which Ghostty
+        -- speaks. SVG output additionally needs resvg on PATH (installed via
+        -- brew); raster images work without it.
+        graphics = { enabled = true },
+
+        goal_markers = { unsolved = " ⚒ ", accomplished = "🎉" },
+        progress_bars = { enable = true },
+        stderr = { enable = true },
+      }
+    end,
   },
 }
