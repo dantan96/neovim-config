@@ -78,8 +78,20 @@ return {
         -- match the global markdown textwidth/colorcolumn. prettier
         -- only appears in the markdown/mdx chains above, so these
         -- args reach no other filetype.
+        --
+        -- --tab-width 4 is the same deal for indent, matching the
+        -- global shiftwidth (init.lua). Without it prettier indents a
+        -- nested list item to its parent's *content offset*, which is
+        -- marker-dependent — 2 for "- ", 3 for "1. ", 4 for "10. " —
+        -- so >> and <Tab> disagreed with every format run and no
+        -- single shiftwidth could fix it (2 matches "- " but flattens
+        -- ordered lists, which need 3). --tab-width collapses that
+        -- variance to a constant 4 for every marker, so vim and
+        -- prettier agree exactly. Fenced blocks and continuation
+        -- paragraphs shift with their list item; content inside a
+        -- fence is untouched.
         prettier = {
-          prepend_args = { "--prose-wrap", "always", "--print-width", "65" },
+          prepend_args = { "--prose-wrap", "always", "--print-width", "65", "--tab-width", "4" },
           -- Prettier resolves .prettierignore relative to CWD only (no
           -- upward walk), so run from the ignore file's root when one
           -- exists: ignored files then pass through unchanged. Config

@@ -84,6 +84,29 @@ T["option scope"]["markdown ftplugin sets textwidth locally"] = function()
   expect.equality(child.lua_get("vim.go.textwidth"), 0)
 end
 
+-- The two halves of the markdown indent/width contract must not drift
+-- apart: >> and <Tab> shift by shiftwidth, and every conform run
+-- re-indents to prettier's --tab-width. If these stop matching,
+-- formatting silently re-indents whatever you just typed (and for
+-- ordered lists, too small a shiftwidth flattens the nesting away).
+-- Same pairing as textwidth 65 <-> --print-width 65 above.
+T["option scope"]["markdown shiftwidth matches prettier --tab-width"] = function()
+  edit_tmp("scope_probe.md", { "- hi" })
+  expect.equality(child.lua_get("vim.bo.shiftwidth"), 4)
+  local args = child.lua_get([[
+    require("conform").formatters.prettier.prepend_args
+  ]])
+  local function arg_after(flag)
+    for i, a in ipairs(args) do
+      if a == flag then
+        return args[i + 1]
+      end
+    end
+  end
+  expect.equality(arg_after("--tab-width"), "4")
+  expect.equality(arg_after("--print-width"), "65")
+end
+
 T["option scope"]["ftplugin visits leave globals intact"] = function()
   -- After editing lua, fsharp and markdown buffers above, the global
   -- indent contract from init.lua must still hold.
