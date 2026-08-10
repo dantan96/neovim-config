@@ -51,5 +51,52 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>d", desc = "+diff pins" },
     { mode = "n", keys = "<LocalLeader><Tab>", desc = "Jump into infoview" },
     { mode = "n", keys = "<LocalLeader>\\", desc = "Abbreviation for symbol" },
+    -- Defined below, not by lean.nvim.
+    { mode = "n", keys = "<LocalLeader>?", desc = "Lean cheatsheet" },
+    { mode = "n", keys = "<LocalLeader>n", desc = "Rename" },
+    { mode = "n", keys = "<LocalLeader>a", desc = "Code action" },
+    { mode = "n", keys = "<LocalLeader>f", desc = "References" },
   },
 }
+
+-- LSP actions. Neovim's built-in grn/gra/grr maps are shadowed globally by
+-- mini.operators, which owns the `gr` prefix, so rename/code-action/references
+-- are otherwise unreachable here. Bound buffer-locally rather than fixing the
+-- global collision, which is not this filetype's call to make.
+local function map(lhs, rhs, desc)
+  vim.keymap.set("n", lhs, rhs, { buffer = true, desc = desc })
+end
+map("<LocalLeader>n", vim.lsp.buf.rename, "Rename")
+map("<LocalLeader>a", vim.lsp.buf.code_action, "Code action")
+map("<LocalLeader>f", vim.lsp.buf.references, "References")
+
+-- Lean cheatsheet. Built as a scratch buffer rather than :edit-ing the file,
+-- because the infoview window carries 'winfixbuf' and editing into it aborts
+-- with E1513. Snacks.win already binds `q` to close.
+map("<LocalLeader>?", function()
+  local path = vim.fs.joinpath(vim.fn.stdpath("config"), "lean-cheatsheet.md")
+  local lines = vim.fn.filereadable(path) == 1 and vim.fn.readfile(path)
+    or { "# Lean cheatsheet", "", "Missing file: " .. path }
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].filetype = "markdown"
+  vim.bo[buf].modifiable = false
+  -- Render the tables. markview's auto-attach skips buftype=nofile and this
+  -- config suppresses it for markdown anyway, but an explicit attach is not
+  -- filtered — same call <leader>tv makes. Set the toggle's flag too, so that
+  -- keymap detaches rather than re-attaching if pressed inside the float.
+  pcall(function()
+    require("markview.actions").attach(buf)
+    vim.b[buf]._markview_on = true
+  end)
+  Snacks.win({
+    buf = buf,
+    width = 0.8,
+    height = 0.9,
+    border = "rounded",
+    title = " Lean cheatsheet ",
+    title_pos = "center",
+    wo = { wrap = false, number = false, signcolumn = "no", conceallevel = 2 },
+    bo = { bufhidden = "wipe" },
+  })
+end, "Lean cheatsheet")

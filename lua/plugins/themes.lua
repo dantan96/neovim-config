@@ -47,6 +47,13 @@ return {
             CmpBorder = { fg = C.surface2 },
             Pmenu = { bg = C.none },
             TelescopeBorder = { link = "FloatBorder" },
+            -- Lean's language server emits two semantic-token types that
+            -- catppuccin leaves undefined, so they rendered unstyled: plain
+            -- `variable`, and Lean's own `leanSorryLike` (sorry/admit and
+            -- friends). Defined here rather than in the ftplugin so they
+            -- survive a colorscheme reload, as with LineNrWrap above.
+            ["@lsp.type.variable.lean"] = { link = "Identifier" },
+            ["@lsp.type.leanSorryLike.lean"] = { fg = C.base, bg = C.yellow, bold = true },
           }
         end,
       },
