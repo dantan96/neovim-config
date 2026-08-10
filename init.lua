@@ -41,6 +41,13 @@ pcall(function()
   require("config.spthy_setup").setup()
 end)
 
+-- Map .mdx to the compound filetype "markdown.mdx". Without this, nvim's
+-- content-sniff fallback opens .mdx buffers as "conf" and remark_ls (whose
+-- filetypes list already includes "markdown.mdx", see after/lsp/remark_ls.lua)
+-- never attaches. Must run before any file is opened, like the spthy
+-- registration above.
+vim.filetype.add({ extension = { mdx = "markdown.mdx" } })
+
 -- Suppress deprecation warnings originating from third-party plugins.
 -- Warnings from the user's own config are still shown.
 local _deprecate = vim.deprecate
