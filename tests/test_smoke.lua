@@ -69,20 +69,21 @@ T["setup"]["custom modules load"] = new_set({
 })
 
 -- ── LSP configs parse ──────────────────────────────────────────────────────
-local lsp_files = { "marksman", "remark_ls", "bashls", "basedpyright", "lua_ls", "ruff" }
-
+-- Discovered from disk (both lsp/ and after/lsp/), not hardcoded: the
+-- previous fixed list silently stopped covering raku_navigator when it
+-- landed, and started failing outright when remark_ls moved to after/.
 T["setup"]["lsp configs return tables"] = new_set({
   parametrize = (function()
     local p = {}
-    for _, f in ipairs(lsp_files) do
+    for _, f in ipairs(H.lsp_config_names()) do
       table.insert(p, { f })
     end
     return p
   end)(),
 }, {
   test = function(name)
-    local cfg_dir = vim.fn.stdpath("config")
-    local path = cfg_dir .. "/lsp/" .. name .. ".lua"
+    local path = H.lsp_config_path(name)
+    expect.equality(type(path), "string")
     local ok, result = pcall(dofile, path)
     expect.equality(ok, true)
     expect.equality(type(result), "table")

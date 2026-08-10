@@ -2,12 +2,13 @@ local new_set = MiniTest.new_set
 local expect = MiniTest.expect
 local T = new_set()
 
-local cfg_dir = vim.fn.stdpath("config")
+local H = dofile(vim.fn.stdpath("config") .. "/tests/helpers.lua")
 
 T["lsp configs"] = new_set()
 
 local function load_lsp(name)
-  local path = cfg_dir .. "/lsp/" .. name .. ".lua"
+  local path = H.lsp_config_path(name)
+  assert(path, "No lsp config found for " .. name .. " (checked lsp/ and after/lsp/)")
   local ok, result = pcall(dofile, path)
   assert(ok, "Failed to load " .. name .. ": " .. tostring(result))
   return result
