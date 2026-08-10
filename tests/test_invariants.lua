@@ -28,6 +28,17 @@ local PROBES = {
   { "probe.spthy", { "theory T", "begin", "end" } },
   { "probe.py", { "x = 1" } },
   { "probe.sh", { "#!/bin/sh", "true" } },
+  -- NO probe.lean, despite after/ftplugin/lean.lua existing. Tried, reverted:
+  -- opening a Lean buffer loads lean.nvim, and two of its behaviours break
+  -- these invariants in ways the config cannot fix from this side.
+  --   * it sets the GLOBAL 'breakat' (" \t!@*-+;:,./?" -> " \t,="), which is
+  --     a real leak the option-snapshot case correctly flags — but it is
+  --     lean.nvim's, not ours;
+  --   * its autoopened infoview window has 'winfixbuf', so the next
+  --     vim.cmd.edit() in the re-source case aborts with E1513 and takes the
+  --     remaining invariants cases down with it.
+  -- after/ftplugin/lean.lua was instead verified directly against a real
+  -- mathlib project over --listen/--remote-expr; see the lean.nvim commit.
 }
 
 local function write_probes()
