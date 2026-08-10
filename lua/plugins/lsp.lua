@@ -20,6 +20,7 @@ return {
       vim.lsp.enable("marksman")  -- installed at /usr/local/bin
       vim.lsp.enable("bashls")    -- installed at /usr/local/bin
       vim.lsp.enable("nushell")   -- nushell's built-in LSP (nu --lsp)
+      vim.lsp.enable("raku_navigator") -- server.js at ~/.local/share/raku-navigator
 
       -- Disable formatting for servers that aren't the formatting authority.
       vim.api.nvim_create_autocmd("LspAttach", {
