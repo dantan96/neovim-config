@@ -82,6 +82,28 @@ LSP maps, leaving those actions otherwise unreachable.
 | `:LeanGotoInfoview` | Jump into the infoview |
 | `:Telescope loogle` | Search mathlib by type signature (needs network) |
 
+## Finding lemmas
+
+Loogle needs a type pattern. These do not — prefer them.
+
+| What you have | Use | Notes |
+|---|---|---|
+| A goal | `exact?` | Searches for a lemma that closes it. `\s` accepts the suggestion. |
+| A goal you want to rewrite | `rw?` | Lists every applicable rewrite **with the resulting goal** under each. |
+| Words, not syntax | `#leansearch "…?"` | Natural language. Query must end `.` or `?`. Sends to leansearch.net. |
+| A half-remembered name | `:Telescope lsp_dynamic_workspace_symbols` | Fuzzy name search over the whole project. Ranking is mediocre; scroll. |
+| A proof state | `#statesearch` | Same family as `#leansearch`. |
+| A type pattern | `:Telescope loogle` or `#loogle` | See the commands table above. |
+| Nothing specific | `:Telescope live_grep` in `.lake/packages/mathlib` | Crude, surprisingly effective. |
+
+`exact?` is the one to reach for by default: it needs no query at all, just a
+cursor on the goal. `rw?` is the one people forget — showing the post-rewrite
+goal for each candidate makes it a browser, not just a search.
+
+`#leansearch`, `#statesearch` and `#loogle` are commands from the
+LeanSearchClient package (already in mathlib's dependency tree). All three
+send your query to an external service.
+
 ## Unicode abbreviations
 
 Type the sequence in insert mode; it expands on the next non-matching
