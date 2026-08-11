@@ -2,8 +2,12 @@
 
 Open with `\?` in any Lean buffer. `q` closes. Local leader is `\`.
 
-Everything below was verified against a real mathlib project, except the two
-rows marked *unverified*.
+Everything below was verified against a real mathlib project, except the row
+marked *unverified*.
+
+Loogle takes a type pattern, not a name fragment: `Nat.add_comm` or
+`?a * ?b = ?b * ?a`. Queries it cannot parse return no results rather than
+erroring — a short prefix mid-typing is normally just noise.
 
 ## Infoview & goals
 
@@ -76,7 +80,7 @@ LSP maps, leaving those actions otherwise unreachable.
 | `:LeanInfoviewToggle` | Toggle the infoview |
 | `:LeanInfoviewAddPin` / `…ClearPins` | Manage pins |
 | `:LeanGotoInfoview` | Jump into the infoview |
-| `:Telescope loogle` | Search mathlib by type signature (*unverified* — hits the network) |
+| `:Telescope loogle` | Search mathlib by type signature (needs network) |
 
 ## Unicode abbreviations
 

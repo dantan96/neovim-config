@@ -74,5 +74,73 @@ return {
         stderr = { enable = true },
       }
     end,
+
+    -- Workaround for an upstream crash in `:Telescope loogle`.
+    --
+    -- lean/loogle.lua's search() returns `nil, err` when Loogle rejects a
+    -- query. lean.nvim's telescope finder only turns that into `{}` when
+    -- `#prompt > 4`; for a shorter prompt both guard branches are skipped and
+    -- it returns the nil straight into telescope, which calls ipairs() on it:
+    --
+    --   finders.lua:144: bad argument #1 to 'ipairs' (table expected, got nil)
+    --
+    -- The finder runs per keystroke, so this fires as soon as you type a short
+    -- prefix Loogle cannot parse — i.e. almost immediately. Verified directly:
+    -- loogle.search("abc") returns nil plus "unknown identifier 'abc'", while
+    -- "Nat" and "List.map" return tables.
+    --
+    -- Wrapping search() rather than the finder keeps the fix to one function
+    -- and leaves the notify/empty behaviour for long prompts untouched. The
+    -- pcall also covers search()'s error() on a non-200 status, which would
+    -- otherwise propagate out of the finder. Remove once upstream returns a
+    -- table unconditionally.
+    config = function()
+      local ok, loogle = pcall(require, "lean.loogle")
+      if not ok or type(loogle.search) ~= "function" then
+        return
+      end
+      local search = loogle.search
+      loogle.search = function(...)
+        local called, results, err = pcall(search, ...)
+        if not called then
+          return {}, tostring(results)
+        end
+        return results or {}, err
+      end
+
+      -- The finder has a second nil path, and it is the one that actually
+      -- fires: `if not prompt or prompt == '' then return nil end`, hit the
+      -- instant the picker opens with an empty prompt. Wrapping search()
+      -- cannot reach it, so wrap the extension too and guarantee the finder
+      -- it builds never hands telescope a nil. new_dynamic is swapped only
+      -- for the synchronous call that constructs the picker, then restored.
+      local tok, telescope = pcall(require, "telescope")
+      if not tok then
+        return
+      end
+      local eok, ext = pcall(function()
+        return telescope.extensions.loogle
+      end)
+      if not eok or type(ext) ~= "table" or type(ext.loogle) ~= "function" then
+        return
+      end
+      local picker = ext.loogle
+      ext.loogle = function(opts)
+        local finders = require("telescope.finders")
+        local new_dynamic = finders.new_dynamic
+        finders.new_dynamic = function(o)
+          local fn = o.fn
+          o.fn = function(prompt)
+            return fn(prompt) or {}
+          end
+          return new_dynamic(o)
+        end
+        local called, err = pcall(picker, opts)
+        finders.new_dynamic = new_dynamic
+        if not called then
+          error(err)
+        end
+      end
+    end,
   },
 }
