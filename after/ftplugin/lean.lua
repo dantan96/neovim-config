@@ -56,6 +56,7 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>n", desc = "Rename" },
     { mode = "n", keys = "<LocalLeader>a", desc = "Code action" },
     { mode = "n", keys = "<LocalLeader>f", desc = "References" },
+    { mode = "n", keys = "<LocalLeader>b", desc = "Open book page" },
   },
 }
 
@@ -69,6 +70,14 @@ end
 map("<LocalLeader>n", vim.lsp.buf.rename, "Rename")
 map("<LocalLeader>a", vim.lsp.buf.code_action, "Code action")
 map("<LocalLeader>f", vim.lsp.buf.references, "References")
+
+-- Open the rendered book page for this file (Mathematics in Lean ships one).
+-- Inert with a warning in Lean projects that have no html/ build.
+local book = require("config.lean.book")
+map("<LocalLeader>b", book.open, "Open book page")
+vim.api.nvim_buf_create_user_command(0, "LeanBook", book.open, {
+  desc = "Open the rendered book page for this Lean file",
+})
 
 -- Lean cheatsheet. Built as a scratch buffer rather than :edit-ing the file,
 -- because the infoview window carries 'winfixbuf' and editing into it aborts

@@ -60,6 +60,7 @@ erroring — a short prefix mid-typing is normally just noise.
 | `\n` | Rename |
 | `\a` | Code action |
 | `\f` | References |
+| `\b` | Open this file's book page in the browser (`:LeanBook`) |
 | `[d` `]d` | Previous / next diagnostic |
 
 `\n` `\a` `\f` are defined in this config, not by lean.nvim: mini.operators

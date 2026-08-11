@@ -103,7 +103,7 @@ end
 -- Buffer-local because mini.operators owns the `gr` prefix globally, shadowing
 -- Neovim's built-in grn/gra/grr LSP maps.
 T["lean"]["config-owned buffer-local maps exist"] = new_set({
-  parametrize = { { "\\?" }, { "\\n" }, { "\\a" }, { "\\f" } },
+  parametrize = { { "\\?" }, { "\\n" }, { "\\a" }, { "\\f" }, { "\\b" } },
 }, {
   test = function(lhs)
     local found = child.lua_get(string.format(
@@ -130,6 +130,83 @@ end
 T["lean"]["cheatsheet file exists"] = function()
   local path = H.cfg .. "/lean-cheatsheet.md"
   expect.equality(vim.uv.fs_stat(path) ~= nil, true)
+end
+
+-- ── \b book-page resolution ────────────────────────────────────────────
+-- Pure path logic, so it runs against a fixture instead of a real MIL
+-- checkout: no network, no browser, and no dependency on ~/LeanCourse
+-- existing. Built to mirror MIL's real shape — chapter-per-HTML-page, a
+-- solutions/ subdirectory, and a section whose anchor is missing.
+T["book"] = new_set()
+
+local function book_fixture()
+  local dir = vim.fn.tempname()
+  MiniTest.finally(function()
+    vim.fn.delete(dir, "rf")
+  end)
+  vim.fn.mkdir(dir .. "/MIL/C02_Basics/solutions", "p")
+  vim.fn.mkdir(dir .. "/html", "p")
+  vim.fn.writefile({ "" }, dir .. "/lakefile.toml")
+  for _, f in ipairs({
+    "/MIL/C02_Basics/S01_Calculating.lean",
+    "/MIL/C02_Basics/S09_Missing_Anchor.lean",
+    "/MIL/C02_Basics/scratchpad.lean",
+    "/MIL/C02_Basics/solutions/Solutions_S01_Calculating.lean",
+    "/MIL/Common.lean",
+  }) do
+    vim.fn.writefile({ "" }, dir .. f)
+  end
+  vim.fn.writefile(
+    { '<section id="basics">', '<section id="calculating">' },
+    dir .. "/html/C02_Basics.html"
+  )
+  return dir
+end
+
+T["book"]["resolves section, solutions, fallback and non-sections"] = function()
+  local dir = book_fixture()
+  local book = dofile(H.cfg .. "/lua/config/lean/book.lua")
+  local function target(rel)
+    local url, err = book.target(dir .. rel)
+    return url and url:gsub(".*/html/", "html/") or ("ERR: " .. tostring(err))
+  end
+
+  -- section file -> anchored
+  expect.equality(
+    target("/MIL/C02_Basics/S01_Calculating.lean"),
+    "html/C02_Basics.html#calculating"
+  )
+  -- solutions live a level deeper but share the section's anchor
+  expect.equality(
+    target("/MIL/C02_Basics/solutions/Solutions_S01_Calculating.lean"),
+    "html/C02_Basics.html#calculating"
+  )
+  -- derived anchor absent from the page -> chapter page, no dead fragment
+  expect.equality(
+    target("/MIL/C02_Basics/S09_Missing_Anchor.lean"),
+    "html/C02_Basics.html"
+  )
+  -- not a section at all
+  expect.equality(
+    target("/MIL/C02_Basics/scratchpad.lean"),
+    "html/C02_Basics.html"
+  )
+  -- outside any chapter directory -> declines, with a reason
+  expect.equality(target("/MIL/Common.lean"):match("^ERR:") ~= nil, true)
+end
+
+T["book"]["declines quietly when a project has no html build"] = function()
+  local dir = vim.fn.tempname()
+  MiniTest.finally(function()
+    vim.fn.delete(dir, "rf")
+  end)
+  vim.fn.mkdir(dir .. "/MIL/C01_Intro", "p")
+  vim.fn.writefile({ "" }, dir .. "/lakefile.toml")
+  vim.fn.writefile({ "" }, dir .. "/MIL/C01_Intro/S01_Thing.lean")
+  local book = dofile(H.cfg .. "/lua/config/lean/book.lua")
+  local url, err = book.target(dir .. "/MIL/C01_Intro/S01_Thing.lean")
+  expect.equality(url, nil)
+  expect.equality(err:find("no rendered page") ~= nil, true)
 end
 
 return T
