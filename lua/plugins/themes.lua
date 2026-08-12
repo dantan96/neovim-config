@@ -86,8 +86,23 @@ return {
             -- for. The extra categories are wired up but parked on their
             -- current appearance, so turning one on is a one-line edit.
 
-            -- THE CHANGE — CURRENTLY NOT EXPRESSED, AND THIS IS A DECISION FOR
-            -- YOU TO MAKE. Prop-ness used to arrive as three token TYPES
+            -- THE CHANGE — NOW EXPRESSED, in lua/config/lean/highlights.lua.
+            -- Read the history below for why it could not live here.
+            --
+            -- RESOLVED: the world × level grid is synthesised client-side from
+            -- an LspTokenUpdate callback into `@lean.<world>.<level>` groups
+            -- at priority 128, above Neovim's own type/mod/typemod marks. The
+            -- palette, every channel assignment and every deliberate omission
+            -- are documented at the top of that file. `require("config.lean.
+            -- highlights").setup()` is called at the bottom of this one.
+            --
+            -- What that means for the groups in THIS file: they still decide
+            -- the appearance of anything the grid does not reach — keywords,
+            -- tactics, `sorry`, and any token the server sends without a
+            -- world or a level. The grid overrides the rest.
+            --
+            -- ── the history, kept because the dead end is the expensive part
+            -- Prop-ness used to arrive as three token TYPES
             -- (leanProof / leanHypothesis / leanProp) and three groups were
             -- defined for them here. The server stopped sending those types
             -- when the declaration kind moved into the token type and
@@ -139,13 +154,75 @@ return {
             -- for the first time. Park as keyword; give it its own colour to
             -- see the tactic skeleton of a proof at a glance.
             ["@lsp.type.tactic.lean"] = { link = "@lsp.type.keyword.lean" },
-            -- NOT DEFINED, and worth a decision: the server also emits `enum`
-            -- (every plain `inductive`, which is `Nat`, `True` and `List`),
-            -- `property` (projections), `theorem` and `opaque`. A semantic
-            -- token outranks the syntax layer, so those four now lose the blue
-            -- that after/syntax/lean.vim's leanConstant rule used to give them
-            -- — which is at odds with the "everything that already had a colour
-            -- keeps it" rule above. `@lsp.type.enum.lean` is the big one.
+
+            -- ── THE MECHANISM THAT MAKES THIS LIST LOAD-BEARING ─────────
+            -- Every time the server starts emitting a STANDARD LSP token
+            -- name, catppuccin silently takes that colour over, and the
+            -- change looks like a deliberate design decision that nobody
+            -- made. This is how it happens:
+            --
+            --   1. catppuccin's semantic_tokens integration defines the
+            --      language-agnostic `@lsp.type.<t>` groups — `enum` is
+            --      yellow, `property` is lavender, `struct` is yellow,
+            --      `enumMember` is teal, `function` is blue.
+            --   2. Neovim's `@`-group fallback is textual and strips
+            --      segments from the RIGHT (M3). An undefined
+            --      `@lsp.type.enum.lean` therefore resolves to
+            --      `@lsp.type.enum` — catppuccin's — not to nothing.
+            --   3. A semantic-token extmark outranks the syntax layer
+            --      (priority 125 vs 100), so the moment such a token exists
+            --      the `leanConstant` blue below is overwritten.
+            --
+            -- MEASURED on this machine before the fix, by reading rendered
+            -- screen cells (`nvim__inspect_cell`) in a real TUI with the
+            -- patched server on MIL/C05_.../S03_Infinitely_Many_Primes.lean:
+            --
+            --   leanConstant                          #89b4fa blue (syntax)
+            --   @lsp.type.enum.lean                   #f9e2af yellow   ← ①
+            --   @lsp.type.property.lean               #b4befe lavender ← ①
+            --   @lsp.typemod.function.defaultLibrary  #fab387 peach    ← ①
+            --   @lsp.type.keyword.lean                #cba6f7 mauve    ← ②
+            --   @lsp.type.theorem.lean                nil              ← ③
+            --   @lsp.type.opaque.lean                 nil              ← ③
+            --
+            -- ① REGRESSED. `{n : Nat}` rendered yellow and every imported
+            --   `def` — `Nat.factorial`, `Nat.Prime` — rendered peach,
+            --   because the patched server sets the standard `defaultLibrary`
+            --   modifier and catppuccin defines
+            --   `@lsp.typemod.function.defaultLibrary`. A typemod mark sits
+            --   at priority 127, ABOVE the type mark at 125, so it beats
+            --   `@lsp.type.function.lean` as well as the syntax layer. That
+            --   is why the typemod line below is needed even though
+            --   `function` is already pinned.
+            -- ② Not wrong — mauve is what keywords should be — but it was
+            --   arriving by inheritance, and `@lsp.type.tactic.lean` below
+            --   links to it. tests/test_lean.lua already carried a comment
+            --   saying that chain "would silently go colourless if that ever
+            --   stopped". Pinned, so it cannot.
+            -- ③ Custom names no theme will ever define, so the extmark
+            --   contributes nothing and the syntax layer shows through:
+            --   still blue, by accident. Pinned because the accident is not
+            --   worth relying on and a pinned group can be tested.
+            --
+            -- NOT a regression, though it looks like one: `ℕ` is a
+            -- `keyword` token, not `enum`. The server tokenises the notation
+            -- atom, not the constant it abbreviates. Checked before claiming.
+            --
+            -- `struct`, `enumMember`, `class` and `function` are in exactly
+            -- the same position and were already defended above. THE RULE:
+            -- any standard LSP token name — TYPE OR MODIFIER — that the
+            -- server learns to emit must be given an explicit `.lean` group
+            -- here in the same commit, or catppuccin decides its colour.
+            -- catppuccin defines 25 language-agnostic `@lsp.*` groups;
+            -- tests/test_lean.lua enumerates them and requires every one
+            -- whose name Lean's legend can produce to be either pinned here
+            -- or exempted by name with a reason.
+            ["@lsp.type.enum.lean"] = { link = "Function" }, -- inductives: Nat, List, True
+            ["@lsp.type.property.lean"] = { link = "Function" }, -- structure projections
+            ["@lsp.type.theorem.lean"] = { link = "Function" }, -- custom name; pinned, not inherited
+            ["@lsp.type.opaque.lean"] = { link = "Function" }, -- ditto
+            ["@lsp.typemod.function.defaultLibrary.lean"] = { link = "Function" }, -- imported defs
+            ["@lsp.type.keyword.lean"] = { link = "Keyword" }, -- what tactic links to
 
             -- Modifiers. Only `deprecated` is styled — Mathlib deprecates
             -- aggressively (825 files) and a struck-through name is
@@ -175,5 +252,15 @@ return {
       },
     })
     vim.cmd.colorscheme("catppuccin")
+    -- The Lean world × level palette. AFTER the colorscheme, because it
+    -- defines groups with nvim_set_hl and :colorscheme clears them; the
+    -- module re-arms itself on ColorScheme for every later reload.
+    --
+    -- Wired here rather than in after/ftplugin/lean.lua on purpose: the
+    -- groups must exist before the first Lean buffer is tokenised, and this
+    -- file is the one place in the config that already owns "highlight
+    -- definitions that must survive a colorscheme reload" (LineNrWrap,
+    -- LspInlayHint, @lsp.type.variable.lean, all above).
+    require("config.lean.highlights").setup()
   end,
 }

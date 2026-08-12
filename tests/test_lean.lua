@@ -708,6 +708,374 @@ T["lean"]["token legend: every Lean token group resolves to real attributes"] = 
   expect.equality(unstyled, {})
 end
 
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ BEGIN: Lean colour design (palette synthesis + the inheritance trap) │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+-- Everything between this banner and the matching END banner was added by
+-- the colour-design pass and is self-contained.
+--
+-- Neither of the two legend cases above can see the bug this block exists
+-- for. "names a token the server emits" passes for a group with the WRONG
+-- colour, and "resolves to real attributes" passes for a group that
+-- inherited someone else's. The failure is specifically:
+--
+--   catppuccin defines the language-agnostic `@lsp.type.enum`; Neovim's
+--   fallback strips `.lean` from the right (M3); so an undefined
+--   `@lsp.type.enum.lean` silently becomes catppuccin's yellow, and every
+--   `Nat`, `List` and `True` changes colour the day the server learns to
+--   emit `enum`. That is what happened, and it is what D6 forbids.
+--
+-- Pinning the four names is the fix; this is the tripwire. Any future
+-- standard LSP token name the server starts emitting belongs in this list.
+T["lean"]["standard token names are pinned, not inherited from catppuccin"] = function()
+  local got = child.lua_get([[(function()
+    local out = {}
+    -- `function` is the reference: it is what after/syntax/lean.vim's
+    -- leanConstant rule resolves to, i.e. the colour globals had BEFORE the
+    -- server started tokenising them.
+    local ref = vim.api.nvim_get_hl(0, { name = "Function", link = false }).fg
+    for _, t in ipairs({ "enum", "property", "theorem", "opaque",
+                         "struct", "enumMember", "function", "class",
+                         "axiom", "recursor" }) do
+      local g = "@lsp.type." .. t .. ".lean"
+      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+      out[t] = (h.fg == ref) and "ref" or (h.fg and string.format("#%06x", h.fg) or "nil")
+    end
+    out._ref = ref and string.format("#%06x", ref) or "nil"
+    return out
+  end)()]])
+  -- Non-vacuity: if the colorscheme never applied, `ref` would be nil and
+  -- every comparison below would be nil == nil.
+  expect.no_equality(got._ref, "nil")
+  for _, t in ipairs({ "enum", "property", "theorem", "opaque",
+                       "struct", "enumMember", "function", "class",
+                       "axiom", "recursor" }) do
+    expect.equality({ t, got[t] }, { t, "ref" })
+  end
+end
+
+-- The same trap, stated as the general rule and swept over EVERY group
+-- catppuccin could leak from — types AND typemods, which is where the first
+-- version of this test was too narrow. `@lsp.typemod.function.defaultLibrary`
+-- is peach and sits at priority 127, above the type mark at 125, so it
+-- silently recoloured every imported `def` (`Nat.factorial`, `Nat.Prime`)
+-- while `@lsp.type.function.lean` looked correctly pinned.
+--
+-- Method: enumerate the language-agnostic `@lsp.*` groups that are actually
+-- defined (25 of them, all catppuccin's), keep the ones whose name Lean's
+-- legend can produce, and require each to be pinned in themes.lua — or
+-- named in EXEMPT with the reason it cannot arise.
+--
+-- HONEST LIMIT OF THIS TEST: an EXEMPT entry claims "the classifier never
+-- emits this token type", which was established by reading the tokens off a
+-- live server, and the test cannot re-establish it. What the test does catch
+-- is the case that actually happens — someone teaches the server a new
+-- standard name and does not pin a colour for it — because a name that is
+-- neither pinned nor exempt fails here.
+T["lean"]["no Lean token group inherits a colour from a language-agnostic group"] = function()
+  local types, mods = lean_legend()
+  -- Token types Lean's legend contains but the classifier has never been
+  -- observed to emit. Checked against a live patched server over
+  -- TokenProbe.lean and two MIL files; every one of these is a standard LSP
+  -- name kept in the enum for legend compatibility (NAMES.md).
+  local EXEMPT = {
+    ["@lsp.type.comment"] = "comments are the syntax layer's; no token is sent",
+    ["@lsp.type.decorator"] = "never emitted",
+    ["@lsp.type.event"] = "never emitted",
+    ["@lsp.type.interface"] = "never emitted; a Lean class is `class`",
+    ["@lsp.type.macro"] = "never emitted",
+    ["@lsp.type.method"] = "never emitted; everything is `function`",
+    ["@lsp.type.modifier"] = "never emitted",
+    ["@lsp.type.namespace"] = "module paths are leanModulePath, a syntax rule",
+    ["@lsp.type.number"] = "literals are leanNumber, a syntax rule",
+    ["@lsp.type.operator"] = "never emitted; notation atoms come as `keyword`",
+    ["@lsp.type.parameter"] = "never emitted; every local is `variable`",
+    ["@lsp.type.regexp"] = "never emitted",
+    ["@lsp.type.string"] = "string literals are the syntax layer's",
+  }
+  local unpinned = child.lua_get([[(function(types, mods, exempt)
+    local out = {}
+    for name, _ in pairs(vim.api.nvim_get_hl(0, {})) do
+      if name:match("^@lsp%.") and not name:match("%.lean$") then
+        local h = vim.api.nvim_get_hl(0, { name = name, link = false })
+        if not vim.tbl_isempty(h) and not exempt[name] then
+          -- Can Lean's legend produce this name at all?
+          local reachable = false
+          local t = name:match("^@lsp%.type%.(.+)$")
+          local m = name:match("^@lsp%.mod%.(.+)$")
+          local tmt, tmm = name:match("^@lsp%.typemod%.([^.]+)%.(.+)$")
+          if t then reachable = types[t] == true
+          elseif m then reachable = mods[m] == true
+          elseif tmt then reachable = types[tmt] == true and mods[tmm] == true end
+          if reachable then
+            -- Pinned means: WE defined the `.lean` group, so no fallback runs.
+            if vim.tbl_isempty(vim.api.nvim_get_hl(0, { name = name .. ".lean" })) then
+              table.insert(out, name)
+            end
+          end
+        end
+      end
+    end
+    table.sort(out)
+    return out
+  end)(...)]], { types, mods, EXEMPT })
+  -- Non-vacuity: the sweep must actually be seeing catppuccin's groups. If
+  -- the colorscheme never applied there would be nothing to leak from and
+  -- an empty result would prove nothing.
+  local agnostic_count = child.lua_get([[(function()
+    local n = 0
+    for name, _ in pairs(vim.api.nvim_get_hl(0, {})) do
+      if name:match("^@lsp%.") and not name:match("%.lean$") then
+        if not vim.tbl_isempty(vim.api.nvim_get_hl(0, { name = name, link = false })) then
+          n = n + 1
+        end
+      end
+    end
+    return n
+  end)()]])
+  expect.equality(agnostic_count >= 20, true)
+  expect.equality(unpinned, {})
+end
+
+-- ── the synthesis module ───────────────────────────────────────────────
+-- lua/config/lean/highlights.lua turns a token's (type, modifier-set) into
+-- ONE merged highlight group, because Neovim never generates
+-- modifier × modifier and because a partial child definition kills
+-- inheritance (M3's caveat: the guard is `sg_cleared`, so `@a.b = {bold}`
+-- under `@a = {fg green}` renders bold and COLOURLESS). The module is
+-- therefore required to emit COMPLETE specs, never deltas.
+--
+-- These are pure-function cases ON PURPOSE. A case that tried to prove a
+-- colour lands on a screen cell would be vacuous here — headless Neovim
+-- applies no semantic tokens at all (M5), so it would assert nothing while
+-- looking like end-to-end coverage, which is the exact failure mode the
+-- hardening pass was hunting. Live verification is a real TUI in a real
+-- window: docs/lean-highlighting/tools/hl_cells.sh in the leanSetup repo,
+-- reading `nvim__inspect_cell`.
+--
+-- `dofile` rather than `require` so each case gets a fresh module instance
+-- and cannot be influenced by the setup() the config already ran.
+local HLMOD = H.cfg .. "/lua/config/lean/highlights.lua"
+local function hl(body)
+  return child.lua_get(
+    ("(function() local M = dofile(%q) %s end)()"):format(HLMOD, body)
+  )
+end
+
+-- Mechanic 1, stated as a test: no group may rely on inheritance for its
+-- colour, because inheritance aborts the moment a child sets anything.
+T["lean"]["highlights: every synthesised group carries its own fg"] = function()
+  local bad = hl([[
+    M.setup()
+    -- Exercise the lazily-built variants too, not just the eager grid.
+    M.group("variable", { propWorld = true, element = true, ["local"] = true })
+    M.group("theorem", { propWorld = true, element = true, simp = true })
+    M.group("axiom", { dataWorld = true, element = true })
+    M.group("variable", { polyWorld = true, sort = true, autoImplicit = true, ["local"] = true })
+    local out = {}
+    for name, spec in pairs(M._specs()) do
+      if not spec.fg then table.insert(out, name) end
+    end
+    table.sort(out)
+    return out
+  ]])
+  expect.equality(bad, {})
+end
+
+-- The grid is the whole point of the module: world × level is the pair
+-- Neovim cannot express, and it is what `leanProof` / `leanHypothesis` /
+-- `leanProp` used to mean before they became modifier pairs. Eight of the
+-- nine cells are observable in a single 106-line probe against the live
+-- server; the Mathlib census (M12) has all nine.
+T["lean"]["highlights: the world x level grid is complete"] = function()
+  local missing = hl([[
+    M.setup()
+    local specs = M._specs()
+    local out = {}
+    for _, w in ipairs({ "prop", "data", "poly" }) do
+      if not specs["@lean." .. w] then table.insert(out, "@lean." .. w) end
+      for _, l in ipairs({ "element", "sort", "former" }) do
+        local n = "@lean." .. w .. "." .. l
+        if not specs[n] then table.insert(out, n) end
+      end
+    end
+    return out
+  ]])
+  expect.equality(missing, {})
+end
+
+-- THE CASE THE PALETTE EXISTS FOR. In
+--   theorem two_le {m : ℕ} (h0 : m ≠ 0) (h1 : m ≠ 1) : 2 ≤ m
+-- `m`, `h0` and `h1` are all `variable` + `local` + `element` and differ
+-- ONLY in world — and today all three render as `Identifier`, #f2cdcd,
+-- three characters apart. That is the most confusable thing in real Lean
+-- and it is where the contrast is spent. Also pinned: a data local against
+-- a data SORT, the other binder-list confusion (`(a : G)` vs `{G : Type*}`).
+T["lean"]["highlights: hypothesis, datum and type differ from each other"] = function()
+  local got = hl([[
+    M.setup()
+    local function fg(g)
+      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    local hyp  = M.group("variable", { propWorld = true, element = true, ["local"] = true })
+    local dat  = M.group("variable", { dataWorld = true, element = true, ["local"] = true })
+    local srt  = M.group("variable", { dataWorld = true, sort = true, ["local"] = true })
+    local poly = M.group("variable", { polyWorld = true, element = true, ["local"] = true })
+    return {
+      names = { hyp = hyp, dat = dat, srt = srt, poly = poly },
+      fgs   = { hyp = fg(hyp), dat = fg(dat), srt = fg(srt), poly = fg(poly) },
+      -- A cited lemma is the same cell as a hypothesis but is NOT local, so
+      -- it must share the hue and differ in the italic channel.
+      lemma = (function()
+        local g = M.group("theorem", { propWorld = true, element = true })
+        local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+        return { fg = fg(g), italic = h.italic or false }
+      end)(),
+      hyp_italic = vim.api.nvim_get_hl(0, { name = hyp, link = false }).italic or false,
+    }
+  ]])
+  -- Non-vacuity: every group must actually have resolved to a colour.
+  for _, k in ipairs({ "hyp", "dat", "srt", "poly" }) do
+    expect.no_equality(got.fgs[k], "nil")
+  end
+  -- Different hue: proof vs datum. This is the design.
+  expect.no_equality(got.fgs.hyp, got.fgs.dat)
+  -- Different hue: either of those vs sort-polymorphic.
+  expect.no_equality(got.fgs.poly, got.fgs.hyp)
+  expect.no_equality(got.fgs.poly, got.fgs.dat)
+  -- Different shade within one hue: a datum vs the type it inhabits.
+  expect.no_equality(got.fgs.srt, got.fgs.dat)
+  -- Same hue, different slant: a hypothesis and a cited lemma are both
+  -- proofs, and locality is carried by italic, not by colour.
+  expect.equality(got.lemma.fg, got.fgs.hyp)
+  expect.equality(got.hyp_italic, true)
+  expect.equality(got.lemma.italic, false)
+end
+
+-- One underline style per cell — `HL_UNDERLINE_MASK` is three bits, so two
+-- underline flags on one token is not a thing that can render. The module
+-- must resolve it deterministically rather than leaving it to table order.
+T["lean"]["highlights: at most one underline style per group"] = function()
+  local bad = hl([[
+    M.setup()
+    M.group("theorem", { propWorld = true, element = true, simp = true })
+    M.group("axiom", { propWorld = true, element = true, simp = true })
+    M.group("variable", { dataWorld = true, sort = true, autoImplicit = true, simp = true })
+    local out = {}
+    for name, spec in pairs(M._specs()) do
+      local n = 0
+      for _, k in ipairs({ "underline", "undercurl", "underdouble",
+                           "underdotted", "underdashed" }) do
+        if spec[k] then n = n + 1 end
+      end
+      if n > 1 then table.insert(out, name .. "=" .. n) end
+    end
+    table.sort(out)
+    return out
+  ]])
+  expect.equality(bad, {})
+end
+
+-- Memoisation is the entire performance story (D12: ~30 distinct pairs in a
+-- 5,000-token file; 63 measured in a 106-line probe). If the cache key
+-- depended on the order Lua walks the modifier set, every token would miss
+-- while still producing the right colour — invisible until it is slow.
+T["lean"]["highlights: the group name is independent of modifier order"] = function()
+  local got = hl([[
+    M.setup()
+    local a = M.group("variable", { propWorld = true, element = true, ["local"] = true })
+    local b = M.group("variable", { ["local"] = true, element = true, propWorld = true })
+    local before = M._stats().misses
+    for _ = 1, 50 do
+      M.group("variable", { propWorld = true, element = true, ["local"] = true })
+    end
+    return { a = a, b = b, extra = M._stats().misses - before, hits = M._stats().hits }
+  ]])
+  expect.no_equality(got.a, vim.NIL)
+  expect.equality(got.a, got.b)
+  expect.equality(got.extra, 0)
+  expect.equality(got.hits >= 50, true)
+end
+
+-- Tokens outside the world × level grid must be left to themes.lua. The one
+-- that would be VISIBLY broken is `leanSorryLike`: it carries a yellow
+-- background chip with a dark fg, and a priority-128 foreground on top of it
+-- would leave the chip unreadable. Verified against the live server that
+-- keyword/tactic/leanSorryLike all arrive with an empty modifier set; the
+-- early return makes that independent of the server changing its mind.
+T["lean"]["highlights: keyword, tactic and sorry are not repainted"] = function()
+  local got = hl([[
+    M.setup()
+    return {
+      kw    = M.group("keyword", {}) or "nil",
+      tac   = M.group("tactic", {}) or "nil",
+      -- even if it ever DID arrive classified:
+      sorry = M.group("leanSorryLike", { propWorld = true, element = true }) or "nil",
+      -- and a classified token with no level is not ours either
+      partial = M.group("variable", { dataWorld = true }) or "nil",
+      -- ...while a fully classified one is
+      full = M.group("variable", { dataWorld = true, element = true }) or "nil",
+    }
+  ]])
+  expect.equality(got.kw, "nil")
+  expect.equality(got.tac, "nil")
+  expect.equality(got.sorry, "nil")
+  expect.equality(got.partial, "nil")
+  expect.no_equality(got.full, "nil")
+end
+
+-- The failure that is invisible in review and fatal in use: a module with a
+-- "already defined" cache stops defining anything after `:colorscheme`
+-- clears the groups, and every synthesised colour silently disappears. This
+-- is why LineNrWrap and @lsp.type.variable.lean live in catppuccin's
+-- highlight_overrides in the first place.
+T["lean"]["highlights: synthesised groups survive a colorscheme reload"] = function()
+  local got = hl([[
+    M.setup()
+    local g = M.group("variable", { propWorld = true, element = true, ["local"] = true })
+    local function fg()
+      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    local before = fg()
+    vim.cmd.colorscheme("catppuccin")
+    return { before = before, after = fg(), grid_after =
+      (vim.api.nvim_get_hl(0, { name = "@lean.data.former", link = false }).bold == true) }
+  ]])
+  expect.no_equality(got.before, "nil")
+  expect.equality(got.after, got.before)
+  expect.equality(got.grid_after, true)
+end
+
+-- A typo'd palette key would surface as one uncoloured token type in one
+-- rare cell, months later. Every entry — including the three generated
+-- "dusty" shades — must be a real hex colour.
+T["lean"]["highlights: the palette resolves to real hex colours"] = function()
+  local got = hl([[
+    local bad, n = {}, 0
+    for name, hex in pairs(M.palette) do
+      n = n + 1
+      if type(hex) ~= "string" or not hex:match("^#%x%x%x%x%x%x$") then
+        table.insert(bad, name .. "=" .. tostring(hex))
+      end
+    end
+    table.sort(bad)
+    return { bad = bad, n = n,
+             -- the generated shades must differ from their anchors
+             stepped = M.palette.prop ~= M.palette.prop_dust
+                   and M.palette.data ~= M.palette.data_dust
+                   and M.palette.poly ~= M.palette.poly_dust }
+  ]])
+  expect.equality(got.bad, {})
+  expect.equality(got.n >= 8, true)
+  expect.equality(got.stepped, true)
+end
+
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ END: Lean colour design                                              │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+
 -- LspInlayHint is styled in the catppuccin overrides (so it survives a
 -- colorscheme reload, as with LineNrWrap). catppuccin's stock value is
 -- Comment's exact fg, which makes a hint read as a comment; ours must not be.
