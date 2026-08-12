@@ -100,8 +100,13 @@ local function patch_load(dir)
     end
     local content = file:read("*a")
     file:close()
-    local decoded
-    ok, decoded = pcall(vim.json.decode, content)
+    -- `local` on BOTH names. Without it `ok` resolves to the `local ok` at
+    -- the top of patch_load and this closure writes to it as an upvalue on
+    -- every call -- an accidental shared write inside a memoizing patch.
+    -- Benign as written (that `ok` is read once before the closure can run,
+    -- and here it is written then read immediately), but nothing enforces
+    -- either of those, and no linter flags it.
+    local ok, decoded = pcall(vim.json.decode, content)
     if not ok then
       return original(...)
     end
