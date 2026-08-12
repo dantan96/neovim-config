@@ -333,7 +333,7 @@ local function generator_rows()
     {
       kind = "number",
       label = "blend",
-      gloss = "0 = no step back, 1 = fully receded",
+      gloss = "0 = none, 1 = fully receded",
       step = 0.02,
       big = 0.1,
       get = function()
@@ -420,8 +420,12 @@ local function hexof(v)
   return nil
 end
 
+--- The five styles as attribute keys — `M.underline_styles` without the
+--- "none" entry. Only one can be on a cell at a time (B4).
+local UNDERLINES = { "underline", "undercurl", "underdouble", "underdotted", "underdashed" }
+
 local function current_underline(eff)
-  for _, u in ipairs({ "underline", "undercurl", "underdouble", "underdotted", "underdashed" }) do
+  for _, u in ipairs(UNDERLINES) do
     if eff[u] then
       return u
     end
@@ -433,17 +437,59 @@ end
 
 local BAR = "███"
 
+--- Cut `text` to at most `w` display columns, on a character boundary.
+--- Descriptions are the first thing to go when the pane is narrow: a
+--- half-word running into the window edge reads as a broken widget, whereas
+--- a short description reads as a short description.
+local function fit(text, w)
+  if w <= 0 then
+    return ""
+  end
+  if vim.fn.strdisplaywidth(text) <= w then
+    return text
+  end
+  local out = vim.fn.strcharpart(text, 0, w)
+  while vim.fn.strdisplaywidth(out) > w and #out > 0 do
+    out = vim.fn.strcharpart(out, 0, vim.fn.strchars(out) - 1)
+  end
+  return out
+end
+
 local function render_controls()
   local buf = S.buf.controls
   if not (buf and vim.api.nvim_buf_is_valid(buf)) then
     return
   end
+  local W = (S.win.controls and vim.api.nvim_win_is_valid(S.win.controls))
+      and vim.api.nvim_win_get_width(S.win.controls)
+    or 60
   local lines, marks = {}, {}
   local function put(text, spans)
     lines[#lines + 1] = text
     for _, s in ipairs(spans or {}) do
-      marks[#marks + 1] = { #lines - 1, s[1], s[2], s[3] }
+      -- A nil group means "paint nothing". Painting "Normal" here was a real
+      -- bug: inside a float with style="minimal" the background is
+      -- NormalFloat, so an explicit Normal extmark stamped the GLOBAL
+      -- background over it and left a visible dark rectangle behind every
+      -- unselected row.
+      if s[3] then
+        marks[#marks + 1] = { #lines - 1, s[1], s[2], s[3] }
+      end
     end
+  end
+
+  --- Emit one row: a fixed prefix, then as much description as still fits.
+  local function row_line(prefix, gloss, spans)
+    local text = prefix
+    if gloss and gloss ~= "" then
+      local room = W - vim.fn.strdisplaywidth(prefix) - 1
+      local cut = fit(gloss, room)
+      if cut ~= "" then
+        spans[#spans + 1] = { #prefix + 1, #prefix + 1 + #cut, "Comment" }
+        text = prefix .. " " .. cut
+      end
+    end
+    put(fit(text, W), spans)
   end
 
   local tabs = S.mode == "groups" or S.mode == "group"
@@ -457,48 +503,52 @@ local function render_controls()
   for i, row in ipairs(S.rows) do
     local sel = (i == S.cursor[S.mode])
     local cur = sel and "▸ " or "  "
+    local selhl = sel and "Special" or nil
     if row.kind == "head" then
-      put("  " .. row.text, { { 2, 2 + #row.text, "Title" } })
+      put(fit("  " .. row.text, W), { { 2, 2 + #row.text, "Title" } })
     elseif row.kind == "colour" then
       local hex = row.get()
-      put(("%s%-14s %s %s  %-10s %s"):format(cur, row.label, BAR, hex, ladder_name(hex), row.gloss or ""), {
-        { 0, 2, sel and "Special" or "Normal" },
-        { 2, 16, sel and "Title" or "Normal" },
-        { 17, 17 + #BAR, swatch(hex) },
-        { #cur + 15 + #BAR + 1, 200, "Comment" },
+      local prefix = ("%s%-10s %s %s %-9s"):format(cur, row.label, BAR, hex, ladder_name(hex))
+      row_line(prefix, row.gloss, {
+        { 0, 2, selhl },
+        { 2, 12, sel and "Title" or nil },
+        { 13, 13 + #BAR, swatch(hex) },
       })
     elseif row.kind == "number" then
       local v = row.get()
-      local filled = math.floor(v * 20 + 0.5)
-      local bar = ("▓"):rep(filled) .. ("░"):rep(20 - filled)
-      put(
-        ("%s%-14s %s %.2f  %s"):format(cur, row.label, bar, v, row.gloss or ""),
-        { { 0, 2, sel and "Special" or "Normal" }, { 2, 16, sel and "Title" or "Normal" } }
-      )
+      local filled = math.floor(v * 16 + 0.5)
+      local bar = ("▓"):rep(filled) .. ("░"):rep(16 - filled)
+      local prefix = ("%s%-10s %s %.2f"):format(cur, row.label, bar, v)
+      row_line(prefix, row.gloss, { { 0, 2, selhl }, { 2, 12, sel and "Title" or nil } })
     elseif row.kind == "bool" then
       local v = row.get()
-      put(("%s%-20s %s  %s"):format(cur, row.label, v and "[on] " or "[off]", row.gloss or ""), {
-        { 0, 2, sel and "Special" or "Normal" },
-        { 2, 22, sel and "Title" or "Normal" },
-        { 23, 28, v and "DiagnosticOk" or "Comment" },
+      local prefix = ("%s%-18s %s"):format(cur, row.label, v and "[on] " or "[off]")
+      local at = #cur + 18 + 1
+      row_line(prefix, row.gloss, {
+        { 0, 2, selhl },
+        { 2, 20, sel and "Title" or nil },
+        { at, at + 5, v and "DiagnosticOk" or "Comment" },
       })
     elseif row.kind == "enum" then
       local v = row.get()
-      put(("%s%-20s %-13s %s"):format(cur, row.label, "[" .. v .. "]", row.gloss or ""), {
-        { 0, 2, sel and "Special" or "Normal" },
-        { 2, 22, sel and "Title" or "Normal" },
-        { 23, 36, v == "none" and "Comment" or "DiagnosticOk" },
+      local prefix = ("%s%-18s %-13s"):format(cur, row.label, "[" .. v .. "]")
+      local at = #cur + 18 + 1
+      row_line(prefix, row.gloss, {
+        { 0, 2, selhl },
+        { 2, 20, sel and "Title" or nil },
+        { at, at + 13, v == "none" and "Comment" or "DiagnosticOk" },
       })
     elseif row.kind == "group" then
       local e = row.entry
       local eff = eff_of(e.name)
       local hex = hexof(eff.fg)
       local mark = e.overridden and "●" or "·"
-      put(("%s%s %s %-44s"):format(cur, mark, hex and BAR or "   ", e.name), {
-        { 0, 2, sel and "Special" or "Normal" },
-        { 2, 3, e.overridden and "DiagnosticWarn" or "Comment" },
-        { 4, 4 + #BAR, hex and swatch(hex) or "Comment" },
-        { 4 + #BAR + 1, 200, sel and "Title" or "Normal" },
+      local prefix = ("%s%s %s %s"):format(cur, mark, hex and BAR or "   ", e.name)
+      put(fit(prefix, W), {
+        { 0, 2, selhl },
+        { 2, 2 + #mark, e.overridden and "DiagnosticWarn" or "Comment" },
+        { 3 + #mark, 3 + #mark + #BAR, hex and swatch(hex) or nil },
+        { 4 + #mark + #BAR, 400, sel and "Title" or nil },
       })
     elseif row.kind == "attr" then
       local eff = row.eff or {}
@@ -506,7 +556,7 @@ local function render_controls()
         and (
           row.attr == "underline style"
             and (function()
-              for _, u in ipairs({ "underline", "undercurl", "underdouble", "underdotted", "underdashed" }) do
+              for _, u in ipairs(UNDERLINES) do
                 if row.ov[u] ~= nil then
                   return true
                 end
@@ -524,18 +574,21 @@ local function render_controls()
         val = eff[row.attr] and "[on] " or "[off]"
       end
       local sw = row.atype == "colour" and hexof(eff[row.attr]) or nil
-      put(("%s%-16s %s %-12s %s"):format(cur, row.attr, sw and BAR or "   ", val, ovset and "set here" or ""), {
-        { 0, 2, sel and "Special" or "Normal" },
-        { 2, 18, sel and "Title" or "Normal" },
-        { 19, 19 + #BAR, sw and swatch(sw) or "Comment" },
-        { 19 + #BAR + 14, 200, "DiagnosticWarn" },
+      local prefix = ("%s%-16s %s %-12s"):format(cur, row.attr, sw and BAR or "   ", val)
+      row_line(prefix, ovset and "set here" or "", {
+        { 0, 2, selhl },
+        { 2, 18, sel and "Title" or nil },
+        { 19, 19 + #BAR, sw and swatch(sw) or nil },
       })
+      if ovset then
+        marks[#marks + 1] = { #lines - 1, #prefix + 1, 400, "DiagnosticWarn" }
+      end
     end
   end
 
   put("")
   if S.status ~= "" then
-    put("  " .. S.status, { { 2, 200, "DiagnosticInfo" } })
+    put("  " .. fit(S.status, W - 2), { { 2, 400, "DiagnosticInfo" } })
   end
 
   vim.bo[buf].modifiable = true
@@ -663,7 +716,7 @@ local function patch_override(name, key, value)
   local _, ov = HL.inspect_group(name)
   local spec = vim.deepcopy(ov or {})
   if key == "underline style" then
-    for _, u in ipairs({ "underline", "undercurl", "underdouble", "underdotted", "underdashed" }) do
+    for _, u in ipairs(UNDERLINES) do
       spec[u] = nil
     end
     if value ~= "none" then
@@ -819,7 +872,11 @@ local function open_windows()
   local ui_w = vim.o.columns
   local ui_h = vim.o.lines
   local total = math.min(146, ui_w - 6)
-  local left = math.min(62, math.floor(total * 0.44))
+  -- The preview gets first claim on the width: it is the thing being judged,
+  -- and the longest specimen line is 73 columns. The control pane shrinks to
+  -- 38 before the preview gives anything up, and its descriptions are
+  -- truncated to fit rather than clipped mid-word by the window edge.
+  local left = math.max(38, math.min(66, total - 76))
   local right = total - left - 2
   local height = math.min(34, ui_h - 8)
   local row = math.max(1, math.floor((ui_h - height) / 2) - 1)
@@ -838,6 +895,8 @@ local function open_windows()
     border = "rounded",
     title = " Lean palette ",
     title_pos = "center",
+    footer = " j/k move · h/l adjust · <CR> exact ",
+    footer_pos = "center",
   })
   S.win.preview = vim.api.nvim_open_win(S.buf.preview, false, {
     relative = "editor",
@@ -849,7 +908,10 @@ local function open_windows()
     border = "rounded",
     title = " preview ",
     title_pos = "center",
-    footer = " j/k move  h/l adjust  <CR> exact  g generator  G groups" .. "  x/X clear  s save  r reset  q quit ",
+    -- Split across the two footers: one help string long enough to hold
+    -- every key overflows the pane and gets centre-clipped at BOTH ends,
+    -- which loses keys rather than merely crowding them.
+    footer = " g/G mode · x/X clear · s save · r reset · q quit ",
     footer_pos = "center",
   })
 
@@ -857,6 +919,12 @@ local function open_windows()
     vim.wo[w].wrap = false
     vim.wo[w].cursorline = false
   end
+  -- Wrap in the preview so a narrow terminal FOLDS a long specimen line
+  -- rather than hiding its tail. Extmarks travel with the text when it
+  -- wraps, so a token keeps its colour either way; a clipped line would
+  -- silently drop tokens from view and make the preview a partial answer.
+  vim.wo[S.win.preview].wrap = true
+  vim.wo[S.win.preview].linebreak = true
   -- The control list is longer than the window once the palette widens past
   -- a handful of hues. Nothing else is needed to scroll it: `render()` puts
   -- the real cursor on the selected row, so Neovim keeps it in view — and
