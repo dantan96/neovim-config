@@ -3166,4 +3166,73 @@ T["lean"]["lean.nvim's satellite progress handler is registered AND set up"] = f
   expect.equality(got.all, { "diagnostic", "gitsigns", "lean.nvim", "search" })
 end
 
+-- markview's `actions.attach` declares `---@param _state markview.state.buf`
+-- without the `?`, while `state.set_buffer_state` -- the function it delegates
+-- straight to -- declares `new_state?`. A one-character upstream typo, patched
+-- in place in lazy's plugin directory.
+--
+-- A plugin update will revert it. This test is the tripwire: it fails loudly
+-- rather than letting the diagnostic quietly reappear and get re-triaged from
+-- scratch, which has already happened twice with a different warning. Do NOT
+-- "fix" a failure here by passing a second argument -- `{}` is truthy and
+-- skips `state.lua:190`'s early return, rebuilding the buffer's state from
+-- defaults and discarding a hybrid-mode toggle the user set.
+T["lean"]["markview's attach annotation is still patched"] = function()
+  local path = vim.fn.stdpath("data") .. "/lazy/markview.nvim/lua/markview/actions.lua"
+  if vim.fn.filereadable(path) == 0 then
+    MiniTest.skip("markview.nvim is not installed")
+  end
+  local src = table.concat(vim.fn.readfile(path), "\n")
+  local decl = src:match("(---@param _state%??) markview%.state%.buf\nactions%.attach")
+  -- Compare a SENTENCE, not the annotation: a bare equality failure here
+  -- reads as `expected "---@param _state?" got "---@param _state"`, which
+  -- tells someone on a fresh machine nothing. This prints the fix.
+  local state = (decl == "---@param _state?") and "patched"
+    or ("UNPATCHED. This is a local patch to a plugin in lazy's directory, so "
+      .. "it does not travel with the config and a plugin update reverts it. "
+      .. "Add the `?` to `---@param _state` (one character) at "
+      .. path .. ":515. Do NOT instead pass a second argument -- `{}` is "
+      .. "truthy and skips state.lua:190's early return, rebuilding the "
+      .. "buffer's state from defaults. Got: " .. tostring(decl))
+  expect.equality(state, "patched")
+end
+
+-- Second upstream annotation patch, same shape and same tripwire reasoning as
+-- the markview one above. multicursor declares all four `mc.OperatorOpts`
+-- fields as required while `@param opts?` makes the whole table optional and
+-- the implementation defaults every one of them. `mw` passes two, so lua_ls
+-- reported `missing-fields`.
+--
+-- Supplying them was NOT an option: `wordBoundary` defaults to `vMode == nil`,
+-- computed from the mode at call time, so any static value changes what `mw`
+-- does in normal mode. The declaration was the thing that was wrong.
+--
+-- Not Lean-specific, but it lives here beside its sibling so both tripwires
+-- are in one place rather than one being forgotten.
+T["lean"]["multicursor's OperatorOpts fields are still optional"] = function()
+  local path = vim.fn.stdpath("data") .. "/lazy/multicursor.nvim/lua/multicursor-nvim/examples.lua"
+  if vim.fn.filereadable(path) == 0 then
+    MiniTest.skip("multicursor.nvim is not installed")
+  end
+  local src = table.concat(vim.fn.readfile(path), "\n")
+  local block = src:match("%-%-%- @class mc%.OperatorOpts\n(.-)\n\n")
+  expect.equality(type(block), "string")
+  -- Same reasoning as the markview case above: report the fix, not a diff.
+  local missing = {}
+  for _, f in ipairs({ "pattern", "motion", "visual", "wordBoundary" }) do
+    if not block:find("@field " .. f .. "%?") then
+      missing[#missing + 1] = f
+    end
+  end
+  local state = (#missing == 0) and "patched"
+    or ("UNPATCHED. Local patch to a plugin in lazy's directory: it does not "
+      .. "travel with the config and a plugin update reverts it. Add `?` to "
+      .. "these `@field` lines in the `mc.OperatorOpts` class at " .. path
+      .. ":1121 -- " .. table.concat(missing, ", ") .. ". Do NOT instead pass "
+      .. "the fields at the call site: `wordBoundary` defaults to `vMode == "
+      .. "nil`, computed from the mode at call time, so any static value "
+      .. "changes what `mw` does in normal mode.")
+  expect.equality(state, "patched")
+end
+
 return T
