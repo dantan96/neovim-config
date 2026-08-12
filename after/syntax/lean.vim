@@ -49,21 +49,28 @@ syn match leanConstant "\<[A-Za-z_][A-Za-z0-9_'?!]*\%(\.[A-Za-z_][A-Za-z0-9_'?!]
 " A region fixes both, and is the right shape for splitting a dotted path into
 " its components anyway.
 "
-" ANCHORED TO THE START OF THE LINE, on purpose. A bare `\<end\>` would match
-" the `end` in a projection like `Interval.end` — `.` is not a keyword
-" character, so the word boundary is there — and would open a bogus path
-" region in the middle of a term. Every construct this rule is for is written
-" at the start of a line in Lean; `open Foo in` used mid-line is the one case
-" not covered, and it is rare enough not to be worth the false positives.
+" REACHED BY `nextgroup`, NOT BY MATCHING THE KEYWORD INSIDE THE REGION.
+" That was the first design and it silently did nothing: a `syn keyword`
+" unconditionally outranks a `syn match` or `syn region` at the same position
+" (`:h :syn-priority`), so `leanModuleKeyword` at column 0 stopped a region
+" whose start pattern also began at column 0 from ever opening. `synstack()`
+" showed `leanConstant` on every path component and the region absent — the
+" rule read as perfectly correct and painted nothing.
 "
-" `variable` is NOT in the list even though it is a module keyword: its
+" With `nextgroup` the keyword is matched normally and hands over to a
+" `contained` region that starts at the first non-blank after it, so the two
+" never compete for a position.
+"
+" `variable` is deliberately NOT one of the handing-over keywords: its
 " argument is a real binder list (`variable {α : Type*}`) whose names all
 " carry semantic tokens, and treating them as path components would be wrong
 " the moment the server is not attached. It gets the keyword colour only.
-syn region leanPathArgs
-      \ start="^\s*\%(import\|open\|export\|namespace\|end\|section\|universe\)\>\s\@="
-      \ end="$" oneline keepend
-      \ contains=leanModuleKeyword,leanPathQual,leanPathFinal,leanPathPrefix,leanPathDot,
+syn keyword leanModuleKeyword import open export namespace end section universe
+      \ skipwhite nextgroup=leanPathArgs
+syn keyword leanModuleKeyword variable
+
+syn region leanPathArgs contained start="\S" end="$" oneline keepend
+      \ contains=leanPathQual,leanPathFinal,leanPathPrefix,leanPathDot,
       \leanComment,leanBlockComment,leanString
 
 " Qualifiers that appear in these positions and are keywords, not names.
@@ -93,7 +100,8 @@ syn match leanPathDot "\." contained
 " these rules never show. They exist for the cold-start window before the
 " server answers, and for a Lean file opened outside a Lake project where no
 " server ever starts — and they link to the same groups, so the two agree.
-syn keyword leanModuleKeyword import open export namespace end section variable universe
+" (`leanModuleKeyword` is declared above, where the path region it hands over
+" to is defined.)
 syn keyword leanBinderKeyword fun let have show suffices match with do from
 
 " ...but `∀ ∃ λ` are not in that sentence. The server emits NO token for them
