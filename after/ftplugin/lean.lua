@@ -122,6 +122,10 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>ll", desc = "Loogle (by type pattern)" },
     { mode = "n", keys = "<LocalLeader>lw", desc = "Workspace symbols (by name)" },
     { mode = "n", keys = "<LocalLeader>la", desc = "Unicode abbreviations" },
+    -- The one <Leader> map this file owns. mini.clue CONCATENATES a buffer's
+    -- clues onto the global list (clue.lua H.get_config), so this entry shows
+    -- up under the global <Leader> trigger in Lean buffers and nowhere else.
+    { mode = "n", keys = "<Leader>K", desc = "Inspect token highlighting" },
   },
 }
 
@@ -198,6 +202,22 @@ map("<LocalLeader>b", book.open, "Open book page")
 vim.api.nvim_buf_create_user_command(0, "LeanBook", book.open, {
   desc = "Open the rendered book page for this Lean file",
 })
+
+-- ── <leader>K · why is this token that colour? ────────────────────────────
+-- The one <Leader> map in this file, and deliberately so: `K` is already
+-- lean.nvim's interactive hover ("what IS this?"), and this is the same
+-- question one layer down ("how is the editor CLASSIFYING and DRAWING it?").
+-- Keeping the letter and changing the prefix is the whole mnemonic.
+--
+-- Buffer-local, like everything else here. It is invisible to
+-- tests/test_keymap_ownership.lua, which can only see global maps, so
+-- tests/test_lean.lua asserts both halves: present here, absent globally.
+--
+-- Lazily required so that a Lean buffer does not pay for a module most
+-- sessions never open, and so a syntax error in it cannot break the ftplugin.
+map("<leader>K", function()
+  require("config.lean.inspect_token").open()
+end, "Inspect token highlighting")
 
 -- Lean cheatsheet. Built as a scratch buffer rather than :edit-ing the file,
 -- because the infoview window carries 'winfixbuf' and editing into it aborts
