@@ -261,9 +261,19 @@ map("<LocalLeader>z", "<Cmd>LeanSorryFill<CR>", "Fill open goals with sorry")
 
 -- `\R` next to `\r`, which restarts the FILE. This restarts the SERVER, and
 -- it is the one you need when the server itself wedges rather than the file
--- (#38). Named explicitly rather than a bare :LspRestart, which would also
--- bounce every other client attached to the buffer.
-map("<LocalLeader>R", "<Cmd>LspRestart leanls<CR>", "Restart the Lean SERVER")
+-- (#38). Named explicitly rather than bare, which would bounce every other
+-- client attached to the buffer.
+--
+-- `:lsp restart`, NOT `:LspRestart`, WHICH DOES NOT EXIST HERE. The audit
+-- calls `:LspRestart` / `:LspStop` "Neovim built-ins"; they are
+-- nvim-lspconfig's, and on this Neovim lspconfig defines none of them —
+-- plugin/lspconfig.lua opens with `if vim.fn.exists(':lsp') == 2 then return
+-- end`, and 0.12 ships a built-in `:lsp` with enable/disable/restart/stop
+-- subcommands. Measured live: `exists(':LspRestart') == 0`,
+-- `exists(':lsp') == 2`, and `getcompletion("lsp restart ", "cmdline")`
+-- returns { "leanls" }. Written the audit's way, \R would have thrown E492
+-- on every press — the same shape as the \la bug.
+map("<LocalLeader>R", "<Cmd>lsp restart leanls<CR>", "Restart the Lean SERVER")
 
 -- Call hierarchy (#36). Ranked last in the roadmap and honestly so: MIL is not
 -- a codebase you navigate. Two keys because the pair is `\w`/`\W`-shaped and

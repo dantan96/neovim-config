@@ -1904,6 +1904,39 @@ T["lean"]["no <LocalLeader> map is a prefix of another"] = function()
   expect.equality(report.accept_suggestion, "Accept the first infoview suggestion.")
 end
 
+-- EVERY `<Cmd>…<CR>` RHS MUST NAME A COMMAND THAT EXISTS.
+--
+-- The PARITY_MAPS cases above assert a map's `desc`, which is satisfied by a
+-- key that throws E492 the moment it is pressed. That is exactly how `\la`
+-- shipped broken, and `\R` nearly repeated it: the audit calls `:LspRestart`
+-- a Neovim built-in, but it is nvim-lspconfig's, and lspconfig defines none
+-- of the `:Lsp*` commands on a Neovim that ships `:lsp`
+-- (plugin/lspconfig.lua:6-8). Measured live: exists(":LspRestart") == 0.
+--
+-- Generic on purpose: it covers every present and future `<Cmd>` binding in
+-- the Lean namespace rather than the one that was caught.
+T["lean"]["every <Cmd> binding names a real command"] = function()
+  local report = child.lua_get([[(function()
+    local bad, checked = {}, {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+      local rhs = m.rhs or ""
+      local name = rhs:match("^<Cmd>(%a[%w_]*)") or rhs:match("^:(%a[%w_]*)")
+      if name and m.lhs:sub(1, 1) == "\\" then
+        table.insert(checked, m.lhs .. " -> :" .. name)
+        if vim.fn.exists(":" .. name) ~= 2 then
+          table.insert(bad, m.lhs .. " -> :" .. name .. " (exists=" .. vim.fn.exists(":" .. name) .. ")")
+        end
+      end
+    end
+    table.sort(bad); table.sort(checked)
+    return { bad = table.concat(bad, "; "), n = #checked, checked = checked }
+  end)()]])
+  -- Non-vacuity: the Lean namespace has several <Cmd> bindings, so a zero
+  -- here would mean the scan found nothing rather than nothing being wrong.
+  expect.equality({ n = report.n > 5, checked = report.checked }, { n = true, checked = report.checked })
+  expect.equality(report.bad, "")
+end
+
 -- Group prefixes are CLUE ENTRIES, NEVER MAPS. mini.clue auto-executes only
 -- when exactly one clue matches the query (clue.lua:1507), so mapping `\e`
 -- itself would not merely stall `\eg`/`\et`/`\em` — it would stop `\e` firing

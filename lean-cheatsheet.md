@@ -22,7 +22,7 @@ erroring — a short prefix mid-typing is normally just noise.
 | `\w` / `\W` | Enable / disable widgets |
 | `\s` | Accept the first "Try this" suggestion |
 | `\r` | Restart the Lean server for this file |
-| `\R` | Restart the **server itself** (`:LspRestart leanls`) |
+| `\R` | Restart the **server itself** (`:lsp restart leanls`) |
 | `\z` | Fill every open goal with `sorry` (`:LeanSorryFill`) |
 
 `\r` and `\R` are different repairs. `\r` re-elaborates *this file*; `\R`
@@ -122,6 +122,14 @@ Two rules that are not obvious:
 | `grt` | Type definition — every constituent type constant of a compound type |
 | `\D` | **Declaration** — Lean also returns the *parser and elaborator* of the symbol, which `gd` does not |
 | `\k` / `\K` | Incoming / outgoing calls (call hierarchy → quickfix) |
+
+`\k` on a mathlib lemma is a *census*: `mul_comm` returns 3331 incoming calls.
+That is the feature working, not misbehaving — the server answers project-wide.
+`\K` (what this declaration calls) is the small, readable direction. Note
+there is no `:Lsp*` command family on this Neovim: 0.12 ships a built-in
+`:lsp` with `enable`/`disable`/`restart`/`stop`, and nvim-lspconfig
+deliberately defines none of `:LspRestart`/`:LspInfo`/`:LspLog` when it sees
+one (`plugin/lspconfig.lua:6-8`). Use `:lsp` and `:checkhealth vim.lsp`.
 | `\b` | Open this file's book page in the browser (`:LeanBook`) |
 | `\h` | Toggle inlay hints for this buffer (on by default) |
 | `[d` `]d` | Previous / next diagnostic |
@@ -292,7 +300,7 @@ indentation. Every fold starts open.
 | `:LeanTermGoal` | Term-mode type information (`\et`) |
 | `:LeanLineDiagnostics` | Diagnostics for the current line (`\em`) |
 | `:LeanRestartFile` | Restart the server for this file (`\r`) |
-| `:LspRestart leanls` | Restart the server itself (`\R`) |
+| `:lsp restart leanls` | Restart the server itself (`\R`) |
 | `:LeanRefreshFileDependencies` | Re-read changed imports |
 | `:LeanSorryFill` | Fill in `sorry` placeholders (`\z`) |
 | `:LeanSetupInfo` | Pasteable setup information, for Zulip |
