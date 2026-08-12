@@ -239,6 +239,20 @@ T["lean"]["config-owned maps have mini.clue entries"] = new_set({
   end,
 })
 
+-- ── experimental client capability ─────────────────────────────────────
+-- The patched server gates its rich token legend on this; the point of the
+-- test is the MERGE, since lean.nvim ships its own lsp/leanls.lua and
+-- plugins/lsp.lua contributes blink.cmp's capabilities via vim.lsp.config("*").
+-- All three layers must survive tbl_deep_extend, in both directions.
+T["lean"]["leanls advertises experimental.leanRichTokens"] = function()
+  expect.equality(
+    child.lua_get(
+      [[vim.tbl_get(vim.lsp.config["leanls"], "capabilities", "experimental", "leanRichTokens")]]
+    ),
+    true
+  )
+end
+
 T["lean"]["adding the capability does not displace lean.nvim's own"] = function()
   expect.equality(
     child.lua_get(

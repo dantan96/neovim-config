@@ -1,9 +1,16 @@
 -- lua/plugins/lean.lua — Lean 4 (theorem prover) support.
 --
--- lean.nvim owns the Lean language server itself: it locates the toolchain
--- through elan and starts leanls per project. That is why there is
--- deliberately NO lsp/leanls.lua and no vim.lsp.enable("leanls") in
--- plugins/lsp.lua — either would start a second, competing client.
+-- lean.nvim owns the Lean language server itself: it ships its own
+-- lsp/leanls.lua (toolchain lookup via elan, `lake serve`, Lean-specific
+-- handlers) and calls vim.lsp.enable("leanls") from lean.init(). Nothing here
+-- or in plugins/lsp.lua needs to enable it, and a competing lsp/leanls.lua
+-- that redefined `cmd` or `root_dir` would break the way it starts the server.
+--
+-- Contributing extra CONFIG is a different thing and is done:
+-- after/lsp/leanls.lua adds the experimental capability for the patched
+-- server. vim.lsp.config resolution deep-merges every lsp/<name>.lua on the
+-- runtimepath with after/ last, so that file adds to lean.nvim's rather than
+-- replacing it — and it starts nothing, since only vim.lsp.enable does that.
 --
 -- No treesitter parser is installed for Lean on purpose: tree-sitter-lean is
 -- unfinished and absent from nvim-treesitter's `main` registry, so adding
