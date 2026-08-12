@@ -130,12 +130,71 @@ T["lean"]["config-owned buffer-local maps exist"] = new_set({
   end,
 })
 
+-- ── LSP folding ────────────────────────────────────────────────────────
+-- This child has no language server, so what is under test is the WIRING:
+-- the options are set, they are set at the right scope, and they do not
+-- leak. That vim.lsp.foldexpr() then produces real folds was checked
+-- against a live server in a pty-hosted TUI (see the commit).
+T["lean"]["ftplugin: folds come from the language server"] = function()
+  expect.equality(child.lua_get("vim.wo.foldmethod"), "expr")
+  expect.equality(child.lua_get("vim.wo.foldexpr"), "v:lua.vim.lsp.foldexpr()")
+  -- Every fold open on arrival. 'foldlevelstart' would be the idiomatic knob
+  -- but is global-only, which this file may not touch.
+  expect.equality(child.lua_get("vim.wo.foldlevel"), 99)
+end
+
+-- The leak this guards is one scope narrower than test_invariants' global
+-- snapshot, which cannot cover Lean at all (see the PROBES comment there):
+-- 'foldmethod' and friends are WINDOW options, so a plain :setlocal would
+-- follow the window into the next buffer opened in it.
+T["lean"]["ftplugin: fold settings are buffer-local, not window- or global"] = function()
+  expect.equality(child.lua_get("vim.go.foldmethod"), "manual")
+  expect.equality(child.lua_get("vim.go.foldexpr"), "0")
+
+  local probe_lua = tmp_dir .. "/foldprobe.lua"
+  vim.fn.writefile({ "return 1" }, probe_lua)
+  -- Make sure we are in the window showing the Lean buffer and not the
+  -- autoopened infoview, whose 'winfixbuf' would abort the :edit with E1513.
+  child.lua([[
+    local buf = vim.fn.bufnr("probe.lean")
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(w) == buf then
+        vim.api.nvim_set_current_win(w)
+      end
+    end
+  ]])
+  child.lua(string.format("vim.cmd.edit(%q)", probe_lua))
+  expect.equality(child.lua_get("vim.bo.filetype"), "lua")
+  expect.no_equality(child.lua_get("vim.wo.foldexpr"), "v:lua.vim.lsp.foldexpr()")
+  -- ...and back, so the remaining cases still see a Lean buffer.
+  child.lua(string.format("vim.cmd.edit(%q)", tmp_dir .. "/probe.lean"))
+  expect.equality(child.lua_get("vim.bo.filetype"), "lean")
+  expect.equality(child.lua_get("vim.wo.foldexpr"), "v:lua.vim.lsp.foldexpr()")
+end
+
 T["lean"]["mini.clue trigger is registered for this buffer"] = function()
   expect.equality(
     child.lua_get([[(vim.b.miniclue_config or {}).triggers ~= nil]]),
     true
   )
 end
+
+T["lean"]["adding the capability does not displace lean.nvim's own"] = function()
+  expect.equality(
+    child.lua_get(
+      [[vim.tbl_get(vim.lsp.config["leanls"], "capabilities", "lean", "silentDiagnosticSupport")]]
+    ),
+    true
+  )
+  -- blink.cmp's, applied to every server by vim.lsp.config("*").
+  expect.equality(
+    child.lua_get([[
+      vim.tbl_get(vim.lsp.config["leanls"], "capabilities", "textDocument", "completion") ~= nil
+    ]]),
+    true
+  )
+end
+
 
 -- \? reads this at press time; a rename would fail silently into the fallback.
 T["lean"]["cheatsheet file exists"] = function()

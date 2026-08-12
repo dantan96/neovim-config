@@ -24,6 +24,31 @@ vim.bo.textwidth = 100
 -- competes with the infoview split for horizontal room.
 vim.opt_local.formatoptions:remove("t")
 
+-- ── Folding, from the language server ─────────────────────────────────────
+-- Lean's grammar is user-extensible — `notation`, `macro_rules` and `syntax`
+-- can invent statement forms at will — so no regex and no tree-sitter grammar
+-- can reliably say where a declaration ends. The server can: it implements
+-- textDocument/foldingRange (Lean/Server/FileWorker/RequestHandling.lean:537),
+-- and Neovim ≥0.11 ships vim.lsp.foldexpr to consume it.
+--
+-- vim.wo[0][0], NOT vim.opt_local: 'foldmethod'/'foldexpr'/'foldlevel' are
+-- window options, and a plain :setlocal sticks them to the WINDOW — :edit a
+-- Lua file into this window afterwards and it would still be folding through
+-- vim.lsp.foldexpr(). The [0][0] form scopes the value to this buffer in this
+-- window, so it reverts on switching buffers. Same bug class as the global
+-- leak tests/test_invariants.lua guards, one scope out.
+--
+-- 'foldlevel' rather than 'foldlevelstart', which is global-only and so out of
+-- bounds for an ftplugin. 99 means every fold starts open: folds are here to
+-- be used deliberately (zc/zo/zM), not to hide the file on arrival.
+--
+-- Degrades to "no folds" rather than to breakage when no server is attached:
+-- vim.lsp.foldexpr() returns "0" for every line until a client supporting
+-- foldingRange appears (runtime/lua/vim/lsp/_folding_range.lua:349-355).
+vim.wo[0][0].foldmethod = "expr"
+vim.wo[0][0].foldexpr = "v:lua.vim.lsp.foldexpr()"
+vim.wo[0][0].foldlevel = 99
+
 -- Primed names (`h'`, `ih₂'`) are pervasive in Lean and mathlib, so `w`, `*`
 -- and completion should treat the apostrophe as part of the identifier.
 -- Guarded because ftplugins re-run on every :edit and `:append` is not

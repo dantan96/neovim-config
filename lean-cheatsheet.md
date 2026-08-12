@@ -67,6 +67,18 @@ erroring — a short prefix mid-typing is normally just noise.
 owns the `gr` prefix, which shadows Neovim's built-in `grn` / `gra` / `grr`
 LSP maps, leaving those actions otherwise unreachable.
 
+## Folding
+
+Folds come from the language server, so they follow declarations rather than
+indentation. Every fold starts open.
+
+| Keys | Action |
+|------|--------|
+| `za` | Toggle the fold at the cursor |
+| `zc` / `zo` | Close / open one level |
+| `zM` / `zR` | Close all / open all |
+| `zj` / `zk` | Move to the next / previous fold |
+
 ## Commands
 
 | Command | Action |
