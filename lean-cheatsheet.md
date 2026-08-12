@@ -47,8 +47,47 @@ erroring — a short prefix mid-typing is normally just noise.
 | `]l` `[l` | Next / previous link |
 | `]t` `[t` | Next / previous trace |
 | `\g` | Jump to the first goal |
+| `\S` | Jump to the first suggestion |
+| `\s` | Accept the first suggestion |
 | `\/` | Search trace messages |
 | `\<Tab>` | Jump back to the Lean file |
+
+## The `\` namespace — what is taken and what is free
+
+`\` is `maplocalleader` and it is the scarce resource here, so this table is
+the record rather than the guess. **Dumped live** from a MIL buffer with
+`nvim_buf_get_keymap(0, "n")` unioned with `nvim_get_keymap("n")`, not read off
+the tables above — several of lean.nvim's maps are live without appearing in
+any documentation, and three of them are live in the *infoview* window only.
+
+Re-dump before binding anything new:
+
+```vim
+:lua =vim.tbl_map(function(m) return m.lhs end, vim.api.nvim_buf_get_keymap(0, "n"))
+```
+
+| Where | Taken |
+|------|--------|
+| Lean buffer, lean.nvim | `\i` `\p` `\x` `\c` `\v` `\w` `\W` `\s` `\r` `\\` `\<Tab>` `\dx` `\dc` `\dd` `\dt` |
+| Lean buffer, this config | `\?` `\n` `\a` `\f` `\D` `\b` `\h` `\mi` `\mI` `\ll` `\lw` `\la` `\y` `\q` `\Q` `\z` `\R` `\k` `\K` `\eg` `\et` `\em` |
+| Infoview window only | `\g` `\S` `\/` `\<Tab>` |
+
+**Free**, and safe to bind: `j` `o` `t` `u` · `A` `B` `C` `E` `F` `G` `H` `I`
+`J` `L` `M` `N` `O` `P` `T` `U` `V` `X` `Y` `Z` · most punctuation.
+
+**Not free even though nothing in a Lean buffer maps them:** `\g`, `\S` and
+`\/` are lean.nvim's infoview maps (`infoview.lua:240–330`). Rebinding them in
+the source buffer would give one key two meanings in two windows.
+
+Two rules that are not obvious:
+
+- **A live single key must not become a prefix.** mini.clue drives
+  `<LocalLeader>` and executes only when exactly *one* clue matches
+  (`clue.lua:1507`), so adding `\sX` would stop plain `\s` firing at all — not
+  merely stall it. `tests/test_lean.lua` enforces this ("no `<LocalLeader>` map
+  is a prefix of another").
+- **A group prefix is a clue entry, not a map.** `\d`, `\l`, `\m` and `\e` are
+  never mapped themselves; they exist only as `+group` clues.
 
 ## Language server
 
