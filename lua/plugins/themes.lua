@@ -62,10 +62,12 @@ return {
             --
             -- Green doubles as String in catppuccin, which is a real but tiny
             -- collision: string literals barely occur in mathlib-style Lean.
-            -- Lemma references (after/syntax/lean.vim). Peach, because
-            -- catppuccin's Constant is peach and these ARE global constants;
-            -- named here only so the intent is greppable. One line to change.
-            leanConstant = { link = "Constant" },
+            -- Lemma references (after/syntax/lean.vim), in the same blue as
+            -- the declaration site: `theorem add_zero` and the `add_zero`
+            -- inside a later `rw [add_zero]` are the same object, so they get
+            -- the same colour. leanDeclarationName is lean.nvim's group for
+            -- the declaration side and links to Function.
+            leanConstant = { link = "Function" },
           }
         end,
       },

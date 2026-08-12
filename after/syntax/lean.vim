@@ -40,5 +40,5 @@ syn match leanConstant "\<[A-Za-z_][A-Za-z0-9_'?!]*\%(\.[A-Za-z_][A-Za-z0-9_'?!]
 syn match leanModulePath
       \ "\%(\<\%(import\|open\|namespace\|end\|export\|section\)\s\+\)\@<=[A-Za-z_][A-Za-z0-9_.'?!]*"
 
-hi def link leanConstant  Constant
+hi def link leanConstant  Function
 hi def link leanModulePath Normal
