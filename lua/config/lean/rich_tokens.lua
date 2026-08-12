@@ -17,34 +17,47 @@
 -- active toolchain; that is what `:LeanRichTokens status` reports.
 --
 -- ── why detection, not a flag ─────────────────────────────────────────────
--- The patched server GATES the rich legend on the client capability
--- `experimental.leanRichTokens` (that is the whole point of the gate: a client
--- that has not asked keeps receiving the stock legend). So the negotiation is
--- two-sided, and the client can simply LOOK at what came back:
+-- The legend arrives at initialize and the client can simply LOOK at it:
 --
 --   client.server_capabilities.semanticTokensProvider.legend.tokenModifiers
 --
--- If that array contains `propWorld`, the server is patched AND agreed to send
--- the rich stream. No flag to remember, and no way for the answer to drift
--- from reality — it IS reality, read off the wire.
+-- If that array contains `propWorld`, the server is patched. No flag to
+-- remember, and no way for the answer to drift from the truth — it IS the
+-- truth, read off the wire.
 --
 -- `propWorld` is the marker rather than a token TYPE because the type list is
 -- the more likely thing to gain a standard LSP name upstream; the world axis
 -- is unambiguously this branch's invention.
 --
+-- MEASURED, because the older comment here claimed otherwise: as of the
+-- patched build at d5f3797, the server does NOT gate its legend on the
+-- `experimental.leanRichTokens` client capability. `leanRichTokens` appears
+-- nowhere in its source, and speaking LSP to `lake serve` in
+-- ~/LeanCourse/MathematicsInLean with and without the capability returns the
+-- identical 29-type / 31-modifier rich legend both times. The capability is
+-- still sent (see after/lsp/leanls.lua) so this client is already correct if a
+-- gate ever lands, but nothing may be inferred FROM having sent it.
+--
+-- That is precisely why detection beats a flag, and why detection reads the
+-- legend rather than the capability: the capability records what we asked for,
+-- the legend records what we got, and right now those are independent.
+--
 -- ── the override ──────────────────────────────────────────────────────────
 --   vim.g.lean_rich_tokens = nil    detect (default)
---   vim.g.lean_rich_tokens = false  force standard, even against a patched
---                                   server — so the two can be compared
+--   vim.g.lean_rich_tokens = false  force standard: withhold the capability
+--                                   and run no rich client behaviour
 --   vim.g.lean_rich_tokens = true   force rich, and complain if the legend
 --                                   that came back does not actually carry the
 --                                   names (which means the toolchain is stock,
 --                                   not that the setting is wrong)
 --
--- Forcing standard is not cosmetic and not client-side: it withholds the
--- capability, so the patched server itself falls back to the stock legend. The
--- rich highlight groups in lua/plugins/themes.lua then match nothing and are
--- inert, which is why no group has to be undefined to switch modes.
+-- What forcing standard DOES: the capability is omitted from the wire, and
+-- `M.enabled()` is false, so nothing keyed off this module runs.
+--
+-- What it does NOT do, on the current build: change the highlighting. The
+-- server sends the rich token stream regardless, so the `@lsp.*.lean` groups
+-- in lua/plugins/themes.lua keep matching. `:LeanRichTokens status` says so
+-- out loud rather than letting the setting look more effective than it is.
 --
 -- ── what this module does NOT control ─────────────────────────────────────
 -- Highlight-group definitions. Those are lua/plugins/themes.lua's, they are
@@ -55,9 +68,11 @@
 -- ── mode vs toolchain ─────────────────────────────────────────────────────
 -- These are different axes and `status` prints both because they can disagree:
 --
---   MODE      is renegotiated by restarting the language server, which
---             `:LeanRichTokens on|off|toggle` does for you when the running
---             client's legend no longer matches what you asked for.
+--   MODE      is this client's, and is renegotiated by restarting the language
+--             server — which `:LeanRichTokens on|off|toggle` does only when
+--             the running client sent a DIFFERENT capability than the one now
+--             wanted, since that is the only case where a restart can change
+--             anything at all.
 --   TOOLCHAIN is chosen by elan — a directory override, a `lean-toolchain`
 --             file or $ELAN_TOOLCHAIN — and no editor command can change it.
 --             Forcing rich mode against a stock toolchain gets you a warning
@@ -78,15 +93,26 @@ M.SERVER = "leanls"
 ---@field override boolean|nil what vim.g.lean_rich_tokens said
 ---@field legend_rich boolean|nil nil when no client was attached to ask
 ---@field mode string "rich" | "standard" | "unknown"
----@field warned boolean whether the mismatch warning fired
+---@field warned boolean whether the setting and the legend disagree
 ---@field client_id integer|nil
+---@field notified boolean whether THIS diagnosis raised the notification
 M.last = {
   override = nil,
   legend_rich = nil,
   mode = "unknown",
   warned = false,
+  notified = false,
   client_id = nil,
 }
+
+--- Has a server been observed sending the rich legend while this client
+--- withheld the capability? nil until such a case is seen; false once it is.
+---
+--- That observation is what makes a restart pointless: if withholding does not
+--- change the legend, restarting to withhold it again cannot either. Recorded
+--- rather than assumed, because a future build may well add the gate.
+---@type boolean|nil
+M.server_gates = nil
 
 -- Clients already complained about, so re-attaching a buffer does not re-warn.
 local warned_clients = {}
@@ -106,9 +132,9 @@ end
 
 --- Should `experimental.leanRichTokens` go on the wire?
 ---
---- True in BOTH the auto and the forced-on case: detection is only possible if
---- we ask, since the patched server withholds the rich legend from a client
---- that did not. Only an explicit `false` withholds the capability.
+--- True in BOTH the auto and the forced-on case — asking is the correct thing
+--- for a client that wants the rich stream, whether or not it has decided to
+--- use it yet. Only an explicit `false` withholds it.
 ---@return boolean
 function M.advertise()
   return M.override() ~= false
@@ -125,7 +151,12 @@ end
 ---@param client vim.lsp.Client
 ---@return { tokenTypes: string[], tokenModifiers: string[] }|nil
 function M.legend(client)
-  return vim.tbl_get(client, "server_capabilities", "semanticTokensProvider", "legend")
+  return vim.tbl_get(
+    client,
+    "server_capabilities",
+    "semanticTokensProvider",
+    "legend"
+  )
 end
 
 --- Does this client's legend carry the patched names?
@@ -161,19 +192,28 @@ end
 
 --- Look at a client, record what was found, warn on the one case that deserves
 --- it: the user asked for rich and the wire does not have it.
+---
+--- `warned` is "the setting and the legend disagree", which is sticky for as
+--- long as they do; `notified` is "this call raised the message", which fires
+--- once per client. The two are separate so a caller can tell a persisting
+--- mismatch from a fresh one.
 ---@param client vim.lsp.Client
 ---@return LeanRichTokensReport
 function M.diagnose(client)
   local override = M.override()
   local rich = client and M.legend_is_rich(client) or nil
-  local warned = false
+  local warned, notified = false, false
 
   if override == true and rich == false then
+    warned = true
     if not warned_clients[client.id] then
       warned_clients[client.id] = true
-      warned = true
+      notified = true
       vim.notify(
-        ("vim.g.lean_rich_tokens = true, but %s's legend has no `%s`.\n"):format(M.SERVER, M.MARKER)
+        ("vim.g.lean_rich_tokens = true, but %s's legend has no `%s`.\n"):format(
+          M.SERVER,
+          M.MARKER
+        )
           .. "This project is on a stock Lean toolchain; the rich token stream\n"
           .. "does not exist to be turned on. `:LeanRichTokens status` shows which\n"
           .. "toolchain elan resolved. Highlighting is unaffected — the rich groups\n"
@@ -181,9 +221,14 @@ function M.diagnose(client)
         vim.log.levels.WARN,
         { title = "LeanRichTokens" }
       )
-    else
-      warned = true -- already said once for this client; still a mismatch
     end
+  end
+
+  -- The measurement that makes a later restart pointless: we withheld the
+  -- capability and the rich legend arrived anyway, so this server build does
+  -- not gate on it. Only ever set from an observation, never assumed.
+  if override == false and rich == true then
+    M.server_gates = false
   end
 
   M.last = {
@@ -193,6 +238,7 @@ function M.diagnose(client)
       or (rich == true) and "rich"
       or "unknown",
     warned = warned,
+    notified = notified,
     client_id = client and client.id or nil,
   }
   return M.last
@@ -210,18 +256,23 @@ function M.toolchain(cwd)
   if vim.fn.executable("elan") == 0 then
     return "unknown (elan not on PATH)"
   end
-  local out = vim.system({ "elan", "show" }, {
-    cwd = cwd and vim.uv.fs_stat(cwd) and cwd or nil,
-    env = { ELAN_NO_OVERRIDE_NOTICE = "1" },
-    text = true,
-  }):wait(5000)
+  local out = vim
+    .system({ "elan", "show" }, {
+      cwd = cwd and vim.uv.fs_stat(cwd) and cwd or nil,
+      env = { ELAN_NO_OVERRIDE_NOTICE = "1" },
+      text = true,
+    })
+    :wait(5000)
   if out.code ~= 0 then
     return ("unknown (elan show exited %d)"):format(out.code)
   end
   -- The line after the `----` rule under "active toolchain", which carries the
   -- override reason in parentheses when there is one.
-  local active = (out.stdout or ""):match("active toolchain%s*\n%-+%s*\n%s*([^\n]+)")
-  return active and vim.trim(active) or "unknown (unrecognised `elan show` output)"
+  local active = (out.stdout or ""):match(
+    "active toolchain%s*\n%-+%s*\n%s*([^\n]+)"
+  )
+  return active and vim.trim(active)
+    or "unknown (unrecognised `elan show` output)"
 end
 
 -- ── status ────────────────────────────────────────────────────────────────
@@ -237,21 +288,34 @@ function M.report(bufnr)
   end
   local client = clients[1]
   local legend = client and M.legend(client)
-  local root = client and (client.root_dir or client.config.root_dir) or vim.uv.cwd()
+  local root = client and (client.root_dir or client.config.root_dir)
+    or vim.uv.cwd()
 
   return {
     override = M.override(),
+    -- What we WOULD send now …
     advertised = M.advertise(),
+    -- … versus what the running client actually did send, read back off its own
+    -- config. These differ exactly when vim.g changed without a restart, which
+    -- is the state in which nothing the user asked for has taken effect yet.
+    sent = client and vim.tbl_get(
+      client.config,
+      "capabilities",
+      "experimental",
+      "leanRichTokens"
+    ) == true or false,
     client = client and { id = client.id, root_dir = root } or nil,
     legend_rich = client and M.legend_is_rich(client) or nil,
     n_types = legend and legend.tokenTypes and #legend.tokenTypes or nil,
-    n_mods = legend and legend.tokenModifiers and #legend.tokenModifiers or nil,
-    marker = legend
-        and legend.tokenModifiers
-        and vim.tbl_contains(legend.tokenModifiers, M.MARKER)
-      or false,
+    n_mods = legend and legend.tokenModifiers and #legend.tokenModifiers
+      or nil,
+    marker = legend and legend.tokenModifiers and vim.tbl_contains(
+      legend.tokenModifiers,
+      M.MARKER
+    ) or false,
     mode = M.enabled(bufnr) and "rich" or "standard",
     toolchain = M.toolchain(root),
+    server_gates = M.server_gates,
     last = vim.deepcopy(M.last),
   }
 end
@@ -278,7 +342,8 @@ function M.status_lines(bufnr)
     "",
     "  ── toolchain (elan decides; no editor command changes this) ──",
     "  active toolchain: " .. r.toolchain,
-    "  project root    : " .. tostring(r.client and r.client.root_dir or vim.uv.cwd()),
+    "  project root    : "
+      .. tostring(r.client and r.client.root_dir or vim.uv.cwd()),
   }
 
   vim.list_extend(lines, {
@@ -294,19 +359,56 @@ function M.status_lines(bufnr)
   else
     vim.list_extend(lines, {
       ("  client id       : %d"):format(r.client.id),
-      "  capability sent : experimental.leanRichTokens = " .. tostring(r.advertised),
-      ("  legend size     : %d token types, %d modifiers"):format(r.n_types or 0, r.n_mods or 0),
+      "  capability sent : experimental.leanRichTokens = " .. tostring(r.sent),
+      ("  legend size     : %d token types, %d modifiers"):format(
+        r.n_types or 0,
+        r.n_mods or 0
+      ),
       "  has `" .. M.MARKER .. "`  : " .. yn(r.marker),
     })
-    -- The disagreement worth surfacing: elan gave you the patched toolchain and
-    -- the legend still came back stock, or the reverse.
+
+    -- Everything below is a DISAGREEMENT report. Each of these is a state a
+    -- user can reach and be baffled by, and none of them is an error.
+
+    -- The setting changed but the running server was never asked again.
+    if r.sent ~= r.advertised then
+      vim.list_extend(lines, {
+        "",
+        "  NOTE the running client sent leanRichTokens = "
+          .. tostring(r.sent)
+          .. "; the setting now",
+        "       says "
+          .. tostring(r.advertised)
+          .. ". Nothing was renegotiated. `:LeanRichTokens "
+          .. (r.advertised and "on" or "off")
+          .. "` restarts",
+        "       leanls when a restart could change the answer.",
+      })
+    end
+
+    -- Forced off, and the rich stream is arriving anyway. Measured, not
+    -- guessed: the patched build at d5f3797 does not gate its legend on the
+    -- capability, so withholding it changes what this client ASKS FOR and
+    -- nothing about what the server SENDS.
+    if r.override == false and r.marker then
+      vim.list_extend(lines, {
+        "",
+        "  NOTE standard mode is forced and the legend is still rich. This server",
+        "       build does not gate its legend on the capability, so the rich",
+        "       tokens keep arriving and the @lsp.*.lean groups keep matching.",
+        "       What IS off: the capability is no longer advertised, and no rich",
+        "       client behaviour runs. Highlighting is not this switch's to change.",
+      })
+    end
+
+    -- elan says patched, the wire says stock.
     if r.toolchain:match("^lean4%-rich") and r.marker == false then
       vim.list_extend(lines, {
         "",
-        "  NOTE the patched toolchain is active but the legend is stock — the",
-        "       capability was withheld. Restart the server after turning the",
-        "       mode on: `:LeanRichTokens on`.",
+        "  NOTE elan resolved the patched toolchain but the legend is stock. The",
+        "       running server is not the one elan now names — restart leanls.",
       })
+    -- elan says stock, the wire says patched.
     elseif not r.toolchain:match("^lean4%-rich") and r.marker then
       vim.list_extend(lines, {
         "",
@@ -318,8 +420,9 @@ function M.status_lines(bufnr)
 
   vim.list_extend(lines, {
     "",
-    "  Changing MODE      : :LeanRichTokens on|off|toggle (restarts leanls when",
-    "                       the running legend disagrees).",
+    "  Changing MODE      : :LeanRichTokens on|off|toggle — restarts leanls only",
+    "                       when the running client sent a different capability",
+    "                       than the one now wanted.",
     "  Changing TOOLCHAIN : elan override set <toolchain> (or $ELAN_TOOLCHAIN),",
     "                       then restart Neovim's leanls. Different thing.",
   })
@@ -376,30 +479,56 @@ function M.set(mode)
   -- later by lean.nvim sees the new capability set.
   pcall(vim.lsp.config, M.SERVER, {})
 
-  -- Only restart when the wire actually disagrees with what was asked for.
-  -- Restarting leanls on a mathlib project costs a re-elaboration, so it is
-  -- not something to do for a no-op.
+  -- WHEN TO RESTART. Restarting leanls on a mathlib project costs a full
+  -- re-elaboration, so the bar is "a restart could change something".
+  --
+  -- The test is the CAPABILITY the running client sent, not the legend it got.
+  -- Comparing legends is the version of this that loops forever: forced-off
+  -- against the patched build sees a rich legend, restarts, gets a rich legend
+  -- again (the build does not gate), and would restart on every subsequent
+  -- `off` — a minute of re-elaboration each time, achieving nothing. The
+  -- capability comparison settles after one restart, because the new client
+  -- sends what was asked for by construction.
+  --
+  -- And once M.server_gates is known false — observed, in diagnose() — even
+  -- that one restart is pointless for the off direction, so it is skipped.
   local want = M.advertise()
-  local disagrees = false
-  for _, client in ipairs(M.clients()) do
-    local rich = M.legend_is_rich(client)
-    if rich ~= nil and rich ~= want then
-      disagrees = true
+  local clients = M.clients()
+  local stale = false
+  for _, client in ipairs(clients) do
+    local sent = vim.tbl_get(
+      client.config,
+      "capabilities",
+      "experimental",
+      "leanRichTokens"
+    ) == true
+    if sent ~= want then
+      stale = true
     end
   end
 
   local msg
-  if disagrees and restart_server() then
-    msg = ("LeanRichTokens: %s — restarted %s to renegotiate the legend."):format(mode, M.SERVER)
+  if #clients == 0 then
+    msg = ("LeanRichTokens: %s — no %s running; takes effect when one starts."):format(
+      mode,
+      M.SERVER
+    )
+  elseif stale and M.server_gates == false then
+    refresh_tokens()
+    msg = ("LeanRichTokens: %s — client behaviour switched, tokens re-requested. "):format(
+      mode
+    ) .. "Not restarting: this server build was observed not to gate its legend on " .. "the capability, so renegotiating cannot change what arrives. " .. "`:LeanRichTokens status` has the detail."
+  elseif stale and restart_server() then
+    msg = ("LeanRichTokens: %s — restarted %s so the capability is renegotiated."):format(
+      mode,
+      M.SERVER
+    )
   else
     refresh_tokens()
-    msg = ("LeanRichTokens: %s — legend already matches; re-requested tokens."):format(mode)
-    if #M.clients() == 0 then
-      msg = ("LeanRichTokens: %s — no %s running; takes effect when one starts."):format(
-        mode,
-        M.SERVER
-      )
-    end
+    msg = ("LeanRichTokens: %s — %s already sent that capability; re-requested tokens."):format(
+      mode,
+      M.SERVER
+    )
   end
   return msg
 end
