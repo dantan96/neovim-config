@@ -1398,6 +1398,76 @@ T["module name"]["declines rather than inventing a name"] = function()
   expect.equality(err("/Users/dan/scratch/Foo.lean", nil):find("not inside") ~= nil, true)
 end
 
+-- ── unicode input in telescope prompts, and the \la crash (#40, #44) ───
+-- lua/config/lean/abbreviations.lua. What needed a real editor — that
+-- `\alpha`+space in a prompt produces α, that the column arithmetic survives
+-- the prompt prefix, and that <Tab>/<CR> come back to telescope afterwards —
+-- was measured in a pty-hosted TUI against MIL and is recorded in that file's
+-- header and in the commit. What is checkable here is the wiring.
+
+T["lean"]["abbreviations: the telescope-prompt hook is registered"] = function()
+  local n = child.lua_get([[
+    #vim.api.nvim_get_autocmds({
+      group = "LeanAbbreviationsInPrompts",
+      event = "FileType",
+      pattern = "TelescopePrompt",
+    })
+  ]])
+  expect.equality(n, 1)
+end
+
+-- The hook's whole job. Buffer-SCOPED autocmds, which is what makes this work
+-- at all: `enable('TelescopePrompt')` would match a file pattern against a
+-- buffer telescope never names, register three autocmds that can never fire,
+-- and look installed.
+T["lean"]["abbreviations: init_prompt arms a buffer with all three events"] = function()
+  local events = child.lua_get([[(function()
+    local b = vim.api.nvim_create_buf(false, true)
+    local armed = require("config.lean.abbreviations").init_prompt(b)
+    local out = {}
+    for _, a in ipairs(vim.api.nvim_get_autocmds({ group = "LeanAbbreviations", buffer = b })) do
+      table.insert(out, a.event)
+    end
+    table.sort(out)
+    vim.api.nvim_buf_delete(b, { force = true })
+    return { armed = armed, events = out }
+  end)()]])
+  expect.equality(events.armed, true)
+  expect.equality(events.events, { "BufLeave", "InsertCharPre", "InsertLeave" })
+end
+
+-- Gating, so opening a telescope picker in a Lua buffer does not drag
+-- lean.nvim in through lazy's require hook. Checked in the PARENT, which has
+-- loaded no plugins at all — the honest "lean.nvim is absent" environment.
+T["lean"]["abbreviations: inert when lean.nvim has not loaded"] = function()
+  local a = dofile(H.cfg .. "/lua/config/lean/abbreviations.lua")
+  expect.equality(a.available(), false)
+  expect.equality(a.init_prompt(0), false)
+end
+
+-- ── the \la crash (parity audit #44, wrongly recorded as `parity`) ─────
+-- `abbreviations.load()` locates its JSON from `debug.getinfo(2, 'S')` — the
+-- CALLER's frame — so it works from `lua/lean/*` and throws from anywhere
+-- else, including lean.nvim's own telescope extension at
+-- lua/telescope/_extensions/lean_abbreviations.lua. `\la` therefore threw on
+-- every press while three tests for it passed.
+--
+-- This calls load() from outside `lua/lean/`, which is exactly the failing
+-- call site's situation, and requires a real table back.
+T["lean"]["abbreviations: load() works from outside lua/lean (the \\la crash)"] = function()
+  local report = child.lua_get([[(function()
+    local ok, res = pcall(require("lean.abbreviations").load)
+    if not ok then return { ok = false, n = 0, err = tostring(res):sub(1, 120) } end
+    local n = 0
+    for _ in pairs(res) do n = n + 1 end
+    return { ok = true, n = n, alpha = res["alpha"] }
+  end)()]])
+  expect.equality(report.ok, true)
+  -- Non-vacuity: an empty or stub table would satisfy "ok".
+  expect.equality(report.n > 1000, true)
+  expect.equality(report.alpha, "α")
+end
+
 -- ── lean.nvim's snippets reach the completion menu (parity audit #41) ──
 -- lean.nvim ships snippets/lean.json through its own package.json and
 -- `require('luasnip').get_snippets('lean')` returned 0 in a live MIL buffer.

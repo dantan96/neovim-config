@@ -132,6 +132,19 @@ return {
     -- otherwise propagate out of the finder. Remove once upstream returns a
     -- table unconditionally.
     config = function()
+      -- ── Abbreviations outside Lean buffers ──────────────────────────────
+      -- Two things, both in lua/config/lean/abbreviations.lua and both
+      -- explained there: `\to` now expands in telescope prompts (parity #40,
+      -- verified in a pty-hosted TUI), and lean.nvim's `abbreviations.load()`
+      -- is patched so `:Telescope lean_abbreviations` (`\la`) stops throwing —
+      -- upstream resolves its JSON with `debug.getinfo(2)`, the CALLER's
+      -- frame, which is wrong for every caller outside `lua/lean/`.
+      --
+      -- Here rather than in `init`: both need lean.nvim itself, and this runs
+      -- exactly when it loads. Not in the ftplugin, which must define no
+      -- autocmds (tests/test_invariants.lua).
+      require("config.lean.abbreviations").setup()
+
       -- ── satellite.nvim: whole-file elaboration progress ─────────────────
       -- lean.nvim ships lua/lean/satellite.lua, a Satellite.Handler plotting
       -- lean.progress onto the whole-document scrollbar — the thing the sign

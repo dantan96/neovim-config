@@ -229,12 +229,28 @@ too. Goes to both `+` and `"`.
 `\lw` is the one to reach for with a half-remembered name. Ranking is mediocre;
 scroll. See *Finding lemmas* below for when to prefer `exact?` over any of them.
 
+**Unicode works in the prompt.** Type `\to`, `\alpha`, `\in` in any telescope
+prompt and it expands exactly as it does in a Lean buffer, so a Loogle query
+can be `∀ x, x ∈ s` and not only `?a * ?b = ?b * ?a`. `<Tab>` and `<CR>`
+convert the abbreviation while one is open and go back to
+select-and-toggle the moment it closes; `<Esc>` mid-abbreviation converts
+first. Live in any prompt once a Lean buffer has been visited this session,
+and inert before that, so it never drags lean.nvim into a Lua file's picker.
+
 Two footnotes on this group. These are **normal-mode** maps, so `\l` here does
 not collide with the insert-mode abbreviation `\l` → `←` further down. And `\la`
 carries a known upstream bug: picking an abbreviation whose expansion contains
 a `$CURSOR` placeholder inserts the literal text `$CURSOR`, because the picker
 calls `nvim_put` on the raw replacement instead of routing it through
 `abbreviations.convert`. Most entries are unaffected.
+
+`\la` also carried a second, fatal upstream bug until 2026-08-13: it threw
+`Unable to read abbreviations from …/lua/vscode-lean/abbreviations.json` on
+every press and opened nothing. `abbreviations.load()` finds its JSON relative
+to `debug.getinfo(2)` — the *caller's* directory — which is right for every
+caller inside `lua/lean/` and wrong for lean.nvim's own telescope extension.
+Patched locally in `lua/config/lean/abbreviations.lua`; insert-mode expansion
+and `\\` were never affected, which is why it went unnoticed.
 
 ## Folding
 
@@ -293,7 +309,8 @@ send your query to an external service.
 ## Unicode abbreviations
 
 Type the sequence in insert mode; it expands on the next non-matching
-character (usually space). `\\` on a character tells you how to type it.
+character (usually space). `\\` on a character tells you how to type it. It
+works in **telescope prompts** too — see *Finding lemmas — the pickers*.
 
 | Type | Get | | Type | Get |
 |------|-----|-|------|-----|
