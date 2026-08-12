@@ -77,7 +77,9 @@
 --   background    NOT USED HERE, on purpose. It already means "this is not
 --                 ordinary source text" twice over — the `sorry` chip and
 --                 LspInlayHint — and a third meaning would dissolve the
---                 first two.
+--                 first two. It is deliberately NOT an input of the picker
+--                 either: exposing it would let a user paint over the
+--                 `leanSorryLike` chip that `SKIP` below exists to protect.
 --
 -- ─────────────────────────────────────────────────────────────────────────
 -- WHY THESE THREE HUES, SPECIFICALLY
@@ -110,6 +112,62 @@
 -- flamingo and teal here. Seven. Red appears only as an underline colour and
 -- on auto-implicits, reusing the error association rather than adding an
 -- eighth anchor.
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- THE INPUT MODEL — what is chosen, and what is COMPUTED from it
+-- ─────────────────────────────────────────────────────────────────────────
+-- Everything above describes a palette of forty-odd groups, but there are
+-- only ELEVEN numbers and switches behind it. That distinction is the whole
+-- reason `:LeanPalette` (lua/config/lean/palette_picker.lua) can exist
+-- without turning this file into a colour dump:
+--
+--   THE INPUTS                              THE DERIVED
+--   hues.prop / .data / .poly               prop_dust / data_dust / poly_dust
+--   recede  (blend target)                    = blend(hue, recede, dust)
+--   dust    (blend factor 0..1)             every @lean.<world>.<level>
+--   simp_sp / alarm  (attribute colours)    every flag-suffixed variant
+--   channels.former_bold                    ...forty-odd complete specs
+--   channels.local_italic
+--   channels.simp_underline  (style or "none")
+--   channels.axiom_underline
+--   channels.auto_underline
+--   channels.auto_recolour
+--
+-- A picker that wrote literal hex per group and nothing else would destroy
+-- this: the "dusty" step exists so that every hue recedes by EXACTLY the
+-- same amount and a fourth world is one line, and hand-written shades
+-- cannot preserve that invariant under editing. So the picker's DEFAULT
+-- mode edits `M.opts` and calls `M.apply()`, and this file regenerates.
+-- See `M.defaults()` below.
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- TWO LAYERS — the generator, and the last word over it
+-- ─────────────────────────────────────────────────────────────────────────
+-- The structure above is a good default, not a cage. Anything it produces
+-- can be overridden per group, and the override wins:
+--
+--   generated spec  ──►  M.overrides[group]  ──►  nvim_set_hl
+--
+-- `M.overrides` is a separate table with a separate lifetime, and that
+-- separation is the whole point:
+--
+--   * changing a hue regenerates the grid WITHOUT touching an override, so
+--     a deliberate hand-set colour is not silently wiped by a later slider
+--     nudge;
+--   * an override can be cleared one group at a time, or all at once, and
+--     the generated value underneath is still there to fall back to;
+--   * an override can name a group the generator never produces at all —
+--     the `@lsp.type.*.lean` pins from themes.lua, the
+--     `@lsp.typemod.*` crossings, `leanSorryLike`, `LspInlayHint`,
+--     `LeanDocumentHighlight`, `leanConstant`. If a group changes how Lean
+--     looks, it is reachable.
+--
+-- ONE RULE IS ENFORCED SILENTLY, because it is mechanics and not taste:
+-- every group written out is a COMPLETE specification carrying its own
+-- `fg` (B1 — a partial child kills inheritance and renders COLOURLESS).
+-- An override that sets only `bold` therefore has the effective `fg`
+-- resolved and restated for it in `resolve()` below. The user is never
+-- asked to care, and the edit is never refused.
 --
 -- ─────────────────────────────────────────────────────────────────────────
 -- TWO MECHANICS THAT DICTATE THE IMPLEMENTATION
@@ -151,25 +209,274 @@ local function blend(a, b, t)
   return out
 end
 
-local OVERLAY1 = "#7f849c" -- catppuccin mocha overlay1: the "recede" target
-local DUST = 0.42 -- one step back; measured by looking, not derived
+M.blend = blend
 
---- Every colour this file can produce, flat, so the whole palette is one
---- table to read and one table to edit. Derived entries are computed here
---- rather than in the style table so that nothing downstream has to know
---- how a shade was arrived at.
-M.palette = {
-  -- world anchors (catppuccin mocha names in comments)
-  prop = "#89b4fa", -- blue      — proofs, propositions, predicates
-  data = "#f2cdcd", -- flamingo  — data, types, constructors
-  poly = "#94e2d5", -- teal      — sort-polymorphic: could be either
-  -- attribute colours
+-- ── the inputs ─────────────────────────────────────────────────────────
+-- The complete set of things a human chooses. Everything else in this file
+-- is a pure function of this table. Kept as a constructor rather than a
+-- shared table so that a caller holding "the defaults" cannot mutate them
+-- out from under `M.reset()`.
+
+--- The five underline styles Neovim can render, plus the off switch.
+--- HL_UNDERLINE_MASK is three bits, so a cell has exactly ONE of these (B4);
+--- the FLAGS order below decides who wins when a token qualifies for two.
+M.underline_styles = {
+  "none",
+  "underline",
+  "undercurl",
+  "underdouble",
+  "underdotted",
+  "underdashed",
+}
+
+--- The same list as attribute keys, i.e. without the off switch. Declared
+--- here rather than beside the flag table because the override layer needs
+--- it too, to clear a generated underline that a hand-set one replaces.
+local UNDERLINE_KEYS =
+  { "underline", "undercurl", "underdouble", "underdotted", "underdashed" }
+
+local DEFAULTS = {
+  hues = {
+    prop = "#89b4fa", -- blue      — proofs, propositions, predicates
+    data = "#f2cdcd", -- flamingo  — data, types, constructors
+    poly = "#94e2d5", -- teal      — sort-polymorphic: could be either
+  },
   simp_sp = "#f9e2af", -- yellow — "the automation knows about this"
   alarm = "#f38ba8", -- red      — axioms and auto-bound implicits
+  recede = "#7f849c", -- catppuccin mocha overlay1: the "recede" target
+  dust = 0.42, -- one step back; measured by looking, not derived
+  channels = {
+    former_bold = true, -- former = the head of a type expression
+    local_italic = true, -- bound here, not imported
+    simp_underline = "underdotted",
+    axiom_underline = "underdouble",
+    auto_underline = "underdashed",
+    auto_recolour = true, -- auto-implicits also take the alarm fg
+  },
 }
-M.palette.prop_dust = blend(M.palette.prop, OVERLAY1, DUST)
-M.palette.data_dust = blend(M.palette.data, OVERLAY1, DUST)
-M.palette.poly_dust = blend(M.palette.poly, OVERLAY1, DUST)
+
+--- @return table a fresh, independent copy of the shipped inputs
+function M.defaults()
+  return vim.deepcopy(DEFAULTS)
+end
+
+-- ── validation ─────────────────────────────────────────────────────────
+-- This runs on anything loaded from disk, and the load happens inside
+-- catppuccin's `config` function. An error there does not degrade to
+-- "default colours" — it aborts the colorscheme and leaves the editor
+-- unthemed. So every field is checked and anything unrecognised falls back
+-- to the shipped value rather than propagating.
+
+local function is_hex(s)
+  return type(s) == "string" and s:match("^#%x%x%x%x%x%x$") ~= nil
+end
+
+local function is_style(s)
+  for _, v in ipairs(M.underline_styles) do
+    if v == s then
+      return true
+    end
+  end
+  return false
+end
+
+--- Coerce an arbitrary table into a complete, well-formed input set.
+--- Never throws, never returns a partial table.
+--- @param raw any
+--- @return table inputs, string[] complaints
+function M.validate(raw)
+  local out = M.defaults()
+  local bad = {}
+  if type(raw) ~= "table" then
+    if raw ~= nil then
+      bad[#bad + 1] = "not a table"
+    end
+    return out, bad
+  end
+  if type(raw.hues) == "table" then
+    for _, k in ipairs({ "prop", "data", "poly" }) do
+      local v = raw.hues[k]
+      if v ~= nil then
+        if is_hex(v) then
+          out.hues[k] = v
+        else
+          bad[#bad + 1] = "hues." .. k .. " = " .. vim.inspect(v)
+        end
+      end
+    end
+  end
+  for _, k in ipairs({ "simp_sp", "alarm", "recede" }) do
+    local v = raw[k]
+    if v ~= nil then
+      if is_hex(v) then
+        out[k] = v
+      else
+        bad[#bad + 1] = k .. " = " .. vim.inspect(v)
+      end
+    end
+  end
+  if raw.dust ~= nil then
+    if type(raw.dust) == "number" then
+      -- Clamped, not rejected: a value slightly out of range is a slider
+      -- overshoot, and refusing it would throw away the rest of the file.
+      out.dust = math.max(0, math.min(1, raw.dust))
+    else
+      bad[#bad + 1] = "dust = " .. vim.inspect(raw.dust)
+    end
+  end
+  if type(raw.channels) == "table" then
+    for _, k in ipairs({ "former_bold", "local_italic", "auto_recolour" }) do
+      local v = raw.channels[k]
+      if v ~= nil then
+        if type(v) == "boolean" then
+          out.channels[k] = v
+        else
+          bad[#bad + 1] = "channels." .. k .. " = " .. vim.inspect(v)
+        end
+      end
+    end
+    for _, k in ipairs({ "simp_underline", "axiom_underline", "auto_underline" }) do
+      local v = raw.channels[k]
+      if v ~= nil then
+        if is_style(v) then
+          out.channels[k] = v
+        else
+          bad[#bad + 1] = "channels." .. k .. " = " .. vim.inspect(v)
+        end
+      end
+    end
+  end
+  return out, bad
+end
+
+--- The inputs currently in force. Replaced wholesale by `M.apply`.
+M.opts = M.defaults()
+
+-- ── the override layer ─────────────────────────────────────────────────
+-- Hand-set specs, layered over whatever the generator produced — or over
+-- nothing at all, for groups it never produces. Kept in its own table with
+-- its own lifetime so that regenerating cannot wipe a deliberate choice.
+
+--- group name -> partial spec
+M.overrides = {}
+
+--- Attributes an override may carry. An allowlist rather than a passthrough
+--- because these values reach `nvim_set_hl`, which throws on a bad key or a
+--- bad type — and the load happens inside catppuccin's `config` function,
+--- where throwing costs the whole colorscheme.
+local COLOUR_KEYS = { fg = true, bg = true, sp = true }
+local BOOL_KEYS = {
+  bold = true,
+  italic = true,
+  strikethrough = true,
+  reverse = true,
+  nocombine = true,
+  underline = true,
+  undercurl = true,
+  underdouble = true,
+  underdotted = true,
+  underdashed = true,
+}
+
+--- Coerce one hand-set spec into something `nvim_set_hl` will accept.
+--- Unknown keys and ill-typed values are dropped, never propagated.
+--- @return table|nil spec, string[] complaints
+function M.validate_override(raw)
+  if type(raw) ~= "table" then
+    return nil, { "not a table" }
+  end
+  local out, bad = {}, {}
+  for k, v in pairs(raw) do
+    if COLOUR_KEYS[k] then
+      if is_hex(v) then
+        out[k] = v
+      elseif v ~= nil then
+        bad[#bad + 1] = k .. " = " .. vim.inspect(v)
+      end
+    elseif BOOL_KEYS[k] then
+      if type(v) == "boolean" then
+        out[k] = v
+      else
+        bad[#bad + 1] = k .. " = " .. vim.inspect(v)
+      end
+    else
+      bad[#bad + 1] = "unknown attribute " .. tostring(k)
+    end
+  end
+  if next(out) == nil then
+    return nil, bad
+  end
+  return out, bad
+end
+
+--- The colour a group would show if we wrote nothing — used to satisfy B1
+--- when an override sets an attribute but no `fg`. Resolves through links,
+--- so a group that merely links to `Function` still yields a real hex.
+local function inherited_fg(name)
+  local ok, h = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
+  if ok and type(h) == "table" and h.fg then
+    return string.format("#%06x", h.fg)
+  end
+  return nil
+end
+
+--- Merge the override for `name` over the generated spec.
+--- ALWAYS returns a complete specification: if the result would have no
+--- foreground, the inherited one is resolved and restated, because a
+--- partial definition renders colourless rather than inheriting (B1).
+--- @param name string
+--- @param generated table|nil what the generator said, if anything
+--- @return table spec
+local function resolve(name, generated)
+  local ov = M.overrides[name]
+  if not ov then
+    return generated
+  end
+  local out = {}
+  for k, v in pairs(generated or {}) do
+    out[k] = v
+  end
+  -- An override naming ANY underline style replaces whichever one the
+  -- generator chose: only one fits in the cell (B4), and a leftover would
+  -- otherwise win or leave a stray `sp` behind.
+  for k in pairs(ov) do
+    if BOOL_KEYS[k] and k:match("^under") then
+      for _, u in ipairs(UNDERLINE_KEYS) do
+        out[u] = nil
+      end
+      break
+    end
+  end
+  for k, v in pairs(ov) do
+    out[k] = v
+  end
+  if not out.fg then
+    out.fg = inherited_fg(name)
+  end
+  return out
+end
+
+-- ── the derived palette ────────────────────────────────────────────────
+--- Every colour this file can produce, flat, so the whole palette is one
+--- table to read. Derived entries are computed here rather than in the style
+--- table so that nothing downstream has to know how a shade was arrived at.
+--- Mutated IN PLACE by `rebuild_palette` so a held reference stays live.
+M.palette = {}
+
+local function rebuild_palette(o)
+  local p = M.palette
+  for k in pairs(p) do
+    p[k] = nil
+  end
+  p.prop, p.data, p.poly = o.hues.prop, o.hues.data, o.hues.poly
+  p.simp_sp, p.alarm, p.recede = o.simp_sp, o.alarm, o.recede
+  p.prop_dust = blend(p.prop, p.recede, o.dust)
+  p.data_dust = blend(p.data, p.recede, o.dust)
+  p.poly_dust = blend(p.poly, p.recede, o.dust)
+  return p
+end
+
+rebuild_palette(M.opts)
 
 -- ── the grid ───────────────────────────────────────────────────────────
 -- World × level, the two axes every classified token carries exactly one of
@@ -194,75 +501,103 @@ local function cell_spec(world, level)
     -- The head of a type expression — `Set`, `Eq`, `Even`. Same band as a
     -- sort, because it lives at the same place in the tower; bold because
     -- it is the thing doing the work.
-    return { fg = dust, bold = true }
+    return { fg = dust, bold = M.opts.channels.former_bold or nil }
   end
 end
 
 -- ── flags that change the spec ─────────────────────────────────────────
 -- Order is FIXED so that the group name is a function of the set, not of
--- Lua's hash iteration order. Everything not listed here is deliberately
--- unstyled; see the header.
+-- Lua's hash iteration order. It is also the underline PRECEDENCE order:
+-- each entry clears every other underline bit before setting its own, so
+-- the last matching flag owns the single available slot (B4). Everything
+-- not listed here is deliberately unstyled; see the header.
 
-local FLAGS = {
-  -- suffix, predicate over (type, modifiers), mutation
-  {
-    "local",
-    function(_, mods)
-      return mods["local"]
-    end,
-    function(spec)
-      -- Bound in this file's binder list or tactic block, as opposed to
-      -- coming from the environment. Same convention as this machine's
-      -- spthy scheme, where italic consistently means "variable".
-      spec.italic = true
-    end,
-  },
-  {
-    "simp",
-    function(_, mods)
-      return mods.simp
-    end,
-    function(spec)
-      -- `@[simp]`-ness is invisible at the use site and is exactly what a
-      -- reader asks when deciding whether `simp` will close a goal.
-      spec.underdotted = true
-      spec.sp = M.palette.simp_sp
-    end,
-  },
-  {
-    "axiom",
-    function(ty, _)
-      return ty == "axiom"
-    end,
-    function(spec)
-      -- The one global whose authority differs from every other global, and
-      -- nothing at the use site says so: `Classical.choice` looks like any
-      -- other constant. Double underline = "rests on nothing".
-      spec.underdouble = true
-      spec.underdotted = nil -- one underline slot; this one wins
-      spec.sp = M.palette.alarm
-    end,
-  },
-  {
-    "auto",
-    function(_, mods)
-      return mods.autoImplicit
-    end,
-    function(spec)
-      -- The elaborator bound this name; you did not. Upstream keeps globals
-      -- grey precisely so an accidental `nat` stands out, and once globals
-      -- are coloured that signal is gone — so it has to be said directly.
-      -- Loud on purpose: this is the "you typed the wrong name" case, and
-      -- the world classification is least trustworthy here anyway, since
-      -- Lean guessed the type.
-      spec.fg = M.palette.alarm
-      spec.underdashed = true
-      spec.underdouble = nil
-      spec.underdotted = nil
-      spec.sp = M.palette.alarm
-    end,
-  },
-}
+--- Put ONE underline style on a spec, clearing any other. `sp` is cleared
+--- along with the style: a stray `sp` survives an overridden style and
+--- shows up as a coloured underline from a group that lost (B4).
+local function set_underline(spec, style, sp)
+  for _, k in ipairs(UNDERLINE_KEYS) do
+    spec[k] = nil
+  end
+  spec.sp = nil
+  if style and style ~= "none" then
+    spec[style] = true
+    spec.sp = sp
+  end
+end
+
+--- Build the flag table for a given input set. Each entry is
+--- { suffix, predicate(type, mods), mutate(spec) }. A channel switched off
+--- contributes NO entry, so its suffix vanishes from the group name too —
+--- the name stays a faithful description of what the group actually does.
+local function build_flags(o)
+  local c = o.channels
+  local flags = {}
+  if c.local_italic then
+    flags[#flags + 1] = {
+      "local",
+      function(_, mods)
+        return mods["local"]
+      end,
+      function(spec)
+        -- Bound in this file's binder list or tactic block, as opposed to
+        -- coming from the environment. Same convention as this machine's
+        -- spthy scheme, where italic consistently means "variable".
+        spec.italic = true
+      end,
+    }
+  end
+  if c.simp_underline ~= "none" then
+    flags[#flags + 1] = {
+      "simp",
+      function(_, mods)
+        return mods.simp
+      end,
+      function(spec)
+        -- `@[simp]`-ness is invisible at the use site and is exactly what a
+        -- reader asks when deciding whether `simp` will close a goal.
+        set_underline(spec, c.simp_underline, M.palette.simp_sp)
+      end,
+    }
+  end
+  if c.axiom_underline ~= "none" then
+    flags[#flags + 1] = {
+      "axiom",
+      function(ty, _)
+        return ty == "axiom"
+      end,
+      function(spec)
+        -- The one global whose authority differs from every other global, and
+        -- nothing at the use site says so: `Classical.choice` looks like any
+        -- other constant. Double underline = "rests on nothing".
+        set_underline(spec, c.axiom_underline, M.palette.alarm)
+      end,
+    }
+  end
+  if c.auto_underline ~= "none" or c.auto_recolour then
+    flags[#flags + 1] = {
+      "auto",
+      function(_, mods)
+        return mods.autoImplicit
+      end,
+      function(spec)
+        -- The elaborator bound this name; you did not. Upstream keeps globals
+        -- grey precisely so an accidental `nat` stands out, and once globals
+        -- are coloured that signal is gone — so it has to be said directly.
+        -- Loud on purpose: this is the "you typed the wrong name" case, and
+        -- the world classification is least trustworthy here anyway, since
+        -- Lean guessed the type.
+        if c.auto_recolour then
+          spec.fg = M.palette.alarm
+        end
+        set_underline(spec, c.auto_underline, M.palette.alarm)
+      end,
+    }
+  end
+  return flags
+end
+
+local FLAGS = build_flags(M.opts)
 
 -- Token types that are outside the grid entirely and must be left alone.
 -- `leanSorryLike` matters: it carries a background chip defined in
@@ -278,9 +613,28 @@ local specs = {} -- group name -> complete spec
 local memo = {} -- "type\0mod mod mod" -> group name (or false)
 local stats = { hits = 0, misses = 0 }
 
+--- Register the GENERATED spec for a group and paint the EFFECTIVE one.
+--- `specs` deliberately keeps the generated value, not the resolved one, so
+--- that clearing an override falls back to something real and so that the
+--- picker can show "generated X, overridden to Y" for the same group.
 local function define(name, spec)
   specs[name] = spec
-  vim.api.nvim_set_hl(0, name, spec)
+  vim.api.nvim_set_hl(0, name, resolve(name, spec))
+end
+
+--- Paint the overrides that name a group the generator never produces —
+--- the themes.lua pins, `leanSorryLike`, `LspInlayHint`, and anything else
+--- the user reached for. Separate pass because `define` only walks the
+--- generated set.
+local function apply_foreign_overrides()
+  for name in pairs(M.overrides) do
+    if specs[name] == nil then
+      local spec = resolve(name, nil)
+      if spec then
+        pcall(vim.api.nvim_set_hl, 0, name, spec)
+      end
+    end
+  end
 end
 
 --- Build (and register) the group for one (type, modifier-set) pair.
@@ -362,6 +716,240 @@ local function define_grid()
   end
 end
 
+-- ── re-applying a changed input set ────────────────────────────────────
+-- The subtle one, and the reason the `ColorScheme` handler below CANNOT be
+-- reused for this. That handler re-emits `specs` unchanged, which is right
+-- when only the colorscheme was cleared — but after an input changes,
+-- `specs` still holds specs computed from the OLD palette, so re-emitting
+-- would faithfully repaint the previous colours.
+--
+-- Worse, the flag-suffixed groups (`@lean.prop.element.local`) are built
+-- lazily in `build()`. Dropping `specs` leaves them undefined, and Neovim's
+-- `@`-group fallback strips segments from the right (B1) — so an undefined
+-- `@lean.prop.element.local` resolves to `@lean.prop.element`, a PLAUSIBLE
+-- BUT WRONG colour on a live buffer rather than a blank one. Regenerating
+-- from the memo's key set, and then forcing a semantic-token refresh, is
+-- what closes that window.
+
+--- Split a memo key back into the pair that produced it.
+local function unkey(key)
+  local nul = key:find("\0", 1, true)
+  local ty = key:sub(1, nul - 1)
+  local mods = {}
+  for m in key:sub(nul + 1):gmatch("%S+") do
+    mods[m] = true
+  end
+  return ty, mods
+end
+
+--- Ask every attached Lean client to resend its tokens, so live buffers
+--- repaint through the regenerated groups instead of waiting for an edit.
+local function refresh_live_buffers()
+  local st = vim.lsp and vim.lsp.semantic_tokens
+  if not (st and st.force_refresh) then
+    return
+  end
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype == "lean" then
+      pcall(st.force_refresh, buf)
+    end
+  end
+end
+
+--- Adopt a new input set and regenerate every group from it.
+--- @param inputs table|nil partial or complete; validated, never trusted
+--- @return table M, string[] complaints from validation
+function M.apply(inputs)
+  local o, bad = M.validate(inputs)
+  M.opts = o
+  rebuild_palette(o)
+  FLAGS = build_flags(o)
+
+  -- Remember what we are replacing, then rebuild from the pairs actually
+  -- seen. `build` writes into the fresh `specs`, so anything still absent
+  -- afterwards is a name this input set can no longer produce.
+  local previous = {}
+  for name in pairs(specs) do
+    previous[name] = true
+  end
+  local keys = {}
+  for key in pairs(memo) do
+    keys[#keys + 1] = key
+  end
+
+  specs, memo = {}, {}
+  define_grid()
+  for _, key in ipairs(keys) do
+    M.group(unkey(key))
+  end
+  -- Retire names this input set cannot produce (a channel was switched off,
+  -- so its suffix is gone). Left defined they would be dead entries in
+  -- `:highlight @lean.` showing colours nothing can reach.
+  for name in pairs(previous) do
+    if not specs[name] and not M.overrides[name] then
+      vim.api.nvim_set_hl(0, name, {})
+    end
+  end
+  apply_foreign_overrides()
+
+  refresh_live_buffers()
+  return M, bad
+end
+
+--- Repaint everything from the current inputs AND the current overrides,
+--- without recomputing the generator. What every override mutation calls.
+function M.repaint()
+  for name, spec in pairs(specs) do
+    vim.api.nvim_set_hl(0, name, resolve(name, spec))
+  end
+  apply_foreign_overrides()
+  refresh_live_buffers()
+  return M
+end
+
+-- ── override mutation ──────────────────────────────────────────────────
+
+--- Set (or replace) the hand-set spec for one group and repaint.
+--- @param name string any highlight group — generated or not
+--- @param spec table partial spec; validated, never trusted
+--- @return boolean ok, string[] complaints
+function M.set_override(name, spec)
+  local clean, bad = M.validate_override(spec)
+  if not clean then
+    return false, bad
+  end
+  M.overrides[name] = clean
+  M.repaint()
+  return true, bad
+end
+
+--- Drop one override. The generated value underneath comes back; a group
+--- with nothing underneath is cleared, which restores the theme's own
+--- fallback rather than leaving a stale hand-set colour behind.
+function M.clear_override(name)
+  if M.overrides[name] == nil then
+    return false
+  end
+  M.overrides[name] = nil
+  if specs[name] then
+    vim.api.nvim_set_hl(0, name, specs[name])
+  else
+    vim.api.nvim_set_hl(0, name, {})
+  end
+  M.repaint()
+  return true
+end
+
+--- Drop every override, keeping the generator inputs as they are.
+function M.clear_all_overrides()
+  local names = vim.tbl_keys(M.overrides)
+  M.overrides = {}
+  for _, name in ipairs(names) do
+    if specs[name] then
+      vim.api.nvim_set_hl(0, name, specs[name])
+    else
+      vim.api.nvim_set_hl(0, name, {})
+    end
+  end
+  M.repaint()
+  return #names
+end
+
+--- Back to the shipped palette, in memory: inputs AND overrides. Does not
+--- touch the saved file; `M.forget()` does that.
+function M.reset()
+  M.clear_all_overrides()
+  return M.apply(M.defaults())
+end
+
+--- Reset the generator inputs only, deliberately KEEPING hand-set groups.
+function M.reset_inputs()
+  return M.apply(M.defaults())
+end
+
+-- ── persistence ────────────────────────────────────────────────────────
+-- NOT under `stdpath("config")`: that directory is a git repo and a chezmoi
+-- external, and a colour choice is machine state, not tracked config. A
+-- field rather than a constant so tests can point it at a temp file — the
+-- shared `stdpath("data")` would otherwise let a test write leak into the
+-- user's live editor on next start.
+
+M.state_path = vim.fn.stdpath("data") .. "/lean-palette.json"
+
+--- Both layers, so a restart restores exactly what was on screen.
+--- @param state table|nil { inputs, overrides }; defaults to what is in force
+--- @return boolean ok, string|nil err
+function M.save(state)
+  state = state or { inputs = M.opts, overrides = M.overrides }
+  local payload = { inputs = M.validate(state.inputs), overrides = {} }
+  for name, spec in pairs(state.overrides or {}) do
+    local clean = M.validate_override(spec)
+    if clean then
+      payload.overrides[name] = clean
+    end
+  end
+  local ok, err = pcall(function()
+    vim.fn.mkdir(vim.fs.dirname(M.state_path), "p")
+    local fh = assert(io.open(M.state_path, "w"))
+    -- `vim.empty_dict()` so an override-free state round-trips as `{}` and
+    -- not as `[]`, which would decode back as a list and be discarded.
+    if next(payload.overrides) == nil then
+      payload.overrides = vim.empty_dict()
+    end
+    fh:write(vim.json.encode(payload))
+    fh:close()
+  end)
+  return ok, ok and nil or tostring(err)
+end
+
+--- Read the saved state. Any failure at all — missing, unreadable,
+--- truncated, hand-edited to nonsense — yields the shipped defaults, because
+--- this is called from inside catppuccin's `config` function and an error
+--- there leaves the editor with no colorscheme at all.
+--- @return table state { inputs, overrides }, string[] complaints
+function M.load()
+  local function empty()
+    return { inputs = M.defaults(), overrides = {} }
+  end
+  local fh = io.open(M.state_path, "r")
+  if not fh then
+    return empty(), {}
+  end
+  local body = fh:read("*a")
+  fh:close()
+  local ok, decoded = pcall(vim.json.decode, body)
+  if not ok or type(decoded) ~= "table" then
+    return empty(), { "unparseable JSON at " .. M.state_path }
+  end
+  -- Files written before the override layer existed are a bare input table.
+  local raw_inputs = decoded.inputs ~= nil and decoded.inputs or decoded
+  local inputs, bad = M.validate(raw_inputs)
+  local overrides = {}
+  if type(decoded.overrides) == "table" then
+    for name, spec in pairs(decoded.overrides) do
+      if type(name) == "string" then
+        local clean, cbad = M.validate_override(spec)
+        if clean then
+          overrides[name] = clean
+        end
+        for _, c in ipairs(cbad or {}) do
+          bad[#bad + 1] = name .. ": " .. c
+        end
+      end
+    end
+  end
+  return { inputs = inputs, overrides = overrides }, bad
+end
+
+--- Delete the saved choice, so the next start uses the shipped defaults.
+--- @return boolean ok
+function M.forget()
+  if vim.fn.filereadable(M.state_path) == 1 then
+    return vim.fn.delete(M.state_path) == 0
+  end
+  return true
+end
+
 -- ── wiring ─────────────────────────────────────────────────────────────
 
 local armed = false
@@ -378,8 +966,23 @@ local armed = false
 --- catppuccin nor this file loads, and Lean renders in that profile's own
 --- colours. Deliberate: this palette is built on catppuccin mocha's ladder
 --- and would clash with anything else.
-function M.setup()
+---
+--- @param o table|nil { load_saved = boolean, inputs = table }
+--- `load_saved` is opt-in rather than automatic so that a bare `M.setup()`
+--- — which is what every test does — is deterministic and cannot be
+--- influenced by whatever the user last picked.
+function M.setup(o)
+  o = o or {}
+  if o.load_saved then
+    local state = M.load()
+    M.overrides = state.overrides
+    M.apply(state.inputs)
+  elseif o.inputs or o.overrides then
+    M.overrides = o.overrides or M.overrides
+    M.apply(o.inputs or M.opts)
+  end
   define_grid()
+  apply_foreign_overrides()
   if armed then
     return M
   end
@@ -390,13 +993,21 @@ function M.setup()
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = aug,
     callback = function()
-      -- Re-emit everything. The memo maps a token pair to a NAME, and the
-      -- names do not change, so it stays valid; only the definitions were
-      -- cleared.
+      -- Re-emit everything. The inputs have not changed here, so the names
+      -- and the specs are both still correct; only the DEFINITIONS were
+      -- cleared by `:colorscheme`. (An input change goes through `M.apply`,
+      -- which cannot use this path — see the note above it.)
+      --
+      -- The overrides have to be re-emitted too, and AFTER the theme has
+      -- rebuilt its own groups: catppuccin redefines every `@lsp.type.*`
+      -- pin from `highlight_overrides` on each colorscheme load, so a hand-
+      -- set colour on one of those would otherwise survive exactly until
+      -- the next `:colorscheme` and then vanish.
       define_grid()
       for name, spec in pairs(specs) do
-        vim.api.nvim_set_hl(0, name, spec)
+        vim.api.nvim_set_hl(0, name, resolve(name, spec))
       end
+      apply_foreign_overrides()
     end,
   })
 
@@ -420,8 +1031,175 @@ function M.setup()
   return M
 end
 
+-- ── what each group MEANS ──────────────────────────────────────────────
+-- The picker shows these instead of the bare name: `@lean.prop.element.local`
+-- is not a thing anyone can hold in their head, and "a hypothesis" is.
+
+local GRID_GLOSS = {
+  ["prop.element"] = "a proof — a term whose type is a proposition",
+  ["prop.sort"] = "a proposition — the statement itself, not a proof of it",
+  ["prop.former"] = "a predicate — yields a proposition (Even, Set α, ⊆)",
+  ["data.element"] = "a datum — a term of some Type (a number, a group element)",
+  ["data.sort"] = "a type — ℕ, or a type variable such as {G : Type*}",
+  ["data.former"] = "a type former — yields a type (List, Set, Prod)",
+  ["poly.element"] = "a term in an undetermined sort (Sort u, u a parameter)",
+  ["poly.sort"] = "a sort-polymorphic type",
+  ["poly.former"] = "a sort-polymorphic type former — the rare cell",
+}
+local ANCHOR_GLOSS = {
+  prop = "the Prop world — everything that is a proof or a statement",
+  data = "the data world — everything that is a value or a type",
+  poly = "the sort-polymorphic world — genuinely undetermined",
+}
+local SUFFIX_GLOSS = {
+  ["local"] = "bound here (binder list or tactic block), not imported",
+  simp = "carries @[simp] — simp already knows this one",
+  axiom = "an axiom — it rests on nothing",
+  auto = "auto-bound implicit — the elaborator bound it, you did not",
+}
+
+--- Groups the generator never produces but that still decide how Lean
+--- looks. Raw mode reaches all of them; several are the themes.lua pins
+--- that exist purely to stop catppuccin owning a standard token name (B2),
+--- so overriding one is exactly how a user re-decides that.
+local FOREIGN = {
+  { "@lsp.type.leanSorryLike.lean", "sorry / admit — the incomplete-proof chip" },
+  { "@lsp.type.keyword.lean", "keywords: theorem, fun, let, ℕ" },
+  { "@lsp.type.tactic.lean", "tactic head atoms: rw, simp, exact" },
+  { "@lsp.type.function.lean", "a global def" },
+  { "@lsp.type.theorem.lean", "a cited theorem or lemma" },
+  { "@lsp.type.axiom.lean", "a cited axiom" },
+  { "@lsp.type.opaque.lean", "an opaque constant — body unavailable" },
+  { "@lsp.type.enum.lean", "an inductive type: Nat, List, True" },
+  { "@lsp.type.enumMember.lean", "a constructor" },
+  { "@lsp.type.struct.lean", "a structure" },
+  { "@lsp.type.class.lean", "a class" },
+  { "@lsp.type.property.lean", "a structure projection" },
+  { "@lsp.type.recursor.lean", "a recursor" },
+  { "@lsp.type.type.lean", "a concrete global type" },
+  { "@lsp.type.typeParameter.lean", "a local type variable" },
+  { "@lsp.type.variable.lean", "any local, before the grid repaints it" },
+  {
+    "@lsp.typemod.function.defaultLibrary.lean",
+    "an imported def — the typemod that outranks the type pin (B3)",
+  },
+  { "@lsp.mod.deprecated.lean", "deprecated — struck through" },
+  { "leanConstant", "constant reference from after/syntax/lean.vim" },
+  { "LspInlayHint", "inlay hints — the implicits you did not type" },
+  { "LeanDocumentHighlight", "other occurrences of the identifier under the cursor" },
+  { "LeanInfoviewNormal", "the infoview background" },
+}
+
+--- A gloss for any generated `@lean.*` name, assembled from its parts.
+local function gloss_for(name)
+  local rest = name:match("^@lean%.(.+)$")
+  if not rest then
+    return nil
+  end
+  if ANCHOR_GLOSS[rest] then
+    return ANCHOR_GLOSS[rest]
+  end
+  local world, level, suffixes = rest:match("^(%a+)%.(%a+)(.*)$")
+  if not world then
+    return nil
+  end
+  local base = GRID_GLOSS[world .. "." .. level]
+  if not base then
+    return nil
+  end
+  local extra = {}
+  for s in suffixes:gmatch("%.([%a]+)") do
+    extra[#extra + 1] = SUFFIX_GLOSS[s] or s
+  end
+  if #extra == 0 then
+    return base
+  end
+  return base .. "; " .. table.concat(extra, "; ")
+end
+
+M.gloss_for = gloss_for
+
+--- Build the flag-suffixed variants eagerly, so the picker can list and
+--- override them before any Lean buffer has ever been tokenised. Kept OUT
+--- of `setup()` on purpose: it would otherwise inflate the spec table that
+--- tests/test_lean.lua sweeps, for no runtime benefit.
+function M.warm()
+  local reps = {
+    { "variable", { propWorld = true, element = true, ["local"] = true } },
+    { "variable", { dataWorld = true, element = true, ["local"] = true } },
+    { "variable", { dataWorld = true, sort = true, ["local"] = true } },
+    { "variable", { propWorld = true, former = true, ["local"] = true } },
+    { "variable", { polyWorld = true, element = true, ["local"] = true } },
+    { "variable", { polyWorld = true, sort = true, ["local"] = true } },
+    { "theorem", { propWorld = true, element = true } },
+    { "theorem", { propWorld = true, element = true, simp = true } },
+    { "function", { propWorld = true, former = true } },
+    { "function", { dataWorld = true, former = true } },
+    { "function", { dataWorld = true, element = true } },
+    { "axiom", { propWorld = true, element = true } },
+    { "variable", { dataWorld = true, sort = true, autoImplicit = true } },
+  }
+  for _, r in ipairs(reps) do
+    M.group(r[1], r[2])
+  end
+  return M
+end
+
+--- Every group the picker can edit, in a stable display order.
+--- @return { name: string, gloss: string, generated: boolean, overridden: boolean }[]
+function M.catalogue()
+  local out, seen = {}, {}
+  local function add(name, gloss)
+    if seen[name] then
+      return
+    end
+    seen[name] = true
+    out[#out + 1] = {
+      name = name,
+      gloss = gloss or gloss_for(name) or "",
+      generated = specs[name] ~= nil,
+      overridden = M.overrides[name] ~= nil,
+    }
+  end
+  local generated = {}
+  for name in pairs(specs) do
+    generated[#generated + 1] = name
+  end
+  table.sort(generated)
+  for _, name in ipairs(generated) do
+    add(name)
+  end
+  for _, f in ipairs(FOREIGN) do
+    add(f[1], f[2])
+  end
+  local extra = {}
+  for name in pairs(M.overrides) do
+    if not seen[name] then
+      extra[#extra + 1] = name
+    end
+  end
+  table.sort(extra)
+  for _, name in ipairs(extra) do
+    add(name, "hand-set group")
+  end
+  return out
+end
+
+--- What a group is currently painted as, both layers separated.
+--- @return table generated, table|nil override, table effective
+function M.inspect_group(name)
+  local gen = specs[name]
+  local eff = resolve(name, gen)
+  if not eff then
+    local ok, h = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
+    eff = (ok and type(h) == "table") and h or {}
+  end
+  return gen, M.overrides[name], eff
+end
+
 -- ── test surface ───────────────────────────────────────────────────────
--- Used by tests/test_lean.lua. Not part of the runtime path.
+-- Used by tests/test_lean.lua and tests/test_lean_palette.lua. Not part of
+-- the runtime path.
 
 --- @return table<string, table> every group defined so far, name -> spec
 function M._specs()
@@ -440,7 +1218,7 @@ end
 --
 --   defaultLibrary  "is this lemma mine, or Mathlib's?" — see the header.
 --                   Cheapest expression: a FLAG entry that sets
---                   `spec.fg = blend(spec.fg, OVERLAY1, 0.18)` for imported
+--                   `spec.fg = blend(spec.fg, o.recede, 0.18)` for imported
 --                   names, i.e. locally-proved lemmas sit one notch
 --                   brighter than the library around them.
 --   instance        a registered instance, as opposed to a plain def.
@@ -450,7 +1228,8 @@ end
 --                   take the double underline if `axiom` did not have it.
 --   noncomputable   no code generated; matters only when compiling.
 --
--- Add one by appending to FLAGS. Everything else — the group name, the
--- memo key, the ColorScheme re-arm and the tests — follows automatically.
+-- Add one by appending to `build_flags`. Everything else — the group name,
+-- the memo key, the ColorScheme re-arm, `M.apply`'s regeneration and the
+-- tests — follows automatically.
 
 return M
