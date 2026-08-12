@@ -141,10 +141,46 @@ local spec = {
     -- by a re-source. `init` runs at startup, before lean.nvim itself
     -- loads, which is early enough for the module's LspAttach hook to see
     -- the first Lean file of the session.
+    -- Pasteable setup info: OS/arch, tool versions, project path and the
+    -- installed-toolchain list as one Markdown block. `:LeanSetupInfo`, not a
+    -- `:checkhealth lean` section -- `health.lua` is lean.nvim's OWN module
+    -- and a section there would shadow a plugin namespace.
+    require("config.lean.setup_info").setup()
+
     require("config.lean.document_highlight").setup()
+
+    -- Namespace components, module paths and the keyword split. Same
+    -- placement and the same reason as document_highlight: it is autocmds
+    -- (LspTokenUpdate and ColorScheme), and after/ftplugin/lean.lua must
+    -- define none. It must also exist before the first Lean file is drawn,
+    -- because after/syntax/lean.vim links into the groups it owns.
+    require("config.lean.namespace_hl").setup()
   end,
 
   config = function()
+
+    -- Abbreviations outside Lean buffers. Two things, both explained in
+
+    -- lua/config/lean/abbreviations.lua: `\to` expands in telescope prompts
+
+    -- (parity #40), and lean.nvim's `abbreviations.load()` is patched so
+
+    -- `\la` stops throwing -- upstream resolves its JSON with
+
+    -- `debug.getinfo(2)`, the CALLER's frame, which is wrong for every
+
+    -- caller outside `lua/lean/`. That key was recorded as working while it
+
+    -- threw on every press.
+
+    --
+
+    -- Here rather than `init`: both need lean.nvim itself, and this runs
+
+    -- exactly when it loads.
+
+    require("config.lean.abbreviations").setup()
+
     -- Three lean.nvim defects this config used to patch from the outside.
     -- They are real in-tree fixes in the fork now (FORK-CHANGES.md M1–M3);
     -- this call is a no-op there and reapplies the old wrappers on machines
