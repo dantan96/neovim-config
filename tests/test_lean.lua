@@ -299,6 +299,154 @@ T["lean"]["leanls advertises experimental.leanRichTokens"] = function()
   )
 end
 
+-- ── the rich/standard switch ───────────────────────────────────────────
+-- lua/config/lean/rich_tokens.lua. Three settings, and the ADVERTISEMENT is
+-- the half that can be tested without a server: `nil` and `true` both put the
+-- capability on the wire (detection is impossible otherwise — the patched
+-- server withholds the rich legend from a client that did not ask), and only
+-- an explicit `false` withholds it.
+--
+-- Withholding must OMIT the key rather than send `leanRichTokens = false`.
+-- The server's gate is written against absence, and a `false` on the wire is a
+-- different claim; the deep-merge makes that easy to get wrong, since setting
+-- the key to `false` in after/lsp/leanls.lua would look like it worked.
+T["lean"]["rich tokens: the capability tracks vim.g.lean_rich_tokens"] = new_set({
+  parametrize = {
+    { "nil", true }, -- auto: ask, then look at what came back
+    { "true", true }, -- forced on: same wire, plus a warning if it is not there
+    -- Forced off: the key is ABSENT, not false. vim.NIL because a nil crossing
+    -- the child RPC boundary arrives as vim.NIL, and the distinction between
+    -- "absent" and "false" is the whole assertion.
+    { "false", vim.NIL },
+  },
+}, {
+  test = function(setting, expected)
+    -- Re-resolving is the point: the value is recomputed by loadfile() on
+    -- every resolution, and disabling the server is what drops the cache.
+    local got = child.lua_get(string.format(
+      [[(function()
+        vim.g.lean_rich_tokens = %s
+        vim.lsp.enable("leanls", false)
+        vim.lsp.config("leanls", {})
+        return vim.tbl_get(
+          vim.lsp.config["leanls"], "capabilities", "experimental", "leanRichTokens"
+        )
+      end)()]],
+      setting
+    ))
+    expect.equality(got, expected)
+    child.lua([[vim.g.lean_rich_tokens = nil; vim.lsp.config("leanls", {})]])
+  end,
+})
+
+-- The module's own view of the same three settings, which is what every
+-- consumer reads. `enabled()` is deliberately NOT "the user asked for rich":
+-- forcing rich against a stock server cannot conjure the tokens, so with no
+-- rich legend attached it stays false in all three settings.
+T["lean"]["rich tokens: advertise() and enabled() agree with the setting"] = function()
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.rich_tokens")
+    local out = {}
+    -- Spelled out rather than `and`/`or`: `x and false or nil` is nil, which
+    -- would silently test "auto" three times.
+    for _, v in ipairs({ "auto", "on", "off" }) do
+      if v == "auto" then
+        vim.g.lean_rich_tokens = nil
+      else
+        vim.g.lean_rich_tokens = (v == "on")
+      end
+      -- tostring() on purpose: a nil-valued field does not survive the RPC
+      -- round trip as a key, so `override = nil` would be indistinguishable
+      -- from a typo'd field name.
+      table.insert(out, {
+        override = tostring(m.override()),
+        advertise = m.advertise(),
+        -- No leanls client in this child, so nothing rich is attached.
+        enabled = m.enabled(),
+      })
+    end
+    vim.g.lean_rich_tokens = nil
+    return out
+  end)()]])
+  expect.equality(got, {
+    { override = "nil", advertise = true, enabled = false },
+    { override = "true", advertise = true, enabled = false },
+    { override = "false", advertise = false, enabled = false },
+  })
+end
+
+T["lean"]["rich tokens: :LeanRichTokens exists and takes the four words"] = function()
+  expect.equality(H.cmd_exists(child, "LeanRichTokens"), true)
+  expect.equality(
+    child.lua_get([[require("config.lean.rich_tokens").setup ~= nil]]),
+    true
+  )
+  local words = child.lua_get([[vim.fn.getcompletion("LeanRichTokens ", "cmdline")]])
+  table.sort(words)
+  expect.equality(words, { "auto", "off", "on", "status", "toggle" })
+end
+
+-- `status` must report BOTH halves — which toolchain elan resolved, and what
+-- the legend actually contains — because those can disagree, and the
+-- disagreement is the thing a user needs to see.
+T["lean"]["rich tokens: status reports toolchain and legend separately"] = function()
+  local text = child.lua_get([[
+    table.concat(require("config.lean.rich_tokens").status_lines(), "\n")
+  ]])
+  for _, needle in ipairs({
+    "mode in effect",
+    "requested",
+    -- Half one: elan's answer.
+    "active toolchain",
+    "project root",
+    -- Half two: the wire's answer.
+    "legend (the server decides",
+    -- The distinction the command exists to draw: a mode change restarts the
+    -- server, a toolchain change is elan's and is NOT what this command does.
+    "Changing MODE",
+    "Changing TOOLCHAIN",
+    "elan override set",
+  }) do
+    expect.equality({ needle, text:find(needle, 1, true) ~= nil }, { needle, true })
+  end
+end
+
+-- Whether a client is attached is not a fixed property of this child — leanls
+-- attaches to the temp buffer even with no lakefile (see the top of this file)
+-- and does not attach on a machine with no Lean. Both are fine; what must not
+-- happen is `status` erroring, or claiming a legend it never saw.
+T["lean"]["rich tokens: status describes the legend it actually has"] = function()
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.rich_tokens")
+    local text = table.concat(m.status_lines(), "\n")
+    return {
+      attached = #m.clients() > 0,
+      says_none = text:find("no leanls client attached", 1, true) ~= nil,
+      says_size = text:find("legend size", 1, true) ~= nil,
+    }
+  end)()]])
+  -- Exactly one of the two branches, and the right one.
+  expect.equality(got.says_none, not got.attached)
+  expect.equality(got.says_size, got.attached)
+end
+
+-- Reading `elan show` rather than lean-toolchain: the file is only one of the
+-- four things elan consults. Skipped rather than failed where elan is absent,
+-- since this config is used on machines with no Lean at all.
+T["lean"]["rich tokens: the toolchain comes from elan"] = function()
+  if vim.fn.executable("elan") == 0 then
+    MiniTest.skip("elan is not on PATH; cannot check toolchain resolution")
+  end
+  local got = child.lua_get(
+    [[require("config.lean.rich_tokens").toolchain(vim.fn.expand("~"))]]
+  )
+  expect.equality(type(got), "string")
+  expect.no_equality(got, "")
+  -- `elan show`'s active line always names a toolchain; "unknown (…)" is the
+  -- module's own fallback and means the parse broke.
+  expect.equality(got:find("^unknown") == nil, true)
+end
+
 T["lean"]["adding the capability does not displace lean.nvim's own"] = function()
   expect.equality(
     child.lua_get(
