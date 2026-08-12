@@ -232,8 +232,7 @@ M.underline_styles = {
 --- The same list as attribute keys, i.e. without the off switch. Declared
 --- here rather than beside the flag table because the override layer needs
 --- it too, to clear a generated underline that a hand-set one replaces.
-local UNDERLINE_KEYS =
-  { "underline", "undercurl", "underdouble", "underdotted", "underdashed" }
+local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted", "underdashed" }
 
 local DEFAULTS = {
   hues = {
