@@ -101,6 +101,16 @@ return {
       -- line below for the first of those reasons.
       require("config.lean.rich_tokens").setup()
 
+      -- :LeanSetupInfo — the pasteable half of VS Code's `Troubleshooting:
+      -- Show Setup Information` (parity #57). Global and registered here for
+      -- the same reason `:LeanRichTokens` is: "why is Lean not working here"
+      -- is asked before a .lean file has been opened. The load-bearing field
+      -- — which toolchain elan actually resolved — is `:LeanRichTokens
+      -- status`'s and is not duplicated; this adds OS/CPU/RAM, tool versions,
+      -- the project path and the installed-toolchain list as one Markdown
+      -- block on the clipboard.
+      require("config.lean.setup_info").setup()
+
       -- Occurrence highlighting, which the server has always been able to
       -- serve and nothing ever asked for. Set up here rather than in
       -- after/ftplugin/lean.lua because it is autocmds, and that file must

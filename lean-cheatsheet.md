@@ -369,6 +369,22 @@ disagree.
 | `:LeanRichTokens toggle` | Flip whichever is in effect |
 | `:LeanRichTokens auto` | Back to detecting from the legend (the default) |
 
+### Asking for help — `:LeanSetupInfo`
+
+One Markdown block on the clipboard: OS, CPU, RAM, Neovim, project path,
+`curl`/`git`/`elan`/`lake`/`lean` versions, and the **toolchain picture** —
+active, override *and its source*, default, and everything installed. VS
+Code's `Troubleshooting: Show Setup Information`, which is the first thing
+Lean Zulip asks for. Global, so it works before any `.lean` file is open.
+
+It exists chiefly because this machine is unusual: MIL runs under an elan
+*directory override* to a locally built toolchain, and `lean --version`
+cannot tell that build apart from the stock 4.30.0 release — both report
+commit `d024af0996`, because the patched build pins `GIT_SHA1` to keep
+mathlib's olean cache valid. The `Active` row is what actually answers it.
+Pair it with `:LeanRichTokens status`, which checks the same question against
+the wire.
+
 Changing the **mode** restarts the language server. Changing the
 **toolchain** is a different thing — `elan override set <toolchain>`, or
 `ELAN_TOOLCHAIN=…` in the environment nvim was launched from — and no editor

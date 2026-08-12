@@ -1398,6 +1398,85 @@ T["module name"]["declines rather than inventing a name"] = function()
   expect.equality(err("/Users/dan/scratch/Foo.lean", nil):find("not inside") ~= nil, true)
 end
 
+-- ── :LeanSetupInfo (parity audit #57, #56) ─────────────────────────────
+-- The generator is pure — table in, Markdown out — so it is tested in the
+-- parent against a fixture, and the elan-shaped fixture below is the SHAPE
+-- MEASURED on this machine from a live `require('elan').state()`, directory
+-- override and all, not an invented one.
+T["setup info"] = new_set()
+
+local ELAN_STATE_FIXTURE = {
+  elan_version = { current = "4.2.3" },
+  toolchains = {
+    active_override = {
+      reason = { OverrideDB = "/Users/dan/LeanCourse/MathematicsInLean" },
+      unresolved = { Local = { name = "lean4-rich" } },
+    },
+    default = {
+      resolved = { cached = "leanprover/lean4:v4.33.0", live = { Ok = "leanprover/lean4:v4.33.0" } },
+      unresolved = { Remote = { origin = "leanprover/lean4", release = "stable" } },
+    },
+    installed = {
+      { path = "/Users/dan/.elan/toolchains/lean4-rich", resolved_name = "lean4-rich" },
+      { path = "/x", resolved_name = "leanprover/lean4:v4.30.0" },
+    },
+    resolved_active = { cached = "lean4-rich", live = { Ok = "lean4-rich" } },
+  },
+}
+
+T["setup info"]["reads the directory override out of elan.state()"] = function()
+  local si = dofile(H.cfg .. "/lua/config/lean/setup_info.lua")
+  local e = si.elan_fields(ELAN_STATE_FIXTURE)
+  -- The single most load-bearing fact on this machine, and the one the
+  -- roadmap worried elan.state() might report badly. It does not.
+  expect.equality(e.active, "lean4-rich")
+  expect.equality(e.override.name, "lean4-rich")
+  expect.equality(e.override.reason, "/Users/dan/LeanCourse/MathematicsInLean")
+  expect.equality(e.default, "leanprover/lean4:v4.33.0")
+  expect.equality(e.installed, { "lean4-rich", "leanprover/lean4:v4.30.0" })
+end
+
+T["setup info"]["survives elan being absent entirely"] = function()
+  local si = dofile(H.cfg .. "/lua/config/lean/setup_info.lua")
+  local e = si.elan_fields(nil)
+  expect.equality(e.active, nil)
+  expect.equality(e.override, nil)
+  expect.equality(e.installed, {})
+  -- ...and rendering must still produce a block rather than throwing.
+  local md = si.markdown({ elan = e })
+  expect.equality(md:find("### Lean setup information", 1, true), 1)
+  expect.equality(md:find("*(not found)*", 1, true) ~= nil, true)
+end
+
+T["setup info"]["renders every field it was given"] = function()
+  local si = dofile(H.cfg .. "/lua/config/lean/setup_info.lua")
+  local md = si.markdown({
+    os = "Darwin 25.5.0 (arm64)",
+    cpu = "Apple M3 Max x14",
+    ram = "36.0 GiB",
+    nvim = "0.12.0-dev",
+    project = "/Users/dan/LeanCourse/MathematicsInLean",
+    file = "/x/S01.lean",
+    tools = { curl = "curl 8.7.1", git = "git version 2.49", elan = "elan 4.2.3" },
+    elan = si.elan_fields(ELAN_STATE_FIXTURE),
+    rich_tokens = "rich",
+  })
+  for _, needle in ipairs({
+    "Darwin 25.5.0 (arm64)",
+    "Apple M3 Max x14",
+    "36.0 GiB",
+    "curl 8.7.1",
+    "`lean4-rich` (/Users/dan/LeanCourse/MathematicsInLean)",
+    "leanprover/lean4:v4.30.0",
+    "| Rich tokens | rich |",
+  }) do
+    expect.equality({ needle, md:find(needle, 1, true) ~= nil }, { needle, true })
+  end
+  -- lake and lean were not supplied: absent, not blank or "nil".
+  expect.equality(md:find("| lake | *(not found)* |", 1, true) ~= nil, true)
+  expect.equality(md:find("nil", 1, true), nil)
+end
+
 -- ── unicode input in telescope prompts, and the \la crash (#40, #44) ───
 -- lua/config/lean/abbreviations.lua. What needed a real editor — that
 -- `\alpha`+space in a prompt produces α, that the column arithmetic survives
