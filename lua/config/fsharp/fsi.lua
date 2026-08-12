@@ -169,7 +169,11 @@ local function send_lines(lines, opts)
     -- If invoked from Normal mode, move cursor down one line (user request)
     if opts.move_down then
       vim.schedule(function()
-        pcall(vim.cmd, "normal! j")
+        -- `vim.cmd` is a callable TABLE, not a function, so it cannot be
+        -- pcall's first argument; wrap it. Same at the gv restore below.
+        pcall(function()
+          vim.cmd("normal! j")
+        end)
       end)
     end
   end
@@ -223,7 +227,9 @@ function M.setup()
     -- Keep Visual selection for repeated sends (quietly)
     if args.range and args.range > 0 then
       vim.schedule(function()
-        pcall(vim.cmd, "normal! gv")
+        pcall(function()
+          vim.cmd("normal! gv")
+        end)
       end)
     end
   end, { range = true })

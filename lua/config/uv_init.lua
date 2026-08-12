@@ -262,7 +262,10 @@ function M.run(name_arg)
       -- Plain :bdelete throws E89 on a modified buffer. Only force-delete
       -- when unmodified; otherwise keep the buffer and tell the user.
       if vim.bo[old_bufnr].modified == false then
-        pcall(vim.cmd, "bdelete! " .. old_bufnr)
+        -- Wrapped: `vim.cmd` is a callable table, not a function.
+        pcall(function()
+          vim.cmd("bdelete! " .. old_bufnr)
+        end)
       else
         vim.notify(
           "UvInit: old buffer has unsaved changes; not deleting it",
