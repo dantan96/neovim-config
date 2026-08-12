@@ -1087,4 +1087,117 @@ T["lean"]["CursorHold fires only in normal mode, and never in the infoview"] = f
   expect.equality(calls.after_leaninfo, 1)
 end
 
+-- ── nvim-lightbulb and satellite.nvim ──────────────────────────────────
+-- Both recover VS Code behaviour lean.nvim or the plugin already implements
+-- (audit #49, #60, #61). What can be checked without a UI is that they load
+-- when they should, that they are configured to be quiet, and — the one with
+-- teeth — that neither writes a global option behind the Lean filetype's back.
+
+T["lean"]["nvim-lightbulb loads for Lean and announces only in the sign column"] = function()
+  local got = child.lua_get([[(function()
+    local spec = require("lazy.core.config").spec.plugins["nvim-lightbulb"]
+    local o = spec.opts
+    return {
+      loaded = require("lazy.core.config").plugins["nvim-lightbulb"]._.loaded ~= nil,
+      ft = spec.ft,
+      sign = o.sign.enabled,
+      -- Every other announcement channel the plugin has. A float would steal
+      -- attention mid-proof; virtual text would land on lean.nvim's ⚒ marker.
+      noisy = {
+        float = o.float.enabled,
+        virtual_text = o.virtual_text.enabled,
+        status_text = o.status_text.enabled,
+        number = o.number.enabled,
+        line = o.line.enabled,
+      },
+      pattern = o.autocmd.pattern,
+      events = o.autocmd.events,
+      updatetime_opt = o.autocmd.updatetime,
+    }
+  end)()]])
+  -- `ft` is what keeps it unloaded elsewhere; it must have loaded HERE.
+  expect.equality(got.ft, "lean")
+  expect.equality(got.loaded, true)
+  expect.equality(got.sign, true)
+  expect.equality(got.noisy, {
+    float = false,
+    virtual_text = false,
+    status_text = false,
+    number = false,
+    line = false,
+  })
+  -- `ft` alone leaks: the autocmd is created once and would then fire in every
+  -- buffer for the rest of the session. The pattern is the second half.
+  expect.equality(got.pattern, { "*.lean" })
+  -- CursorHoldI, in the plugin's default set, would flicker while typing.
+  expect.equality(got.events, { "CursorHold" })
+  -- A NEGATIVE value means "leave 'updatetime' alone". The plugin's default is
+  -- to set it to 200 at setup — a global write triggered by opening a Lean
+  -- file, which is exactly what the breakat leak case above forbids.
+  expect.equality(got.updatetime_opt < 0, true)
+end
+
+-- The consequence of the line above, measured rather than inferred: the value
+-- lua/config/lean/document_highlight.lua chose at startup is still standing
+-- after a Lean buffer (and therefore nvim-lightbulb) has loaded.
+T["lean"]["nvim-lightbulb did not rewrite updatetime"] = function()
+  expect.equality(child.lua_get("vim.o.updatetime"), 500)
+end
+
+T["lean"]["satellite is configured to stay out of lean.nvim's own panes"] = function()
+  local got = child.lua_get([[(function()
+    local ok, cfg = pcall(require, "satellite.config")
+    if not ok then return "satellite.config not loadable" end
+    local u = cfg.user_config
+    local handlers = {}
+    for name, h in pairs(u.handlers or {}) do handlers[name] = h.enable end
+    return {
+      excluded = u.excluded_filetypes,
+      current_only = u.current_only,
+      handlers = handlers,
+    }
+  end)()]])
+  -- A scrollbar over a rendered goal state or the server's stderr tail reports
+  -- nothing; with current_only it would appear the moment `\<Tab>` moves there.
+  expect.equality(got.excluded, { "leaninfo", "leanstderr" })
+  expect.equality(got.current_only, true)
+  -- The two that justify the plugin, and the stock cursor mark that duplicates
+  -- 'relativenumber'.
+  expect.equality(got.handlers.diagnostic, true)
+  expect.equality(got.handlers.cursor, false)
+end
+
+-- lean.nvim ships a Satellite.Handler for whole-file elaboration progress and
+-- requires it from nowhere, so it is inert unless the config asks. Registering
+-- is not enough either: satellite calls a handler's setup() only from
+-- handlers.init(), which runs at the first render — and lean.nvim's handler
+-- does not exist yet at that point, because the plugin loads on BufReadPre
+-- *.lean. Its setup() is what defines the `leanProgressBar` highlight, so
+-- without the by-hand call in lua/plugins/lean.lua the marks are drawn in an
+-- undefined group, i.e. invisible.
+T["lean"]["lean.nvim's satellite progress handler is registered AND set up"] = function()
+  local got = child.lua_get([[(function()
+    local ok, sat = pcall(require, "satellite.handlers")
+    if not ok then return "satellite.handlers not loadable" end
+    local names = {}
+    for _, h in ipairs(sat.handlers or {}) do table.insert(names, h.name) end
+    table.sort(names)
+    return {
+      registered = vim.tbl_contains(names, "lean.nvim"),
+      all = names,
+      -- The augroup exists only if handler.setup() ran.
+      setup_ran = pcall(vim.api.nvim_get_autocmds, { group = "LeanSatellite" }),
+      progress_hl = vim.api.nvim_get_hl(0, { name = "leanProgressBar", link = false }).fg
+        ~= nil,
+    }
+  end)()]])
+  expect.equality(got.registered, true)
+  expect.equality(got.setup_ran, true)
+  expect.equality(got.progress_hl, true)
+  -- Non-vacuity: the builtin handlers must be there too, which is what proves
+  -- satellite itself initialised rather than the list happening to hold one
+  -- entry. `cursor`, `marks` and `quickfix` are disabled, so absent.
+  expect.equality(got.all, { "diagnostic", "gitsigns", "lean.nvim", "search" })
+end
+
 return T

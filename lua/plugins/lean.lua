@@ -120,6 +120,37 @@ return {
     -- otherwise propagate out of the finder. Remove once upstream returns a
     -- table unconditionally.
     config = function()
+      -- ── satellite.nvim: whole-file elaboration progress ─────────────────
+      -- lean.nvim ships lua/lean/satellite.lua, a Satellite.Handler plotting
+      -- lean.progress onto the whole-document scrollbar — the thing the sign
+      -- column cannot do, because signs only exist for visible lines. Nothing
+      -- inside lean.nvim requires it (`grep -rn 'lean.satellite' lua/ plugin/`
+      -- in the plugin matches only its own header), so it is inert until asked
+      -- for. Requiring it here loads satellite as a side effect, which is the
+      -- correct order: satellite.handlers.init() runs at the FIRST RENDER and
+      -- only calls setup() on handlers registered before that point.
+      --
+      -- The setup() call afterwards is for the other order — satellite already
+      -- rendered once (it loads on VeryLazy) before the session's first Lean
+      -- file. Without it lean's handler is registered but never set up, which
+      -- costs the `leanProgressBar` highlight (so the marks are invisible) and
+      -- the progress-event refresh. Running it twice is harmless: the function
+      -- is a `nvim_create_augroup(..., {})` — i.e. clearing — plus a
+      -- tbl_deep_extend onto its own config.
+      local has_satellite, sat = pcall(require, "satellite.handlers")
+      if has_satellite then
+        pcall(require, "lean.satellite")
+        for _, handler in ipairs(sat.handlers or {}) do
+          if handler.name == "lean.nvim" and handler.setup then
+            pcall(
+              handler.setup,
+              require("satellite.config").user_config.handlers["lean.nvim"] or {},
+              require("satellite.view").schedule_refresh
+            )
+          end
+        end
+      end
+
       local ok, loogle = pcall(require, "lean.loogle")
       if not ok or type(loogle.search) ~= "function" then
         return

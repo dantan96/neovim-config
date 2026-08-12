@@ -84,6 +84,10 @@ A 💡 in the sign column means a code action is available on that line — that
 how `#guard_msgs` repair, missing-import suggestions and the Batteries
 instance/match/induction skeletons are delivered. Press `gra`.
 
+The thin bar down the right edge of the window is satellite.nvim: elaboration
+progress and diagnostics for the **whole file**, not just the visible lines the
+sign column can reach. Red marks are errors below the fold.
+
 Lean's only inlay hints are **auto-bound implicits** — the ` {α}` the
 elaborator inserted where you wrote none. If one shows up on a name you meant
 to be a real constant (`nat` where you wanted `Nat`), that is the bug it exists
