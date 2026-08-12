@@ -412,6 +412,17 @@ M.LINKS = (function()
     -- ...but `∀ ∃ λ` carry no token ever, so nothing can outrank them and they
     -- get the full treatment.
     leanBinderSymbol = "@lean.binder.keyword",
+    -- lean.nvim's own `syn keyword leanSort Sort Prop Type`. Repointed here
+    -- so that `Type u` and `Prop`, which carry NO token at all (measured: on
+    -- line 25 of HighlightGallery.lean `variable {α : Type u}` produces
+    -- tokens for `α` and nothing at the `Type` or the `u`), look the same as
+    -- `Type*` and `ℕ`, which do. Without it the retune would put `Type*` in
+    -- hot pink and leave `Type u` two words away in yellow.
+    --
+    -- HARD-LINKED, see `HARD` below: lean.nvim already says
+    -- `hi def link leanSort Type` and a second `hi def link` to an
+    -- already-linked group is a silent no-op.
+    leanSort = "@lean.sort.atom",
   }
   -- The rainbow chain. Also token-free by measurement, so `f{i}`'s bold has
   -- nothing to leak under. Every separator shares one group; only the
@@ -424,13 +435,19 @@ M.LINKS = (function()
   return links
 end)()
 
+--- Links that must NOT be `default`, because the group already carries a
+--- `hi def link` from lean.nvim's own syntax file and a second default link
+--- is a silent no-op. Kept as a named set rather than a flag on the entry so
+--- that "which of our links overrule the plugin" is one grep.
+M.HARD = { leanSort = true }
+
 --- Define every group. Idempotent; re-run from the ColorScheme autocmd.
 function M.define()
   for name, spec in pairs(M.groups()) do
     vim.api.nvim_set_hl(0, name, spec)
   end
   for name, target in pairs(M.LINKS) do
-    vim.api.nvim_set_hl(0, name, { link = target, default = true })
+    vim.api.nvim_set_hl(0, name, { link = target, default = not M.HARD[name] })
   end
 end
 

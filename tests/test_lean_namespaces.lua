@@ -407,12 +407,35 @@ NS["the syntax-layer floor groups carry no attribute bits"] = function()
   expect.equality(got.leanModuleKeyword, "@lean.path.floor:")
   expect.equality(got.leanBinderKeyword, "@lean.binder.floor:")
   expect.equality(got.leanPathQual, "@lean.path.floor:")
+  expect.equality(got.leanSort, "@lean.sort.atom:")
   -- The path components themselves keep theirs — also measured token-free.
   -- Only the FINAL component of a path is bold, at every position.
   for i = 1, 6 do
     expect.equality(got["leanPathC" .. i], "@lean.path.c" .. i .. ":")
     expect.equality(got["leanPathF" .. i], "@lean.path.f" .. i .. ":bold")
   end
+end
+
+NS["leanSort is HARD-linked, or lean.nvim's own def-link wins"] = function()
+  -- `Sort Prop Type` carry no semantic token, so the syntax layer is the only
+  -- thing that reaches them — and lean.nvim already says
+  -- `hi def link leanSort Type`. A second `hi def link` to an already-linked
+  -- group does nothing at all: it would read as correct, `:hi leanSort` would
+  -- show a link, and the link would be the plugin's.
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.namespace_hl")
+    m.define()
+    return {
+      link = vim.api.nvim_get_hl(0, { name = "leanSort", link = true }).link,
+      hard = m.HARD.leanSort == true,
+      -- and the ones that must stay `default`, so a user's own `:hi link`
+      -- still survives
+      qual = vim.api.nvim_get_hl(0, { name = "leanPathQual", link = true }).link,
+    }
+  end)()]])
+  expect.equality(got.link, "@lean.sort.atom")
+  expect.equality(got.hard, true)
+  expect.equality(got.qual, "@lean.path.floor")
 end
 
 NS["the groups survive a colorscheme change"] = function()
