@@ -397,6 +397,17 @@ T["palette"]["clearing a foreign override restores the theme, not nothing"] = fu
   local got = pal([==[
     HL.setup()
     local g = "@lsp.type.leanSorryLike.lean"
+    -- OWN THE PRECONDITION. The child loads the full config, which runs
+    -- setup({ load_saved = true }) and paints the USER's saved overrides
+    -- onto real groups. The fresh module `pal()` builds starts with an empty
+    -- override table, so it does not undo that — it simply does not know
+    -- about it. Reading the "before" state off the live group would
+    -- therefore read whatever Dan last saved, and the two non-vacuity
+    -- guards below would fail the moment he saves an override on this group
+    -- without a bg or without bold. Plant the chip explicitly instead: the
+    -- case is about set-then-clear being an identity, not about what the
+    -- chip happens to be.
+    vim.api.nvim_set_hl(0, g, { fg = "#151520", bg = "#f9e2af", bold = true })
     local function snap()
       local h = vim.api.nvim_get_hl(0, { name = g, link = false })
       return {
@@ -422,6 +433,37 @@ T["palette"]["clearing a foreign override restores the theme, not nothing"] = fu
   -- The whole point: both clear paths put the chip back exactly.
   expect.equality(got.after, got.before)
   expect.equality(got.after_all, got.before)
+end
+
+-- `:colorscheme` clears every group, and catppuccin then REBUILDS its own
+-- @lsp.* pins from highlight_overrides. A hand-set colour on one of those
+-- would therefore survive exactly until the next reload and then vanish,
+-- which is the same class of failure the pre-existing "synthesised groups
+-- survive a colorscheme reload" case guards for generated groups — but
+-- nothing covered the foreign ones. The baselines have to be re-captured in
+-- the same handler, AFTER the theme rebuilds and BEFORE the overrides go
+-- back on, or a later clear restores a definition from the previous theme.
+T["palette"]["a foreign override survives a colorscheme reload"] = function()
+  local got = pal([==[
+    HL.setup()
+    local g = "@lsp.type.enum.lean"
+    local function fg()
+      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    local pinned = fg()
+    HL.set_override(g, { fg = "#ff00ff" })
+    local before = fg()
+    vim.cmd.colorscheme("catppuccin")
+    local after = fg()
+    -- and the clear must still restore the theme's FRESH definition
+    HL.clear_override(g)
+    return { pinned = pinned, before = before, after = after, cleared = fg() }
+  ]==])
+  expect.no_equality(got.pinned, "nil") -- non-vacuity: the pin is real
+  expect.equality(got.before, "#ff00ff")
+  expect.equality(got.after, "#ff00ff") -- survived the reload
+  expect.equality(got.cleared, got.pinned) -- and undoes cleanly afterwards
 end
 
 -- B4: the underline style is a three-bit enum, so a hand-set style has to
