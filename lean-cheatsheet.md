@@ -61,11 +61,17 @@ erroring — a short prefix mid-typing is normally just noise.
 | `\a` | Code action |
 | `\f` | References |
 | `\b` | Open this file's book page in the browser (`:LeanBook`) |
+| `\h` | Toggle inlay hints for this buffer (on by default) |
 | `[d` `]d` | Previous / next diagnostic |
 
 `\n` `\a` `\f` are defined in this config, not by lean.nvim: mini.operators
 owns the `gr` prefix, which shadows Neovim's built-in `grn` / `gra` / `grr`
 LSP maps, leaving those actions otherwise unreachable.
+
+Lean's only inlay hints are **auto-bound implicits** — the ` {α}` the
+elaborator inserted where you wrote none. If one shows up on a name you meant
+to be a real constant (`nat` where you wanted `Nat`), that is the bug it exists
+to catch.
 
 ## Folding
 

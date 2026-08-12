@@ -54,6 +54,18 @@ return {
             -- survive a colorscheme reload, as with LineNrWrap above.
             ["@lsp.type.variable.lean"] = { link = "Identifier" },
             ["@lsp.type.leanSorryLike.lean"] = { fg = C.base, bg = C.yellow, bold = true },
+            -- Inlay hints (enabled for Lean in after/ftplugin/lean.lua; no
+            -- other server here has them on). Lean's are auto-bound implicits
+            -- — the ` {α}` the elaborator inserted and you did not type — so
+            -- they must be legible, but they are ambient annotation and must
+            -- never compete with the code they sit beside.
+            --
+            -- catppuccin's own LspInlayHint is Comment's exact fg (overlay0)
+            -- over a tinted background, which makes a hint read as a comment.
+            -- One step brighter, on a recessed chip instead: nothing else in
+            -- the buffer has a background, so "not source text" is unambiguous
+            -- without spending a colour on it.
+            LspInlayHint = { fg = C.overlay1, bg = C.mantle, italic = true },
             -- Lemma references (after/syntax/lean.vim), in the same blue as
             -- the declaration site: `theorem add_zero` and the `add_zero`
             -- inside a later `rw [add_zero]` are the same object, so they get

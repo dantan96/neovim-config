@@ -114,7 +114,7 @@ end
 -- Buffer-local because mini.operators owns the `gr` prefix globally, shadowing
 -- Neovim's built-in grn/gra/grr LSP maps.
 T["lean"]["config-owned buffer-local maps exist"] = new_set({
-  parametrize = { { "\\?" }, { "\\n" }, { "\\a" }, { "\\f" }, { "\\b" } },
+  parametrize = { { "\\?" }, { "\\n" }, { "\\a" }, { "\\f" }, { "\\b" }, { "\\h" } },
 }, {
   test = function(lhs)
     local found = child.lua_get(string.format(
@@ -172,12 +172,72 @@ T["lean"]["ftplugin: fold settings are buffer-local, not window- or global"] = f
   expect.equality(child.lua_get("vim.wo.foldexpr"), "v:lua.vim.lsp.foldexpr()")
 end
 
+-- ── inlay hints ────────────────────────────────────────────────────────
+-- Lean's are auto-bound implicits, which is the signal that colouring
+-- global constants costs us (see decisions.md / state.md DEF-3), so they
+-- are on by default. is_enabled is a buffer-state flag set by
+-- vim.lsp.inlay_hint.enable regardless of whether a client ever attaches,
+-- so this is meaningful without a server.
+T["lean"]["ftplugin: inlay hints are enabled for the buffer"] = function()
+  expect.equality(
+    child.lua_get([[vim.lsp.inlay_hint.is_enabled({ bufnr = 0 })]]),
+    true
+  )
+end
+
+-- enable(true) with no filter would set a GLOBAL flag and turn hints on in
+-- every loaded buffer; the ftplugin must pass { bufnr = ... }.
+T["lean"]["ftplugin: inlay hints are not enabled globally"] = function()
+  expect.equality(child.lua_get([[vim.lsp.inlay_hint.is_enabled()]]), false)
+end
+
+T["lean"]["\\h toggles inlay hints for this buffer only"] = function()
+  local states = child.lua_get([[(function()
+    local out = {}
+    local b = vim.api.nvim_get_current_buf()
+    local other = vim.api.nvim_create_buf(true, true)
+    vim.lsp.inlay_hint.enable(true, { bufnr = other })
+    local function press()
+      vim.api.nvim_feedkeys(vim.keycode("\\h"), "x", false)
+    end
+    press()
+    table.insert(out, vim.lsp.inlay_hint.is_enabled({ bufnr = b }))
+    table.insert(out, vim.lsp.inlay_hint.is_enabled({ bufnr = other }))
+    press()
+    table.insert(out, vim.lsp.inlay_hint.is_enabled({ bufnr = b }))
+    vim.api.nvim_buf_delete(other, { force = true })
+    return out
+  end)()]])
+  expect.equality(states, { false, true, true })
+end
+
 T["lean"]["mini.clue trigger is registered for this buffer"] = function()
   expect.equality(
     child.lua_get([[(vim.b.miniclue_config or {}).triggers ~= nil]]),
     true
   )
 end
+
+-- A map with no clue is a map nobody finds: `\` opens the hint window and
+-- anything missing from it is invisible. Config-owned maps only — lean.nvim's
+-- own are listed too but are its to rename.
+T["lean"]["config-owned maps have mini.clue entries"] = new_set({
+  parametrize = { { "<LocalLeader>?" }, { "<LocalLeader>n" }, { "<LocalLeader>a" },
+    { "<LocalLeader>f" }, { "<LocalLeader>b" }, { "<LocalLeader>h" } },
+}, {
+  test = function(keys)
+    local found = child.lua_get(string.format(
+      [[(function()
+        for _, c in ipairs((vim.b.miniclue_config or {}).clues or {}) do
+          if c.keys == %q then return c.desc end
+        end
+        return false
+      end)()]],
+      keys
+    ))
+    expect.equality(type(found), "string")
+  end,
+})
 
 T["lean"]["adding the capability does not displace lean.nvim's own"] = function()
   expect.equality(
@@ -195,6 +255,18 @@ T["lean"]["adding the capability does not displace lean.nvim's own"] = function(
   )
 end
 
+-- LspInlayHint is styled in the catppuccin overrides (so it survives a
+-- colorscheme reload, as with LineNrWrap). catppuccin's stock value is
+-- Comment's exact fg, which makes a hint read as a comment; ours must not be.
+T["lean"]["LspInlayHint is distinguishable from Comment"] = function()
+  local hl = child.lua_get([[(function()
+    local hint = vim.api.nvim_get_hl(0, { name = "LspInlayHint", link = false })
+    local comment = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
+    return { hint = hint.fg or "MISSING", comment = comment.fg or "MISSING" }
+  end)()]])
+  expect.no_equality(hl.hint, "MISSING")
+  expect.no_equality(hl.hint, hl.comment)
+end
 
 -- \? reads this at press time; a rename would fail silently into the fallback.
 T["lean"]["cheatsheet file exists"] = function()

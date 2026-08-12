@@ -2,7 +2,10 @@
 --
 -- Everything here MUST be buffer- or window-local (vim.bo / vim.wo /
 -- opt_local): tests/test_invariants.lua asserts that visiting a buffer of any
--- configured filetype leaves every global option value untouched.
+-- configured filetype leaves every global option value untouched. The same
+-- rule applies to state that is not an option and so is invisible to that
+-- snapshot — vim.lsp.inlay_hint.enable() below takes a { bufnr } filter for
+-- exactly this reason.
 --
 -- It must also be re-source-safe. The same test re-sources each ftplugin twice
 -- via `:edit!` and requires the config's autocmd population to be unchanged,
@@ -49,6 +52,21 @@ vim.wo[0][0].foldmethod = "expr"
 vim.wo[0][0].foldexpr = "v:lua.vim.lsp.foldexpr()"
 vim.wo[0][0].foldlevel = 99
 
+-- ── Inlay hints ───────────────────────────────────────────────────────────
+-- On by default, and load-bearing rather than decorative here: in Lean 4.30
+-- the only inlay hints the server emits are auto-bound implicits
+-- (Lean/Elab/Term/TermElabM.lean:1989 `addAutoBoundImplicitsInlayHint`, whose
+-- label is the ` {α}` Lean silently inserted). Upstream leaves global
+-- constants uncoloured precisely so an accidental auto-implicit — `nat` for
+-- `Nat` — shows up coloured against uncoloured neighbours; the patched server
+-- this config styles for colours globals, which spends that contrast, so the
+-- explicit signal replaces it.
+--
+-- The bufnr filter is not optional: vim.lsp.inlay_hint.enable(true) with no
+-- filter sets a GLOBAL flag and enables hints in every loaded buffer.
+local bufnr = vim.api.nvim_get_current_buf()
+vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+
 -- Primed names (`h'`, `ih₂'`) are pervasive in Lean and mathlib, so `w`, `*`
 -- and completion should treat the apostrophe as part of the identifier.
 -- Guarded because ftplugins re-run on every :edit and `:append` is not
@@ -83,6 +101,7 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>a", desc = "Code action" },
     { mode = "n", keys = "<LocalLeader>f", desc = "References" },
     { mode = "n", keys = "<LocalLeader>b", desc = "Open book page" },
+    { mode = "n", keys = "<LocalLeader>h", desc = "Toggle inlay hints" },
   },
 }
 
@@ -96,6 +115,13 @@ end
 map("<LocalLeader>n", vim.lsp.buf.rename, "Rename")
 map("<LocalLeader>a", vim.lsp.buf.code_action, "Code action")
 map("<LocalLeader>f", vim.lsp.buf.references, "References")
+
+-- Hints are ambient, so they need an off switch for when a line gets busy.
+-- Buffer-scoped both ways: toggling here never touches another buffer.
+map("<LocalLeader>h", function()
+  local b = vim.api.nvim_get_current_buf()
+  vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = b }), { bufnr = b })
+end, "Toggle inlay hints")
 
 -- Open the rendered book page for this file (Mathematics in Lean ships one).
 -- Inert with a warning in Lean projects that have no html/ build.
