@@ -40,7 +40,11 @@ syn keyword leanProp Prop
 " ASCII `=`, `<` and `>` are in leanOp as single characters, so claiming them
 " would also recolour the `=` of `:=` and the angle brackets of `⟨_, _⟩`-free
 " ASCII notation. Everything genuinely logical is unicode in mathlib anyway.
-syn match leanLogicOp "[∀∃¬∧∨↔→←≠≤≥∈∉⊆⊂∅]"
+"
+" `←` is deliberately absent despite being an arrow: in Lean source it is
+" almost always the direction marker of `rw [← foo]`, which is on most tactic
+" lines and is not a connective.
+syn match leanLogicOp "[∀∃¬∧∨↔→≠≤≥∈∉⊆⊂∅]"
 
 hi def link leanPropDeclaration   Statement
 hi def link leanPropName          Type

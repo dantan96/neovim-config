@@ -183,17 +183,36 @@ T["lean"]["propositional vocabulary is its own syntax group"] = new_set({
 -- token type `keyword`, and a semantic extmark outranks syntax. Clearing the
 -- group (rather than colouring it) lets the syntax group underneath render.
 -- An accidental recolour here would silently flatten the whole scheme.
--- Asserting emptiness alone would be vacuous: nvim_get_hl returns {} for an
--- undefined group too, and `@lsp.type.keyword.lean` does not exist in a clean
--- Neovim (only the unsuffixed `@lsp.type.keyword` does). So require that the
--- group is BOTH present in the table of defined groups AND empty.
-T["lean"]["semantic keyword tokens defer to syntax"] = function()
-  local state = child.lua_get([[(function()
-    local defined = vim.api.nvim_get_hl(0, {})["@lsp.type.keyword.lean"]
-    return { present = defined ~= nil, empty = vim.tbl_isempty(defined or { x = 1 }) }
-  end)()]])
-  expect.equality(state, { present = true, empty = true })
-end
+-- The syntax split above is invisible on its own: leanls tags `theorem` as
+-- semantic token type `keyword`, and a semantic extmark sits above syntax. The
+-- repaint has to be surgical, because the SAME token type covers every tactic
+-- — `rw exact apply ring norm_num symm rfl` are all `keyword`, and lean.nvim's
+-- syntax file lists no tactic names, so a blanket opt-out would strip them.
+T["lean"]["only propositional keywords are repainted"] = new_set({
+  parametrize = {
+    { "keyword", "theorem", "leanPropDeclaration" },
+    { "keyword", "lemma", "leanPropDeclaration" },
+    { "keyword", "example", "leanPropDeclaration" },
+    { "keyword", "Prop", "leanProp" },
+    { "keyword", "∀", "leanLogicOp" },
+    -- Tactics and the rest of Lean's keywords must come back nil, i.e. keep
+    -- the colour the language server's own token type gives them.
+    { "keyword", "rw", "left alone" },
+    { "keyword", "exact", "left alone" },
+    { "keyword", "apply", "left alone" },
+    { "keyword", "ring", "left alone" },
+    { "keyword", "by", "left alone" },
+    { "keyword", "import", "left alone" },
+    -- Right spelling, wrong token type: the mapping must not fire on an
+    -- identifier that happens to be spelled like a propositional keyword.
+    { "variable", "theorem", "left alone" },
+  },
+}, {
+  test = function(token_type, text, group)
+    local tokens = dofile(H.cfg .. "/lua/config/lean/tokens.lua")
+    expect.equality(tokens.hl_for(token_type, text) or "left alone", group)
+  end,
+})
 
 -- ── infoview background ────────────────────────────────────────────────
 -- Pure colour arithmetic, so it runs in the parent against a synthetic

@@ -62,18 +62,9 @@ return {
             --
             -- Green doubles as String in catppuccin, which is a real but tiny
             -- collision: string literals barely occur in mathlib-style Lean.
-            -- Cleared, not recoloured. leanls tags `theorem`, `def`, `by`,
-            -- `#check` and friends all as semantic-token type `keyword` (164
-            -- of them on C02_Basics/S02), and a semantic extmark outranks
-            -- syntax, so every keyword arrived one flat colour and the split
-            -- below was invisible. An empty definition makes the extmark
-            -- contribute no attributes and the syntax group underneath show
-            -- through — the documented way to opt out (:h lsp-semantic-
-            -- highlight). Verified in a real TUI: with the override, `theorem`
-            -- renders #a6e3a1 and `#check` stays #cba6f7; without it, both are
-            -- #cba6f7. Nothing is lost, because lean.nvim's syntax file
-            -- already covers the same keywords.
-            ["@lsp.type.keyword.lean"] = {},
+            -- These four are shared with lua/config/lean/tokens.lua, which
+            -- repaints the propositional keywords that leanls would otherwise
+            -- flatten into one colour along with every tactic.
             leanPropDeclaration = { fg = C.green, bold = true },
             leanPropName = { fg = C.green },
             leanProp = { fg = C.green, bold = true },
