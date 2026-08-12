@@ -1113,6 +1113,63 @@ T["lean"]["highlights: keyword, tactic and sorry are not repainted"] = function(
   expect.no_equality(got.full, "nil")
 end
 
+-- THE FALL-THROUGH SEAM, PINNED TO THE PALETTE IT CLAIMS TO FOLLOW.
+--
+-- A token that arrives without both a world and a level never reaches the
+-- `@lean.*` grid, so themes.lua's `@lsp.type.*.lean` pins decide how it
+-- looks. Each is supposed to take the colour its own kind takes in the grid,
+-- so a classification miss degrades to a near neighbour instead of to an
+-- unrelated hue.
+--
+-- THIS IS NOT HYPOTHETICAL. For one commit those pins held hand-copied hexes
+-- with a comment naming the palette key each came from, and FOUR OF SEVEN
+-- were already stale: `theorem` was still #89b4fa when prop_element had
+-- become #f9e2af, `enumMember` still green, `class` still magenta, `enum`
+-- still peach. Every one of them passed the "standard token names are
+-- pinned" sweep above, because that sweep only asks whether a colour exists.
+--
+-- themes.lua now reads `defaults().hues` symbolically, which removes the
+-- copy — but a symbolic read that goes stale is INVISIBLE where a wrong hex
+-- was at least readable, and catppuccin caches compiled highlight output
+-- under stdpath("cache"). So the equality is asserted rather than assumed.
+--
+-- HOW TO BREAK IT, because the obvious way does not: changing a hue in
+-- DEFAULTS moves BOTH sides together — themes.lua reads the same table this
+-- case does — and the assertion still holds, correctly. The break that
+-- matters is a MIS-POINTED KEY (`enum` reading `prop_element` instead of
+-- `data_sort`), which fails with both the pin and the key named. A stale
+-- compiled colorscheme fails it too, because the left side is the APPLIED
+-- highlight and the right side is the module.
+T["lean"]["the fall-through pins take their own kind's palette colour"] = function()
+  local PINS = {
+    ["enum"] = "data_sort", -- inductives: Nat, List, True
+    ["struct"] = "data_sort",
+    ["class"] = "kind_class",
+    ["enumMember"] = "kind_constructor",
+    ["property"] = "kind_projection",
+    ["function"] = "data_element", -- a plain def is most often data-valued
+    ["theorem"] = "prop_element", -- a cited lemma
+  }
+  local got = child.lua_get(([[(function()
+      local pins = %s
+      local HL = require("config.lean.highlights")
+      local hues = HL.defaults().hues
+      local out = {}
+      for g, key in pairs(pins) do
+        local h = vim.api.nvim_get_hl(0, { name = "@lsp.type." .. g .. ".lean", link = false })
+        out[g] = {
+          want = hues[key] or ("NO SUCH HUE KEY: " .. key),
+          got = h.fg and string.format("#%%06x", h.fg) or "nil",
+        }
+      end
+      return out
+    end)()]]):format(vim.inspect(PINS)))
+  for g, key in pairs(PINS) do
+    -- Both sides in the message, so a failure names the pin and the key.
+    expect.equality({ g, key, got[g].got }, { g, key, got[g].want })
+  end
+end
+
 -- TACTICS ARE NOT KEYWORDS ANY MORE. Dan: "SO MUCH FUCKING PURPLE ... Yes,
 -- split the keyword purple too." `@lsp.type.tactic.lean` used to LINK to
 -- `@lsp.type.keyword.lean`, so every `rw`, `simp`, `exact` and `ring` was
