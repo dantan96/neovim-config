@@ -150,12 +150,25 @@ return {
             -- Modifiers. Only `deprecated` is styled — Mathlib deprecates
             -- aggressively (825 files) and a struck-through name is
             -- unambiguous. The rest are on the wire and stylable the same way:
-            --   @lsp.mod.leanSimp.lean        `@[simp]` — does simp know this?
-            --   @lsp.mod.leanInstance.lean    instance, or an `[Inst α]` binder
-            --   @lsp.mod.leanImplicit.lean    bound by `{x}` / `⦃x⦄`
+            --   @lsp.mod.simp.lean            `@[simp]` — does simp know this?
+            --   @lsp.mod.instance.lean        a registered instance
+            --   @lsp.mod.instBinder.lean      an `[Inst α]` binder
+            --   @lsp.mod.implicit.lean        bound by `{x}` (`⦃x⦄` is
+            --                                 strictImplicit)
             --   @lsp.mod.defaultLibrary.lean  imported, vs proved in this file
-            --   @lsp.mod.leanReducible.lean   `@[reducible]` / `@[irreducible]`
-            -- Combinations use @lsp.typemod.<type>.<mod>.lean.
+            --   @lsp.mod.reducible.lean       `@[reducible]` (`irreducible` too)
+            --   @lsp.mod.autoImplicit.lean    the elaborator bound it, not you
+            -- ...and the two always-present axes, one modifier from each on
+            -- every classified token:
+            --   world  propWorld | dataWorld | polyWorld
+            --   tower  element   | sort      | former
+            -- Combinations use @lsp.typemod.<type>.<mod>.lean, which reaches
+            -- one modifier only — see the note on Prop-ness above.
+            --
+            -- These names are NOT checked by tests/test_lean.lua, which can
+            -- only see groups that are actually defined; they went stale once
+            -- already when the server dropped its `lean` prefix. Read them
+            -- against `SemanticTokenModifier.names` before relying on one.
             ["@lsp.mod.deprecated.lean"] = { strikethrough = true },
           }
         end,
