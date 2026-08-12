@@ -416,6 +416,35 @@ NS["the syntax-layer floor groups carry no attribute bits"] = function()
   end
 end
 
+NS["the rainbow's length is the same number in the palette and in the syntax file"] = function()
+  -- `after/syntax/lean.vim` writes the cycle with a literal `range(1, 6)`,
+  -- because a Vimscript file cannot read a Lua table. `M.LINKS` and
+  -- `M.groups()` derive theirs from `#M.palette.rainbow`. Add a seventh hue
+  -- and the group exists, the link exists, and NO SYNTAX RULE EVER MATCHES
+  -- IT — `:hi @lean.path.c7` would look perfectly correct.
+  --
+  -- `hlexists` cannot see this: the LINKS loop defines the group either way.
+  -- `:syntax list <name>` is the check, because it errors on an item that was
+  -- never defined.
+  local got = child.lua_get([[(function()
+    local n = #require("config.lean.namespace_hl").palette.rainbow
+    local function has(name)
+      return pcall(vim.fn.execute, "syntax list " .. name)
+    end
+    local missing = {}
+    for i = 1, n do
+      if not has("leanPathC" .. i) then missing[#missing + 1] = "leanPathC" .. i end
+      if not has("leanPathF" .. i) then missing[#missing + 1] = "leanPathF" .. i end
+    end
+    return { n = n, missing = missing, extra = has("leanPathC" .. (n + 1)) }
+  end)()]])
+  expect.equality(got.n, 6)
+  expect.equality(got.missing, {})
+  -- Non-vacuity: `has()` must be able to say no, or the loop above proves
+  -- nothing at all.
+  expect.equality(got.extra, false)
+end
+
 NS["leanSort is HARD-linked, or lean.nvim's own def-link wins"] = function()
   -- `Sort Prop Type` carry no semantic token, so the syntax layer is the only
   -- thing that reaches them — and lean.nvim already says

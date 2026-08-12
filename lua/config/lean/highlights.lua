@@ -838,18 +838,25 @@ local function build_flags(o)
   -- matching entry in this list owns the slot, so the order below reads
   -- imported < axiom < auto — i.e. `imported` YIELDS to both.
   --
-  -- Rarity wins the slot. `defaultLibrary` is on the majority of the
-  -- identifiers in a Mathlib-importing file (258 of 1,189 tokens in MIL C09
-  -- S01, and 36 of the 50 `theorem` tokens in HighlightGallery), while
-  -- `axiom` and `auto` are rare AND urgent: "this rests on nothing" and "the
+  -- Rarity wins the slot. `imported` is on most of the cited lemmas in a
+  -- Mathlib-importing file (36 of the 50 `theorem` tokens in
+  -- HighlightGallery), while `axiom` and `auto` are rare AND urgent: "this rests on nothing" and "the
   -- elaborator bound this name, you did not" must not be silently overwritten
   -- by a mark meaning "imported". `Classical.choice` is exactly that
   -- collision and it is a real constant, not a constructed case.
   if c.imported_underline ~= "none" then
     flags[#flags + 1] = {
       "imported",
+      -- SCOPED TO THE CITED-LEMMA CELL, not to `defaultLibrary` at large.
+      -- Dan asked about *lemmas*; `defaultLibrary` is on every imported name
+      -- there is, and measured on MIL C09 S01 that is 258 tokens of which
+      -- only 38 are `prop.element` — the other 220 are `Set`, `Filter`,
+      -- `Nat`, `Group` and global data, which nobody asked to mark and which
+      -- already carry their own cell colour. Widening this to the whole grid
+      -- is deleting two conjuncts; do it deliberately, not by accident.
+      -- `Classical.choice` stays in scope: it is propWorld + element.
       function(_, mods)
-        return mods.defaultLibrary
+        return mods.defaultLibrary and mods.propWorld and mods.element
       end,
       function(spec)
         set_underline(spec, c.imported_underline, nil)

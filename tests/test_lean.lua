@@ -1240,6 +1240,12 @@ T["lean"]["highlights: the underline precedence is imported < axiom < auto"] = f
     local both = { propWorld = true, element = true, defaultLibrary = true }
     return {
       imported = styles(spec("theorem", both)),
+      -- SCOPE. `defaultLibrary` is on every imported name; only the cited
+      -- lemma cell is marked. A type constructor is imported too and must
+      -- come back bare, or 220 of the 258 underlines in MIL C09 S01 are on
+      -- things nobody asked to distinguish.
+      imported_former = styles(spec("function",
+        { dataWorld = true, former = true, defaultLibrary = true })),
       axiom_only = styles(spec("axiom", prop)),
       imported_axiom = styles(spec("axiom", both)),
       imported_auto = styles(spec("variable",
@@ -1251,6 +1257,7 @@ T["lean"]["highlights: the underline precedence is imported < axiom < auto"] = f
   -- lost" and "nothing ever sets an underline" are the same observation.
   expect.equality(got.plain, "sp=nil")
   expect.equality(got.imported, "underline+sp=nil")
+  expect.equality(got.imported_former, "sp=nil")
   expect.equality(got.axiom_only, "underdouble+sp=#f38ba8")
   -- ...and the collision. `Classical.choice` keeps "rests on nothing".
   expect.equality(got.imported_axiom, "underdouble+sp=#f38ba8")

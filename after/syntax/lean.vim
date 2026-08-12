@@ -109,6 +109,11 @@ syn keyword leanPathQual contained scoped in hiding renaming as all
 " excluded set is punctuation only, and it has to include `-`, `/` and `"` or
 " a trailing `-- comment` and a `/- block -/` get eaten as path components.
 let s:leanPathComponent = '[^[:space:].,:;()⟨⟩«»{}/"\[\]-]\+'
+" SIX, and the same six as `M.palette.rainbow` in namespace_hl.lua. A
+" Vimscript file cannot read a Lua table, so this literal is the one place the
+" two can drift: a seventh hue there would get a highlight group and a link and
+" NO RULE THAT EVER MATCHES IT. tests/test_lean_namespaces.lua compares the two
+" with `:syntax list`.
 for s:i in range(1, 6)
   let s:next = s:i % 6 + 1
   execute 'syn match leanPathF' . s:i . ' "' . s:leanPathComponent . '" contained'
