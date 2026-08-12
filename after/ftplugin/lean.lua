@@ -122,6 +122,7 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>ll", desc = "Loogle (by type pattern)" },
     { mode = "n", keys = "<LocalLeader>lw", desc = "Workspace symbols (by name)" },
     { mode = "n", keys = "<LocalLeader>la", desc = "Unicode abbreviations" },
+    { mode = "n", keys = "<LocalLeader>y", desc = "Yank module name" },
   },
 }
 
@@ -197,6 +198,19 @@ local book = require("config.lean.book")
 map("<LocalLeader>b", book.open, "Open book page")
 vim.api.nvim_buf_create_user_command(0, "LeanBook", book.open, {
   desc = "Open the rendered book page for this Lean file",
+})
+
+-- ── \y · yank this file's module name ─────────────────────────────────────
+-- VS Code's `lean4.copyModuleName` (parity audit #10). `\y` rather than `\c`
+-- ("clear all pins", lean.nvim's) or `\m` (already the module-hierarchy
+-- group): this is a yank, and it is the only one in the Lean namespace.
+--
+-- Not `path − root`: see the header of config.lean.module_name for why a
+-- mathlib buffer reports the MIL project root and needs its own rule.
+local module_name = require("config.lean.module_name")
+map("<LocalLeader>y", module_name.copy, "Yank module name")
+vim.api.nvim_buf_create_user_command(0, "LeanCopyModuleName", module_name.copy, {
+  desc = "Copy this file's dotted Lean module name to the clipboard",
 })
 
 -- Lean cheatsheet. Built as a scratch buffer rather than :edit-ing the file,

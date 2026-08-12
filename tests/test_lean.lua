@@ -1328,6 +1328,73 @@ T["book"]["declines quietly when a project has no html build"] = function()
   expect.equality(err:find("no rendered page") ~= nil, true)
 end
 
+-- ── \y · module name (parity audit #10) ────────────────────────────────
+-- Pure resolver, tested in the parent like config.lean.book above: no editor,
+-- no server, no filesystem. The cases are the ones MEASURED in a pty-hosted
+-- TUI against MIL, where `vim.lsp.get_clients{bufnr=0}[1].root_dir` came back
+-- as the MIL project root for a mathlib buffer as well as for a MIL one. That
+-- is what makes the naive `path − root` wrong, and it is the second case here.
+T["module name"] = new_set()
+
+T["module name"]["resolves project, package and toolchain files"] = function()
+  local mn = dofile(H.cfg .. "/lua/config/lean/module_name.lua")
+  local root = "/Users/dan/LeanCourse/MathematicsInLean"
+  local function of(path)
+    local name, err = mn.of(path, root)
+    return name or ("ERR: " .. tostring(err))
+  end
+
+  -- project source
+  expect.equality(
+    of(root .. "/MIL/C05_Elementary_Number_Theory/S02_Induction.lean"),
+    "MIL.C05_Elementary_Number_Theory.S02_Induction"
+  )
+  expect.equality(of(root .. "/MIL/Common.lean"), "MIL.Common")
+
+  -- A DEPENDENCY, with the SAME root_dir. Rule 1: the module namespace starts
+  -- at the Lake package, not at the workspace. Without it this answers
+  -- ".lake.packages.mathlib.Mathlib.Tactic.Ring".
+  expect.equality(
+    of(root .. "/.lake/packages/mathlib/Mathlib/Tactic/Ring.lean"),
+    "Mathlib.Tactic.Ring"
+  )
+  expect.equality(
+    of(root .. "/.lake/packages/batteries/Batteries/Data/List/Basic.lean"),
+    "Batteries.Data.List.Basic"
+  )
+  -- A dependency of a dependency: the INNERMOST .lake/packages wins.
+  expect.equality(
+    of(root .. "/.lake/packages/mathlib/.lake/packages/Qq/Qq/Macro.lean"),
+    "Qq.Macro"
+  )
+
+  -- Rule 2: `gd` into core Lean lands under a toolchain, outside every root.
+  expect.equality(
+    mn.of("/Users/dan/.elan/toolchains/lean4-rich/src/lean/Init/Prelude.lean", root),
+    "Init.Prelude"
+  )
+  expect.equality(
+    mn.of("/Users/dan/.elan/toolchains/lean4-rich/src/lean/Init/Prelude.lean", nil),
+    "Init.Prelude"
+  )
+end
+
+T["module name"]["declines rather than inventing a name"] = function()
+  local mn = dofile(H.cfg .. "/lua/config/lean/module_name.lua")
+  local root = "/proj"
+  local function err(path, r)
+    local name, e = mn.of(path, r)
+    return name == nil and e or ("UNEXPECTED: " .. name)
+  end
+  expect.equality(err("", root):find("no file name") ~= nil, true)
+  expect.equality(err("/proj/notes.md", root):find("not a .lean") ~= nil, true)
+  -- Outside the root, outside any package, outside any toolchain.
+  expect.equality(err("/elsewhere/Foo.lean", root):find("not inside") ~= nil, true)
+  -- No root known and no other rule matches: decline, do not fall back to the
+  -- absolute path (which would yield ".Users.dan.…").
+  expect.equality(err("/Users/dan/scratch/Foo.lean", nil):find("not inside") ~= nil, true)
+end
+
 -- ── the coverage test_invariants.lua had to give up ────────────────────
 -- The PROBES list there deliberately has no probe.lean, because lean.nvim
 -- leaks the GLOBAL 'breakat' and the shared invariants child cannot survive it
@@ -1410,6 +1477,8 @@ local PARITY_MAPS = {
   { "\\ll", "Loogle (by type pattern)" },
   { "\\lw", "Workspace symbols (by name)" },
   { "\\la", "Unicode abbreviations" },
+  -- Second wave, 2026-08-13: research/12-parity-roadmap.md §3 items 2, 3, 6.
+  { "\\y", "Yank module name" },
 }
 
 local parity_parametrize = {}

@@ -189,6 +189,15 @@ scope?" without grepping `.lake/packages`.
 |------|--------|
 | `\mi` | Imports of this module, as a tree (`:LeanModuleImports`) |
 | `\mI` | Modules that import this one (`:LeanModuleImportedBy`) |
+| `\y` | Yank this file's dotted module name (`:LeanCopyModuleName`) |
+
+`\y` turns `.lake/packages/mathlib/Mathlib/Tactic/Ring.lean` into
+`Mathlib.Tactic.Ring` and `MIL/C05_…/S02_….lean` into `MIL.C05_….S02_…` — the
+string an `import` line or a Zulip question wants. It is aware that one Lean
+project is many Lake packages: the language server reports the *MIL* root even
+for a mathlib file, so the naive "path minus root" gives the wrong answer and
+is not what this does. Files under a toolchain (`gd` into core Lean) resolve
+too. Goes to both `+` and `"`.
 
 ## Finding lemmas — the pickers
 
@@ -235,6 +244,7 @@ indentation. Every fold starts open.
 | `:LeanInfoviewAddPin` / `…ClearPins` | Manage pins |
 | `:LeanGotoInfoview` | Jump into the infoview |
 | `:LeanModuleImports` / `:LeanModuleImportedBy` | Import trees (`\mi` / `\mI`) |
+| `:LeanCopyModuleName` | This file's dotted module name, to the clipboard (`\y`) |
 | `:Telescope loogle` | Search mathlib by type signature (`\ll`, needs network) |
 | `:Telescope lean_abbreviations` | The `\…` table, searchable (`\la`) |
 
