@@ -69,16 +69,64 @@ T["palette"]["defaults are complete and every colour is real"] = function()
     for _, k in ipairs({ "simp_sp", "alarm", "recede" }) do
       if not tostring(d[k]):match("^#%x%x%x%x%x%x$") then bad[#bad+1] = k end
     end
-    for _, k in ipairs({ "prop", "data", "poly" }) do
-      if not tostring(d.hues[k]):match("^#%x%x%x%x%x%x$") then bad[#bad+1] = "hues."..k end
+    -- The SHAPE, not a fixed triple: `hues` is arbitrary-keyed so the
+    -- palette can widen to a hand-picked colour per cell without this case
+    -- having to be rewritten each time one is added.
+    local nhues = 0
+    for k, v in pairs(d.hues) do
+      nhues = nhues + 1
+      if not tostring(v):match("^#%x%x%x%x%x%x$") then bad[#bad+1] = "hues."..tostring(k) end
     end
-    return { bad = bad, dust = d.dust, channels = d.channels }
+    return { bad = bad, nhues = nhues, dust = d.dust, channels = d.channels }
   ]==])
   expect.equality(got.bad, {})
+  expect.equality(got.nhues > 0, true)
   expect.equality(type(got.dust), "number")
   expect.equality(got.channels.former_bold, true)
   expect.equality(got.channels.local_italic, true)
   expect.equality(got.channels.simp_underline, "underdotted")
+end
+
+-- THE WIDENING CONTRACT. `hues` is not a fixed triple: the palette is
+-- headed for a hand-picked colour per cell, so a key this version has never
+-- heard of must SURVIVE a validate round-trip rather than being dropped as
+-- unrecognised. That is the only way a user adds a colour the generator does
+-- not ship. Junk keys and junk values are still rejected.
+T["palette"]["an unknown hue key survives, and junk still does not"] = function()
+  local got = pal([==[
+    local inputs, bad = HL.validate({
+      hues = {
+        prop = "#111111",       -- a shipped key, changed
+        propFormer = "#222222", -- a key this version has never heard of
+        ["not a key"] = "#333333",
+        alsoBad = "chartreuse",
+      },
+    })
+    HL.apply(inputs)
+    return {
+      prop = inputs.hues.prop,
+      novel = inputs.hues.propFormer,
+      -- presence as a boolean: a nil field would simply vanish from the
+      -- table on its way back to the parent and assert nothing.
+      spaced_present = inputs.hues["not a key"] ~= nil,
+      junkval_present = inputs.hues.alsoBad ~= nil,
+      -- a shipped key absent from the input keeps its default
+      data_present = inputs.hues.data ~= nil,
+      nbad = #bad,
+      -- and the novel hue reaches the derived palette, dusty partner included
+      pal = HL.palette.propFormer,
+      pal_dust = HL.palette.propFormer_dust,
+    }
+  ]==])
+  expect.equality(got.prop, "#111111")
+  expect.equality(got.novel, "#222222") -- kept, not dropped
+  expect.equality(got.spaced_present, false) -- rejected: not an identifier
+  expect.equality(got.junkval_present, false) -- rejected: not a hex
+  expect.equality(got.data_present, true) -- shipped default retained
+  expect.equality(got.nbad, 2)
+  -- The generator counts nothing: a novel hue gets its computed shade too.
+  expect.equality(got.pal, "#222222")
+  expect.equality(got.pal_dust ~= nil and got.pal_dust ~= "#222222", true)
 end
 
 -- The point of a generated palette: one input moves a whole column and
@@ -337,6 +385,43 @@ T["palette"]["an override reaches a group the generator never produces"] = funct
   expect.equality(got.italic, true)
   expect.no_equality(got.after_fg, "nil") -- B1: complete spec
   expect.equality(got.after_fg, got.before_fg) -- and the colour did not move
+end
+
+-- A REGRESSION, and one that only a rendered cell could show. Clearing an
+-- override on a group the generator does not produce used to CLEAR it
+-- rather than restore it: `nvim_set_hl(0, name, {})` is not an undo for a
+-- definition catppuccin installed at colorscheme time. Measured live on the
+-- `sorry` chip, which went from `#151520 on bg#f9e2af bold` to a bare
+-- foreground — the exact group themes.lua's SKIP list exists to protect.
+T["palette"]["clearing a foreign override restores the theme, not nothing"] = function()
+  local got = pal([==[
+    HL.setup()
+    local g = "@lsp.type.leanSorryLike.lean"
+    local function snap()
+      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+      return {
+        fg = h.fg and string.format("#%06x", h.fg) or "nil",
+        bg = h.bg and string.format("#%06x", h.bg) or "nil",
+        bold = h.bold or false,
+      }
+    end
+    local before = snap()
+    HL.set_override(g, { fg = "#ffffff", bg = "#f38ba8", italic = true })
+    local during = snap()
+    HL.clear_override(g)
+    local after = snap()
+    -- and again through the clear-everything path
+    HL.set_override(g, { fg = "#ffffff" })
+    HL.clear_all_overrides()
+    return { before = before, during = during, after = after, after_all = snap() }
+  ]==])
+  -- Non-vacuity: the chip really is a background chip to begin with.
+  expect.no_equality(got.before.bg, "nil")
+  expect.equality(got.before.bold, true)
+  expect.equality(got.during.bg, "#f38ba8")
+  -- The whole point: both clear paths put the chip back exactly.
+  expect.equality(got.after, got.before)
+  expect.equality(got.after_all, got.before)
 end
 
 -- B4: the underline style is a three-bit enum, so a hand-set style has to

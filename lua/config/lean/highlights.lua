@@ -292,15 +292,20 @@ function M.validate(raw)
     end
     return out, bad
   end
+  -- `hues` is ARBITRARY-KEYED, not a fixed triple. The shipped set is three
+  -- worlds, but the palette is meant to widen to a hand-picked colour per
+  -- cell, so a key this version has never heard of is KEPT rather than
+  -- dropped — that is how a colour the generator does not ship gets added.
+  -- Keys in the defaults but absent from the file keep the shipped value,
+  -- because `out` starts life as a full copy of the defaults.
   if type(raw.hues) == "table" then
-    for _, k in ipairs({ "prop", "data", "poly" }) do
-      local v = raw.hues[k]
-      if v ~= nil then
-        if is_hex(v) then
-          out.hues[k] = v
-        else
-          bad[#bad + 1] = "hues." .. k .. " = " .. vim.inspect(v)
-        end
+    for k, v in pairs(raw.hues) do
+      if type(k) ~= "string" or not k:match("^[%a][%w_]*$") then
+        bad[#bad + 1] = "hues key " .. vim.inspect(k)
+      elseif is_hex(v) then
+        out.hues[k] = v
+      else
+        bad[#bad + 1] = "hues." .. tostring(k) .. " = " .. vim.inspect(v)
       end
     end
   end
@@ -467,11 +472,14 @@ local function rebuild_palette(o)
   for k in pairs(p) do
     p[k] = nil
   end
-  p.prop, p.data, p.poly = o.hues.prop, o.hues.data, o.hues.poly
   p.simp_sp, p.alarm, p.recede = o.simp_sp, o.alarm, o.recede
-  p.prop_dust = blend(p.prop, p.recede, o.dust)
-  p.data_dust = blend(p.data, p.recede, o.dust)
-  p.poly_dust = blend(p.poly, p.recede, o.dust)
+  -- Every hue gets its computed dusty partner, whatever it is called. Three
+  -- today; the design intent is a hand-picked colour per cell, and nothing
+  -- here counts them.
+  for name, hex in pairs(o.hues) do
+    p[name] = hex
+    p[name .. "_dust"] = blend(hex, p.recede, o.dust)
+  end
   return p
 end
 
@@ -621,6 +629,38 @@ local function define(name, spec)
   vim.api.nvim_set_hl(0, name, resolve(name, spec))
 end
 
+--- What a group the generator does NOT produce looked like before we first
+--- overrode it.
+---
+--- FOUND BY READING RENDERED CELLS, and invisible from the config: clearing
+--- an override on `@lsp.type.leanSorryLike.lean` used to leave the `sorry`
+--- chip DESTROYED. Those groups are defined by catppuccin's
+--- `highlight_overrides` at colorscheme time, so `nvim_set_hl(0, name, {})`
+--- does not "restore" them — it clears them, and the chip that themes.lua
+--- exists to protect renders as a bare foreground. Generated groups have
+--- `specs[name]` to fall back to; these have nothing unless it is kept.
+local baseline = {}
+
+local function remember_baseline(name)
+  if specs[name] ~= nil or baseline[name] ~= nil then
+    return
+  end
+  -- No `link = false`: a linked group must come back as the LINK it was,
+  -- not as a flattened copy that would stop tracking its target.
+  local ok, h = pcall(vim.api.nvim_get_hl, 0, { name = name })
+  baseline[name] = (ok and type(h) == "table") and vim.deepcopy(h) or {}
+end
+
+--- Put a group back the way it was before any override touched it.
+local function restore_baseline(name)
+  if specs[name] then
+    vim.api.nvim_set_hl(0, name, specs[name])
+  else
+    pcall(vim.api.nvim_set_hl, 0, name, baseline[name] or {})
+    baseline[name] = nil
+  end
+end
+
 --- Paint the overrides that name a group the generator never produces —
 --- the themes.lua pins, `leanSorryLike`, `LspInlayHint`, and anything else
 --- the user reached for. Separate pass because `define` only walks the
@@ -628,6 +668,7 @@ end
 local function apply_foreign_overrides()
   for name in pairs(M.overrides) do
     if specs[name] == nil then
+      remember_baseline(name)
       local spec = resolve(name, nil)
       if spec then
         pcall(vim.api.nvim_set_hl, 0, name, spec)
@@ -817,6 +858,7 @@ function M.set_override(name, spec)
   if not clean then
     return false, bad
   end
+  remember_baseline(name)
   M.overrides[name] = clean
   M.repaint()
   return true, bad
@@ -830,11 +872,7 @@ function M.clear_override(name)
     return false
   end
   M.overrides[name] = nil
-  if specs[name] then
-    vim.api.nvim_set_hl(0, name, specs[name])
-  else
-    vim.api.nvim_set_hl(0, name, {})
-  end
+  restore_baseline(name)
   M.repaint()
   return true
 end
@@ -844,11 +882,7 @@ function M.clear_all_overrides()
   local names = vim.tbl_keys(M.overrides)
   M.overrides = {}
   for _, name in ipairs(names) do
-    if specs[name] then
-      vim.api.nvim_set_hl(0, name, specs[name])
-    else
-      vim.api.nvim_set_hl(0, name, {})
-    end
+    restore_baseline(name)
   end
   M.repaint()
   return #names
@@ -1006,6 +1040,11 @@ function M.setup(o)
       for name, spec in pairs(specs) do
         vim.api.nvim_set_hl(0, name, resolve(name, spec))
       end
+      -- The theme has just rebuilt its pins, so the remembered "before"
+      -- values are stale. Re-capture them HERE — after catppuccin, before
+      -- the overrides go back on top — or a later clear would restore a
+      -- definition from the previous colorscheme.
+      baseline = {}
       apply_foreign_overrides()
     end,
   })

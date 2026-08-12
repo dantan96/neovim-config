@@ -307,12 +307,27 @@ local function enum_row(label, path, choices, gloss)
   }
 end
 
+--- What each hue is for. A LOOKUP rather than a fixed row list, because
+--- `hues` is arbitrary-keyed: the shipped set is the three worlds, but the
+--- palette is meant to widen to a hand-picked colour per cell and a hue this
+--- table has never heard of must still get a row. Unknown keys simply have
+--- no description yet.
+local HUE_GLOSS = {
+  prop = "proofs, propositions, predicates",
+  data = "values, types, constructors",
+  poly = "sort-polymorphic: could be either",
+}
+
 local function generator_rows()
-  return {
-    head("WORLD HUES · which question does colour answer?"),
-    colour_row("prop", { "hues", "prop" }, "proofs, propositions, predicates"),
-    colour_row("data", { "hues", "data" }, "values, types, constructors"),
-    colour_row("poly", { "hues", "poly" }, "sort-polymorphic: could be either"),
+  local rows = { head("HUES · which question does colour answer?") }
+  -- Sorted, so the list does not reshuffle between renders when a hue is
+  -- added: Lua's pairs() order is not stable across tables.
+  local names = vim.tbl_keys(o().hues)
+  table.sort(names)
+  for _, n in ipairs(names) do
+    rows[#rows + 1] = colour_row(n, { "hues", n }, HUE_GLOSS[n] or "")
+  end
+  local rest = {
     head("THE RECEDE STEP · sort and former step back by this much"),
     colour_row("recede", { "recede" }, "what the dusty shades blend toward"),
     {
@@ -339,6 +354,10 @@ local function generator_rows()
     enum_row("auto → ", { "channels", "auto_underline" }, HL.underline_styles, "the elaborator bound it"),
     bool_row("auto → alarm fg", { "channels", "auto_recolour" }, "loud on purpose"),
   }
+  for _, r in ipairs(rest) do
+    rows[#rows + 1] = r
+  end
+  return rows
 end
 
 local function groups_rows()
@@ -838,7 +857,11 @@ local function open_windows()
     vim.wo[w].wrap = false
     vim.wo[w].cursorline = false
   end
-  vim.wo[S.win.controls].cursorline = false
+  -- The control list is longer than the window once the palette widens past
+  -- a handful of hues. Nothing else is needed to scroll it: `render()` puts
+  -- the real cursor on the selected row, so Neovim keeps it in view — and
+  -- 'scrolloff' means the selection is never pinned to the last visible line.
+  vim.wo[S.win.controls].scrolloff = 3
 end
 
 local function keymaps()
