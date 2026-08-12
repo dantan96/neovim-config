@@ -35,11 +35,30 @@
 -- (runtime/lua/vim/lsp.lua:351), and disabling a server drops the cached
 -- resolution — so `:LeanRichTokens on|off` can change the answer within a
 -- session by restarting leanls. See lua/config/lean/rich_tokens.lua.
+
+-- ── elan's override notice ────────────────────────────────────────────────
+-- MIL has an elan *directory override* onto the patched toolchain, and elan
+-- announces that on stderr every time it resolves a binary:
+--
+--   note: using toolchain 'lean4-rich' from override set on '…/MathematicsInLean'
+--   note: to remove: elan override unset --path '…' | to suppress: …
+--
+-- lean.nvim surfaces the server's stderr (`stderr = { enable = true }` in
+-- vim.g.lean_config), so it lands in a window on every Lean file. It is not an
+-- error and there is nothing to act on — the override is deliberate.
+--
+-- Scoped to the server's own process rather than set on Neovim's environment,
+-- so it silences the notice for `lake serve` without hiding it from anything
+-- else you might run. `cmd_env` is deep-merged with lean.nvim's own config the
+-- same way `capabilities` is.
+local CMD_ENV = { ELAN_NO_OVERRIDE_NOTICE = "1" }
+
 if not require("config.lean.rich_tokens").advertise() then
-  return {}
+  return { cmd_env = CMD_ENV }
 end
 
 return {
+  cmd_env = CMD_ENV,
   capabilities = {
     experimental = {
       leanRichTokens = true,

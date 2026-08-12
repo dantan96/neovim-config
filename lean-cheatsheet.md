@@ -140,6 +140,18 @@ says so, and the contrast is worth more in the binder list. The full design,
 including what is deliberately left off and how to turn it on, is at the top
 of `lua/config/lean/highlights.lua`.
 
+**`<leader>K` — ask, instead of remembering.** On any token it opens one float
+with: what the server said (its token type and every modifier, each glossed in
+English — `propWorld`+`element`+`local` also reads as *a hypothesis*); every
+highlight group that applies there, in priority order, with the winner marked
+and each group's resolved colour beside it; and the cell that was actually
+drawn. That last one is the part worth having: the drawn cell is a
+**composition**, not the winning group — attributes merge, so a bold from the
+syntax layer survives a foreground from priority 128. An undefined group is
+listed too, because "contributes nothing and lets the layer below through" is
+a real mechanism and the reason `theorem` was accidentally blue for a while.
+`q` closes.
+
 ## Module hierarchy
 
 Which files does this one pull in, and who pulls in this one? MIL chapters open
