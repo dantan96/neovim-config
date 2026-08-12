@@ -168,6 +168,13 @@ M.MOD_GLOSS = {
 M.WORLDS = { propWorld = true, dataWorld = true, polyWorld = true }
 M.LEVELS = { element = true, sort = true, former = true }
 
+--- The first dotted component of a grid group name, derived from M.WORLDS so
+--- there is one source of truth: `propWorld` -> `@lean.prop.<level>`.
+M.GRID_WORLD = {}
+for w in pairs(M.WORLDS) do
+  M.GRID_WORLD[(w:gsub("World$", ""))] = true
+end
+
 --- The predicate half of the sentence only. The subject — "a local" or "a
 --- term" — is supplied by M.sentence from the `local` flag, so that
 --- propWorld + element + local reads as NAMES.md's own gloss, "a local whose
@@ -190,6 +197,31 @@ M.GRID = {
     former = "that is a sort-polymorphic type former",
   },
 }
+
+--- The highest-priority layer that is a cell of highlights.lua's world x level
+--- grid, or nil.
+---
+--- Its own function so it can be tested, and a stricter test than it used to
+--- be: `@lean.*` is NOT the grid's private namespace any more.
+--- lua/config/lean/namespace_hl.lua synthesises `@lean.ns.prefix` /
+--- `@lean.ns.dot` at priority **129** and after/syntax/lean.vim contributes
+--- `@lean.path.*` and `@lean.binder.*`. The old test — any group matching
+--- `^@lean%.`, keeping the LAST hit in a priority-ASCENDING list — therefore
+--- picked the namespace-prefix mark and reported it as the grid cell. That is
+--- a confidently wrong answer, which is the one thing this tool must not give.
+---
+---@param layers table[] priority-ASCENDING, as R.layers is
+---@return table|nil
+function M.grid_layer(layers)
+  local found
+  for _, L in ipairs(layers or {}) do
+    local w = L.group and L.group:match("^@lean%.([a-z]+)%.")
+    if w and M.GRID_WORLD[w] then
+      found = L
+    end
+  end
+  return found
+end
 
 --- Display order for modifiers: NAMES.md's own categories, not alphabetical.
 --- The two axes every classified token carries exactly one of come first,
@@ -924,12 +956,7 @@ function M.render(R)
     -- rather than by re-deciding the rule here — a second copy of that
     -- decision would agree with itself forever while highlights.lua moved.
     if i == 1 then
-      local synth
-      for _, L in ipairs(R.layers) do
-        if L.group:match("^@lean%.") then
-          synth = L
-        end
-      end
+      local synth = M.grid_layer(R.layers)
       local world, level
       for m in pairs(tok.modifiers or {}) do
         if M.WORLDS[m] then
@@ -1012,7 +1039,11 @@ function M.render(R)
   put("  ~50 is `vim.hl.priorities.syntax`, the value Neovim publishes for it.")
   put("  Neovim lays down its own three marks per token at 125 (type), 126")
   put("  (each modifier) and 127 (each type × modifier crossing);")
-  put("  lua/config/lean/highlights.lua synthesises one at 128, above all of them.")
+  put("  lua/config/lean/highlights.lua synthesises one at 128, above all of them,")
+  put("  and lua/config/lean/namespace_hl.lua one at 129 — above THAT. The 129")
+  put("  marks are sub-ranges of a token (the `Nat.` of `Nat.succ`) or a keyword")
+  put("  it re-colours by text; a prefix mark carries no foreground, so 128's")
+  put("  colour composes through it and only the underline is added.")
   if R.winner_ties > 0 then
     put()
     put(

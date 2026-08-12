@@ -22,6 +22,25 @@ erroring — a short prefix mid-typing is normally just noise.
 | `\w` / `\W` | Enable / disable widgets |
 | `\s` | Accept the first "Try this" suggestion |
 | `\r` | Restart the Lean server for this file |
+| `\R` | Restart the **server itself** (`:lsp restart leanls`) |
+| `\z` | Fill every open goal with `sorry` (`:LeanSorryFill`) |
+
+`\r` and `\R` are different repairs. `\r` re-elaborates *this file*; `\R`
+bounces the language server, which is what you need when the server itself
+has wedged and every file has gone quiet. `\z` is the one binding here that
+**edits the buffer** — it stubs out the goals still open so the rest of a
+half-finished exercise elaborates.
+
+### Goal and message popups
+
+The infoview is the main surface; these put the same information in a popup
+you can read without moving the cursor into it.
+
+| Keys | Action |
+|------|--------|
+| `\eg` | Goal at the cursor (`:LeanGoal`) |
+| `\et` | Term-mode type information (`:LeanTermGoal`) |
+| `\em` | Messages on this line (`:LeanLineDiagnostics`) |
 
 ### Diff pins
 
@@ -47,8 +66,47 @@ erroring — a short prefix mid-typing is normally just noise.
 | `]l` `[l` | Next / previous link |
 | `]t` `[t` | Next / previous trace |
 | `\g` | Jump to the first goal |
+| `\S` | Jump to the first suggestion |
+| `\s` | Accept the first suggestion |
 | `\/` | Search trace messages |
 | `\<Tab>` | Jump back to the Lean file |
+
+## The `\` namespace — what is taken and what is free
+
+`\` is `maplocalleader` and it is the scarce resource here, so this table is
+the record rather than the guess. **Dumped live** from a MIL buffer with
+`nvim_buf_get_keymap(0, "n")` unioned with `nvim_get_keymap("n")`, not read off
+the tables above — several of lean.nvim's maps are live without appearing in
+any documentation, and three of them are live in the *infoview* window only.
+
+Re-dump before binding anything new:
+
+```vim
+:lua =vim.tbl_map(function(m) return m.lhs end, vim.api.nvim_buf_get_keymap(0, "n"))
+```
+
+| Where | Taken |
+|------|--------|
+| Lean buffer, lean.nvim | `\i` `\p` `\x` `\c` `\v` `\w` `\W` `\s` `\r` `\\` `\<Tab>` `\dx` `\dc` `\dd` `\dt` |
+| Lean buffer, this config | `\?` `\n` `\a` `\f` `\D` `\b` `\h` `\mi` `\mI` `\ll` `\lw` `\la` `\y` `\q` `\Q` `\z` `\R` `\k` `\K` `\eg` `\et` `\em` |
+| Infoview window only | `\g` `\S` `\/` `\<Tab>` |
+
+**Free**, and safe to bind: `j` `o` `t` `u` · `A` `B` `C` `E` `F` `G` `H` `I`
+`J` `L` `M` `N` `O` `P` `T` `U` `V` `X` `Y` `Z` · most punctuation.
+
+**Not free even though nothing in a Lean buffer maps them:** `\g`, `\S` and
+`\/` are lean.nvim's infoview maps (`infoview.lua:240–330`). Rebinding them in
+the source buffer would give one key two meanings in two windows.
+
+Two rules that are not obvious:
+
+- **A live single key must not become a prefix.** mini.clue drives
+  `<LocalLeader>` and executes only when exactly *one* clue matches
+  (`clue.lua:1507`), so adding `\sX` would stop plain `\s` firing at all — not
+  merely stall it. `tests/test_lean.lua` enforces this ("no `<LocalLeader>` map
+  is a prefix of another").
+- **A group prefix is a clue entry, not a map.** `\d`, `\l`, `\m` and `\e` are
+  never mapped themselves; they exist only as `+group` clues.
 
 ## Language server
 
@@ -63,9 +121,18 @@ erroring — a short prefix mid-typing is normally just noise.
 | `gri` | Implementation |
 | `grt` | Type definition — every constituent type constant of a compound type |
 | `\D` | **Declaration** — Lean also returns the *parser and elaborator* of the symbol, which `gd` does not |
+| `\k` / `\K` | Incoming / outgoing calls (call hierarchy → quickfix) |
 | `\b` | Open this file's book page in the browser (`:LeanBook`) |
 | `\h` | Toggle inlay hints for this buffer (on by default) |
 | `[d` `]d` | Previous / next diagnostic |
+
+`\k` on a mathlib lemma is a *census*: `mul_comm` returns 3331 incoming calls.
+That is the feature working, not misbehaving — the server answers project-wide.
+`\K` (what this declaration calls) is the small, readable direction. Note
+there is no `:Lsp*` command family on this Neovim: 0.12 ships a built-in
+`:lsp` with `enable`/`disable`/`restart`/`stop`, and nvim-lspconfig
+deliberately defines none of `:LspRestart`/`:LspInfo`/`:LspLog` when it sees
+one (`plugin/lspconfig.lua:6-8`). Use `:lsp` and `:checkhealth vim.lsp`.
 
 `grn` `gra` `grr` `gri` `grt` are Neovim's own LSP maps and work here like
 anywhere else. They used to be dead: mini.operators' replace operator owned the
@@ -92,6 +159,25 @@ Lean's only inlay hints are **auto-bound implicits** — the ` {α}` the
 elaborator inserted where you wrote none. If one shows up on a name you meant
 to be a real constant (`nat` where you wanted `Nat`), that is the bug it exists
 to catch.
+
+## Messages — the whole-file census
+
+The infoview shows the diagnostics on the **current line** only, so "six
+`sorry`s and two real errors — am I done?" is otherwise a scroll.
+
+| Keys | Action |
+|------|--------|
+| `\q` | Every message in **this file** → location list (`:LeanMessages`) |
+| `\Q` | Every message in **every buffer** → quickfix (`:LeanAllMessages`) |
+
+The location list's title carries the tally VS Code puts in its All Messages
+header — `Lean messages — 6 warnings, 2 errors`. `quicker.nvim` decorates
+both lists: `>` expands context, `<` collapses, and the list is editable.
+
+Two keys and not one because they are genuinely different, and the difference
+is invisible at the call site: `vim.diagnostic.setqflist({ bufnr = 0 })` does
+**not** scope to a buffer — `setqflist` has no `bufnr` option and ignores the
+key, so it always gathers every buffer.
 
 ## Reading the colours
 
@@ -162,6 +248,15 @@ scope?" without grepping `.lake/packages`.
 |------|--------|
 | `\mi` | Imports of this module, as a tree (`:LeanModuleImports`) |
 | `\mI` | Modules that import this one (`:LeanModuleImportedBy`) |
+| `\y` | Yank this file's dotted module name (`:LeanCopyModuleName`) |
+
+`\y` turns `.lake/packages/mathlib/Mathlib/Tactic/Ring.lean` into
+`Mathlib.Tactic.Ring` and `MIL/C05_…/S02_….lean` into `MIL.C05_….S02_…` — the
+string an `import` line or a Zulip question wants. It is aware that one Lean
+project is many Lake packages: the language server reports the *MIL* root even
+for a mathlib file, so the naive "path minus root" gives the wrong answer and
+is not what this does. Files under a toolchain (`gd` into core Lean) resolve
+too. Goes to both `+` and `"`.
 
 ## Finding lemmas — the pickers
 
@@ -174,12 +269,28 @@ scope?" without grepping `.lake/packages`.
 `\lw` is the one to reach for with a half-remembered name. Ranking is mediocre;
 scroll. See *Finding lemmas* below for when to prefer `exact?` over any of them.
 
+**Unicode works in the prompt.** Type `\to`, `\alpha`, `\in` in any telescope
+prompt and it expands exactly as it does in a Lean buffer, so a Loogle query
+can be `∀ x, x ∈ s` and not only `?a * ?b = ?b * ?a`. `<Tab>` and `<CR>`
+convert the abbreviation while one is open and go back to
+select-and-toggle the moment it closes; `<Esc>` mid-abbreviation converts
+first. Live in any prompt once a Lean buffer has been visited this session,
+and inert before that, so it never drags lean.nvim into a Lua file's picker.
+
 Two footnotes on this group. These are **normal-mode** maps, so `\l` here does
 not collide with the insert-mode abbreviation `\l` → `←` further down. And `\la`
 carries a known upstream bug: picking an abbreviation whose expansion contains
 a `$CURSOR` placeholder inserts the literal text `$CURSOR`, because the picker
 calls `nvim_put` on the raw replacement instead of routing it through
 `abbreviations.convert`. Most entries are unaffected.
+
+`\la` also carried a second, fatal upstream bug until 2026-08-13: it threw
+`Unable to read abbreviations from …/lua/vscode-lean/abbreviations.json` on
+every press and opened nothing. `abbreviations.load()` finds its JSON relative
+to `debug.getinfo(2)` — the *caller's* directory — which is right for every
+caller inside `lua/lean/` and wrong for lean.nvim's own telescope extension.
+Patched locally in `lua/config/lean/abbreviations.lua`; insert-mode expansion
+and `\\` were never affected, which is why it went unnoticed.
 
 ## Folding
 
@@ -197,17 +308,21 @@ indentation. Every fold starts open.
 
 | Command | Action |
 |---------|--------|
-| `:LeanGoal` | Goal at the cursor, in a popup |
-| `:LeanTermGoal` | Term-mode type information |
-| `:LeanLineDiagnostics` | Diagnostics for the current line |
-| `:LeanRestartFile` | Restart the server for this file |
+| `:LeanGoal` | Goal at the cursor, in a popup (`\eg`) |
+| `:LeanTermGoal` | Term-mode type information (`\et`) |
+| `:LeanLineDiagnostics` | Diagnostics for the current line (`\em`) |
+| `:LeanRestartFile` | Restart the server for this file (`\r`) |
+| `:lsp restart leanls` | Restart the server itself (`\R`) |
 | `:LeanRefreshFileDependencies` | Re-read changed imports |
-| `:LeanSorryFill` | Fill in `sorry` placeholders |
+| `:LeanSorryFill` | Fill in `sorry` placeholders (`\z`) |
+| `:LeanSetupInfo` | Pasteable setup information, for Zulip |
 | `:LeanAbbreviationsReverseLookup` | How do I type the character under the cursor? |
 | `:LeanInfoviewToggle` | Toggle the infoview |
 | `:LeanInfoviewAddPin` / `…ClearPins` | Manage pins |
 | `:LeanGotoInfoview` | Jump into the infoview |
 | `:LeanModuleImports` / `:LeanModuleImportedBy` | Import trees (`\mi` / `\mI`) |
+| `:LeanCopyModuleName` | This file's dotted module name, to the clipboard (`\y`) |
+| `:LeanMessages` / `:LeanAllMessages` | Diagnostic census (`\q` / `\Q`) |
 | `:Telescope loogle` | Search mathlib by type signature (`\ll`, needs network) |
 | `:Telescope lean_abbreviations` | The `\…` table, searchable (`\la`) |
 
@@ -236,7 +351,8 @@ send your query to an external service.
 ## Unicode abbreviations
 
 Type the sequence in insert mode; it expands on the next non-matching
-character (usually space). `\\` on a character tells you how to type it.
+character (usually space). `\\` on a character tells you how to type it. It
+works in **telescope prompts** too — see *Finding lemmas — the pickers*.
 
 | Type | Get | | Type | Get |
 |------|-----|-|------|-----|
@@ -303,3 +419,19 @@ command does it.
 Graphics widgets need `resvg` for SVG (installed) and a Kitty-protocol
 terminal — Ghostty qualifies. *Unverified*: headless testing cannot render
 images.
+
+### Asking for help — `:LeanSetupInfo`
+
+One Markdown block on the clipboard: OS, CPU, RAM, Neovim, project path,
+`curl`/`git`/`elan`/`lake`/`lean` versions, and the **toolchain picture** —
+active, override *and its source*, default, and everything installed. VS
+Code's `Troubleshooting: Show Setup Information`, which is the first thing
+Lean Zulip asks for. Global, so it works before any `.lean` file is open.
+
+It exists chiefly because this machine is unusual: MIL runs under an elan
+*directory override* to a locally built toolchain, and `lean --version`
+cannot tell that build apart from the stock 4.30.0 release — both report
+commit `d024af0996`, because the patched build pins `GIT_SHA1` to keep
+mathlib's olean cache valid. The `Active` row is what actually answers it.
+Pair it with `:LeanRichTokens status`, which checks the same question against
+the wire.

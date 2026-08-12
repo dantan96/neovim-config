@@ -16,7 +16,10 @@ T["usercmds"] = new_set({
 -- LeanRichTokens is global on purpose rather than a Lean-buffer command: its
 -- `status` subcommand answers "which toolchain and which legend" and must work
 -- before any .lean file has been opened, which is exactly when you want to ask.
-local global_cmds = { "CapRep", "TSInfo", "UvInit", "LeanRichTokens" }
+-- LeanSetupInfo is global for the same reason: it is the pasteable half of
+-- VS Code's `Troubleshooting: Show Setup Information` (parity audit #57), and
+-- "why is Lean not working here" gets asked before a .lean file is open.
+local global_cmds = { "CapRep", "TSInfo", "UvInit", "LeanRichTokens", "LeanSetupInfo" }
 
 T["usercmds"]["global commands"] = new_set({
   parametrize = (function()
