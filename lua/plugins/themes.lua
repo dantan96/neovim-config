@@ -54,6 +54,30 @@ return {
             -- survive a colorscheme reload, as with LineNrWrap above.
             ["@lsp.type.variable.lean"] = { link = "Identifier" },
             ["@lsp.type.leanSorryLike.lean"] = { fg = C.base, bg = C.yellow, bold = true },
+            -- The propositional half of Lean, split out of lean.nvim's syntax
+            -- file by after/syntax/lean.vim. One hue family, green/teal, so
+            -- "this is a proposition" reads at a glance: the keyword, the name
+            -- it binds, the sort Prop lives in, and the connectives. Data
+            -- declarations keep the stock mauve `def` / blue name.
+            --
+            -- Green doubles as String in catppuccin, which is a real but tiny
+            -- collision: string literals barely occur in mathlib-style Lean.
+            -- Cleared, not recoloured. leanls tags `theorem`, `def`, `by`,
+            -- `#check` and friends all as semantic-token type `keyword` (164
+            -- of them on C02_Basics/S02), and a semantic extmark outranks
+            -- syntax, so every keyword arrived one flat colour and the split
+            -- below was invisible. An empty definition makes the extmark
+            -- contribute no attributes and the syntax group underneath show
+            -- through — the documented way to opt out (:h lsp-semantic-
+            -- highlight). Verified in a real TUI: with the override, `theorem`
+            -- renders #a6e3a1 and `#check` stays #cba6f7; without it, both are
+            -- #cba6f7. Nothing is lost, because lean.nvim's syntax file
+            -- already covers the same keywords.
+            ["@lsp.type.keyword.lean"] = {},
+            leanPropDeclaration = { fg = C.green, bold = true },
+            leanPropName = { fg = C.green },
+            leanProp = { fg = C.green, bold = true },
+            leanLogicOp = { fg = C.teal },
           }
         end,
       },

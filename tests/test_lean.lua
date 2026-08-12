@@ -33,7 +33,11 @@ T["lean"] = new_set({
       vim.fn.mkdir(tmp_dir, "p")
       -- No lakefile here on purpose: lean.nvim finds no project and starts
       -- no language server, so these cases test the config, not the server.
-      vim.fn.writefile({ "example : 1 = 1 := rfl" }, tmp_dir .. "/probe.lean")
+      vim.fn.writefile({
+        "example : 1 = 1 := rfl",
+        "def dvalue : Nat := 3",
+        "theorem tvalue (p : Prop) : p ∨ p → p := id",
+      }, tmp_dir .. "/probe.lean")
       child.lua(string.format("vim.cmd.edit(%q)", tmp_dir .. "/probe.lean"))
       child.lua("vim.wait(2000)")
     end,
@@ -136,6 +140,96 @@ end
 T["lean"]["cheatsheet file exists"] = function()
   local path = H.cfg .. "/lean-cheatsheet.md"
   expect.equality(vim.uv.fs_stat(path) ~= nil, true)
+end
+
+-- ── after/syntax/lean.vim ──────────────────────────────────────────────
+-- lean.nvim files `theorem` and `def` in one group and every operator in
+-- another, so proofs and data look identical. These pin the split. Byte
+-- columns are found by search rather than counted, because the probe line
+-- contains multibyte operators.
+local function syntax_at(lnum, needle)
+  return child.lua_get(string.format(
+    [[(function()
+      local line = vim.api.nvim_buf_get_lines(0, %d - 1, %d, false)[1] or ""
+      local s = line:find(%q, 1, true)
+      if not s then return "NOT FOUND" end
+      return vim.fn.synIDattr(vim.fn.synID(%d, s, 1), "name")
+    end)()]],
+    lnum,
+    lnum,
+    needle,
+    lnum
+  ))
+end
+
+T["lean"]["propositional vocabulary is its own syntax group"] = new_set({
+  parametrize = {
+    { 1, "example", "leanPropDeclaration" },
+    { 2, "def", "leanDeclaration" },
+    { 2, "dvalue", "leanDeclarationName" },
+    { 3, "theorem", "leanPropDeclaration" },
+    { 3, "tvalue", "leanPropName" },
+    { 3, "Prop", "leanProp" },
+    { 3, "∨", "leanLogicOp" },
+    { 3, "→", "leanLogicOp" },
+  },
+}, {
+  test = function(lnum, needle, group)
+    expect.equality(syntax_at(lnum, needle), group)
+  end,
+})
+
+-- The split above is invisible without this: leanls tags `theorem` as semantic
+-- token type `keyword`, and a semantic extmark outranks syntax. Clearing the
+-- group (rather than colouring it) lets the syntax group underneath render.
+-- An accidental recolour here would silently flatten the whole scheme.
+-- Asserting emptiness alone would be vacuous: nvim_get_hl returns {} for an
+-- undefined group too, and `@lsp.type.keyword.lean` does not exist in a clean
+-- Neovim (only the unsuffixed `@lsp.type.keyword` does). So require that the
+-- group is BOTH present in the table of defined groups AND empty.
+T["lean"]["semantic keyword tokens defer to syntax"] = function()
+  local state = child.lua_get([[(function()
+    local defined = vim.api.nvim_get_hl(0, {})["@lsp.type.keyword.lean"]
+    return { present = defined ~= nil, empty = vim.tbl_isempty(defined or { x = 1 }) }
+  end)()]])
+  expect.equality(state, { present = true, empty = true })
+end
+
+-- ── infoview background ────────────────────────────────────────────────
+-- Pure colour arithmetic, so it runs in the parent against a synthetic
+-- colorscheme rather than needing a live infoview window. (Whether the
+-- namespace actually lands on the window was checked directly instead: in a
+-- pty-hosted TUI the leaninfo window reports a non-global hl namespace whose
+-- Normal links to LeanInfoviewNormal.)
+T["infoview background"] = new_set({
+  hooks = {
+    pre_case = function()
+      local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
+      local func = vim.api.nvim_get_hl(0, { name = "Function" })
+      MiniTest.finally(function()
+        vim.api.nvim_set_hl(0, "Normal", normal)
+        vim.api.nvim_set_hl(0, "Function", func)
+        vim.api.nvim_set_hl(0, "LeanInfoviewNormal", {})
+      end)
+    end,
+  },
+})
+
+T["infoview background"]["tints the colorscheme background"] = function()
+  vim.api.nvim_set_hl(0, "Normal", { fg = 0xcdd6f4, bg = 0x151520 })
+  vim.api.nvim_set_hl(0, "Function", { fg = 0x89b4fa })
+  dofile(H.cfg .. "/lua/config/lean/infoview_hl.lua").refresh()
+  -- 12% of catppuccin mocha's blue mixed into this config's base.
+  expect.equality(vim.api.nvim_get_hl(0, { name = "LeanInfoviewNormal" }).bg, 0x23283a)
+end
+
+-- A transparent colorscheme has no background to tint, and inventing one would
+-- paint over the terminal.
+T["infoview background"]["leaves a transparent scheme alone"] = function()
+  vim.api.nvim_set_hl(0, "LeanInfoviewNormal", {})
+  vim.api.nvim_set_hl(0, "Normal", { fg = 0xcdd6f4 })
+  dofile(H.cfg .. "/lua/config/lean/infoview_hl.lua").refresh()
+  expect.equality(vim.api.nvim_get_hl(0, { name = "LeanInfoviewNormal" }).bg, nil)
 end
 
 -- ── \b book-page resolution ────────────────────────────────────────────
