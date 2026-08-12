@@ -42,13 +42,23 @@ function M.get_info()
     result.captures_at_cursor = vim.treesitter.get_captures_at_pos(bufnr, row, col)
   end)
 
-  -- Get treesitter node at cursor
-  pcall(function()
-    local parser = vim.treesitter.get_parser(bufnr)
-    local tree = parser:parse()[1]
-    local root = tree:root()
-    result.node_at_cursor = root:named_descendant_for_range(row, col, row, col)
-  end)
+  -- Get treesitter node at cursor.
+  --
+  -- `get_parser` returns `nil, errmsg` whenever the buffer has no parser --
+  -- an ordinary outcome for plain text, not an exception. Indexing it inside
+  -- the pcall made that ordinary case throw and threw the message away with
+  -- it, so "no parser for this filetype" and "the parse failed" both
+  -- presented as a silently absent node. Take the nil branch explicitly and
+  -- keep the pcall for what it is actually for: a parse that blows up.
+  local parser, parser_err = vim.treesitter.get_parser(bufnr)
+  if parser then
+    pcall(function()
+      local tree = parser:parse()[1]
+      result.node_at_cursor = tree and tree:root():named_descendant_for_range(row, col, row, col)
+    end)
+  else
+    result.parser_error = parser_err
+  end
 
   return result
 end
@@ -82,8 +92,12 @@ function M.show_info()
     table.insert(lines, "No TreeSitter captures at cursor position")
   end
 
-  -- Add node at cursor
-  if info.node_at_cursor then
+  -- Add node at cursor. The "why not" is worth printing: without it, a
+  -- buffer with no parser and a buffer whose parse failed look identical.
+  if info.parser_error then
+    table.insert(lines, "")
+    table.insert(lines, "No parser for this buffer: " .. info.parser_error)
+  elseif info.node_at_cursor then
     table.insert(lines, "")
     table.insert(lines, "TreeSitter Node at Cursor:")
     table.insert(lines, "  - Type: " .. info.node_at_cursor:type())
