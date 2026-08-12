@@ -64,6 +64,25 @@
 --     name stays the dominant thing. Nothing this file does can change a
 --     colour highlights.lua chose.
 --
+-- THE PRICE OF THAT CHOICE, and it is worth knowing before changing it: with
+-- no foreground, the underline is the ENTIRE signal for a dotted reference,
+-- and styled/coloured underlines are terminfo-gated (GOTCHAS D8). Measured
+-- with `infocmp -x` on this machine:
+--
+--   xterm-ghostty      Smulx yes, Setulc yes   -> dotted, brass. Full signal.
+--   tmux-256color-uc   Smulx yes, Setulc yes   -> full signal (this is the
+--                                                 terminfo D8 added).
+--   tmux-256color      Smulx yes, Setulc NO    -> dotted, in the text colour.
+--                                                 Distinction survives.
+--   xterm-256color     neither                 -> no styled underline.
+--
+-- The first three are the only TERMs in use here, so the split is visible
+-- everywhere it needs to be, and degrades by losing the underline's COLOUR
+-- rather than the underline. Note that `nvim__inspect_cell` reports
+-- `underdotted` under all four — the grid attribute is set regardless and the
+-- drop happens on the way out to the terminal, so a cell reading CANNOT
+-- answer this question and `infocmp -x` is the check.
+--
 -- `@lsp.type.keyword.lean` is never touched. Dispatch is on the token's TEXT,
 -- which is also why this file is correct against the stock toolchain, where
 -- `rw`/`exact`/`apply` DO arrive as `keyword`: they are simply not in the
@@ -324,9 +343,31 @@ function M.define()
   end
 end
 
+--- Should this module run at all?
+---
+--- Same predicate and same reason as `lua/plugins/themes.lua`, which is
+--- `enabled = ghostty_profile.theme() == nil` and is what loads
+--- `lua/config/lean/highlights.lua` (see its NOTE ON SCOPE). Under a derived
+--- Ghostty bundle — GhosttyNu, GhosttyFish, GhosttyElvish, GhosttyXonsh —
+--- neither catppuccin nor the world x level grid loads, and Lean is meant to
+--- render in that profile's own colours. Painting brass/flamingo/slate/olive
+--- over a foreign scheme with no grid underneath them would be half a design.
+---
+--- Gating this off is a strict non-regression: `after/syntax/lean.vim`'s
+--- `hi def link` targets then resolve to nothing, and an unresolved link
+--- renders as `Normal` — which is precisely what the rule this replaced did
+--- on purpose, under every profile.
+---@return boolean
+function M.enabled()
+  return require("config.ghostty_profile").theme() == nil
+end
+
 local armed = false
 
 function M.setup()
+  if not M.enabled() then
+    return M
+  end
   M.define()
   if armed then
     return M

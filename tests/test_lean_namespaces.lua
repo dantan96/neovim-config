@@ -346,6 +346,26 @@ NS["the groups survive a colorscheme change"] = function()
   expect.equality(got.link, "@lean.path.final")
 end
 
+NS["nothing is painted under a derived Ghostty profile"] = function()
+  -- themes.lua is `enabled = ghostty_profile.theme() == nil` and is what loads
+  -- highlights.lua, so under GhosttyNu/Fish/Elvish/Xonsh there is no world x
+  -- level grid. Four hand-picked hues over a foreign scheme with no grid under
+  -- them is half a design.
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.namespace_hl")
+    local before = m.enabled()
+    vim.g.ghostty_profile_theme_force = "kanagawa"
+    package.loaded["config.ghostty_profile"] = nil
+    local after = m.enabled()
+    vim.g.ghostty_profile_theme_force = nil
+    package.loaded["config.ghostty_profile"] = nil
+    return { before = before, after = after, plain = m.enabled() }
+  end)()]])
+  expect.equality(got.before, true)
+  expect.equality(got.after, false)
+  expect.equality(got.plain, true)
+end
+
 NS["the palette is hand-picked, not derived"] = function()
   -- Named explicitly so that a future "just blend it a bit" edit has to delete
   -- an assertion rather than slip through. Dan's words: "FUCK any blending."
