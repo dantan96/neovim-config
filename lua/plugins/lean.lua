@@ -110,6 +110,13 @@ return {
       -- loads, which is early enough for the module's LspAttach hook to see
       -- the first Lean file of the session.
       require("config.lean.document_highlight").setup()
+
+      -- Namespace components, module paths and the keyword split. Same
+      -- placement and the same reason: it is autocmds (LspTokenUpdate and
+      -- ColorScheme), and after/ftplugin/lean.lua must define none. It also
+      -- has to be defined before the first Lean file is drawn, because
+      -- after/syntax/lean.vim links into the highlight groups it owns.
+      require("config.lean.namespace_hl").setup()
     end,
 
     -- Workaround for an upstream crash in `:Telescope loogle`.
