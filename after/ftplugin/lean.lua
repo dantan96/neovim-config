@@ -114,6 +114,14 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>f", desc = "References" },
     { mode = "n", keys = "<LocalLeader>b", desc = "Open book page" },
     { mode = "n", keys = "<LocalLeader>h", desc = "Toggle inlay hints" },
+    { mode = "n", keys = "<LocalLeader>D", desc = "Declaration (parser/elaborator)" },
+    { mode = "n", keys = "<LocalLeader>m", desc = "+module hierarchy" },
+    { mode = "n", keys = "<LocalLeader>mi", desc = "Imports of this module" },
+    { mode = "n", keys = "<LocalLeader>mI", desc = "Modules importing this one" },
+    { mode = "n", keys = "<LocalLeader>l", desc = "+lemma search" },
+    { mode = "n", keys = "<LocalLeader>ll", desc = "Loogle (by type pattern)" },
+    { mode = "n", keys = "<LocalLeader>lw", desc = "Workspace symbols (by name)" },
+    { mode = "n", keys = "<LocalLeader>la", desc = "Unicode abbreviations" },
   },
 }
 
@@ -137,6 +145,44 @@ end
 map("<LocalLeader>n", vim.lsp.buf.rename, "Rename")
 map("<LocalLeader>a", vim.lsp.buf.code_action, "Code action")
 map("<LocalLeader>f", vim.lsp.buf.references, "References")
+
+-- Go to Declaration, which in Lean is NOT a synonym for Go to Definition: the
+-- server additionally returns the parser and the elaborator of the symbol
+-- (vscode-lean4 manual.md:552), which is the direct answer to "which notation
+-- produced this?". Advertised as declarationProvider by the server, and Neovim
+-- ships no default map for it — unlike gri/grt, which came back for free when
+-- plugins/mini.lua stopped deleting them.
+map("<LocalLeader>D", vim.lsp.buf.declaration, "Declaration (parser/elaborator)")
+
+-- ── \m · module hierarchy ─────────────────────────────────────────────────
+-- :LeanModuleImports / :LeanModuleImportedBy have existed since lean.nvim
+-- picked up Lean 4.22's module-hierarchy requests (init.lua:199-204) and were
+-- reachable only by typing the full command. MIL chapters open with a wall of
+-- `import Mathlib.…`, so "what does this actually pull in?" is a daily
+-- question whose only other answer is grepping .lake/packages.
+map("<LocalLeader>mi", "<Cmd>LeanModuleImports<CR>", "Imports of this module")
+map("<LocalLeader>mI", "<Cmd>LeanModuleImportedBy<CR>", "Modules importing this one")
+
+-- ── \l · lemma search ─────────────────────────────────────────────────────
+-- Three pickers that were already loaded and already working, reachable only
+-- by typing their names. Workspace symbols is the best lemma-finder here and
+-- was mentioned once, in passing, in the cheatsheet's lemma table.
+--
+-- \l AND NOT \s, WHICH WAS THE REQUESTED PREFIX: lean.nvim already owns \s
+-- ("Accept the first infoview suggestion" — measured live, not inferred), and
+-- it is the key that makes `exact?` and `rw?` worth using. Turning it into a
+-- prefix does not merely add a timeoutlen stall: mini.clue drives <LocalLeader>
+-- and its H.state_is_at_target() only fires when exactly ONE clue matches the
+-- query (clue.lua:1507), so with \sl/\lw/\la present, \s alone would stop
+-- executing at all and need a trailing <CR>. \l is free here and reads as
+-- "lemma/lookup", which is what all three do.
+map("<LocalLeader>ll", "<Cmd>Telescope loogle<CR>", "Loogle (by type pattern)")
+map(
+  "<LocalLeader>lw",
+  "<Cmd>Telescope lsp_dynamic_workspace_symbols<CR>",
+  "Workspace symbols (by name)"
+)
+map("<LocalLeader>la", "<Cmd>Telescope lean_abbreviations<CR>", "Unicode abbreviations")
 
 -- Hints are ambient, so they need an off switch for when a line gets busy.
 -- Buffer-scoped both ways: toggling here never touches another buffer.

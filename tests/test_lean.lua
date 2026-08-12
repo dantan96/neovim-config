@@ -765,4 +765,134 @@ T["global option leaks"]["opening a Lean buffer leaks exactly lean.nvim's breaka
   expect.equality(changed, { "breakat" })
 end
 
+-- ── bindings recovered from the VS Code parity audit ───────────────────
+-- research/11-vscode-parity.md §2.2 lists capabilities that were installed,
+-- working, and reachable only by typing a command name in full — which the
+-- audit counts, correctly, as not reachable at all. These pin the three
+-- properties that make a binding real: it EXISTS, it is DISCOVERABLE from the
+-- `\` clue window, and it is in the cheatsheet `\?` displays. A binding can
+-- fail any one of those independently, so all three are checked per key.
+local PARITY_MAPS = {
+  { "\\D", "Declaration (parser/elaborator)" },
+  { "\\mi", "Imports of this module" },
+  { "\\mI", "Modules importing this one" },
+  { "\\ll", "Loogle (by type pattern)" },
+  { "\\lw", "Workspace symbols (by name)" },
+  { "\\la", "Unicode abbreviations" },
+}
+
+local parity_parametrize = {}
+for _, m in ipairs(PARITY_MAPS) do
+  table.insert(parity_parametrize, m)
+end
+
+T["lean"]["parity bindings exist, buffer-locally"] = new_set({
+  parametrize = parity_parametrize,
+}, {
+  test = function(lhs, desc)
+    local got = child.lua_get(string.format(
+      [[(function()
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+          if m.lhs == %q then return m.desc or "" end
+        end
+        return "MISSING"
+      end)()]],
+      lhs
+    ))
+    expect.equality(got, desc)
+    -- ...and NOT globally. Every one of these is Lean-specific; a global map
+    -- would fire the Lean command from a Lua buffer.
+    expect.equality(
+      child.lua_get(string.format(
+        [[(function()
+          for _, m in ipairs(vim.api.nvim_get_keymap("n")) do
+            if m.lhs == %q then return true end
+          end
+          return false
+        end)()]],
+        lhs
+      )),
+      false
+    )
+  end,
+})
+
+T["lean"]["parity bindings have mini.clue entries"] = new_set({
+  parametrize = parity_parametrize,
+}, {
+  test = function(lhs, _)
+    -- vim.b.miniclue_config stores keys in <LocalLeader> notation.
+    local keys = lhs:gsub("^\\", "<LocalLeader>")
+    local desc = child.lua_get(string.format(
+      [[(function()
+        for _, c in ipairs((vim.b.miniclue_config or {}).clues or {}) do
+          if c.keys == %q then return c.desc or "" end
+        end
+        return false
+      end)()]],
+      keys
+    ))
+    expect.equality(type(desc), "string")
+    expect.no_equality(desc, "")
+  end,
+})
+
+-- \? renders lean-cheatsheet.md verbatim, so a key absent from that file is a
+-- key nobody finds even after pressing the discovery key. Read in the parent:
+-- this is a property of the file, not of the child.
+T["lean"]["parity bindings are in the cheatsheet"] = new_set({
+  parametrize = parity_parametrize,
+}, {
+  test = function(lhs, _)
+    local f = assert(io.open(H.cfg .. "/lean-cheatsheet.md", "r"))
+    local text = f:read("*a")
+    f:close()
+    -- Backticked, as every other key in that file is written.
+    expect.equality(text:find("`" .. lhs .. "`", 1, true) ~= nil, true)
+  end,
+})
+
+-- WHY THE GROUPS ARE \m AND \l AND NOT \s, WHICH WAS THE FIRST CHOICE.
+-- lean.nvim owns \s ("Accept the first infoview suggestion"), the key that
+-- makes `exact?` and `rw?` worth using. Hanging a group off it would not cost
+-- a timeoutlen stall — it would cost the key: mini.clue drives <LocalLeader>
+-- and executes only when exactly one clue matches the query (clue.lua:1507),
+-- so \s with \s? children under it stops firing until you add a <CR>.
+--
+-- This case is the guard against re-introducing that shape anywhere: no
+-- <LocalLeader> map may be a strict prefix of another, and \s must still be
+-- a leaf. Same invariant tests/test_keymap_ownership.lua enforces for <Leader>,
+-- which cannot see buffer-local maps and so cannot cover these.
+T["lean"]["no <LocalLeader> map is a prefix of another"] = function()
+  local report = child.lua_get([[(function()
+    local lhs = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+      if m.lhs:sub(1, 1) == "\\" then table.insert(lhs, m.lhs) end
+    end
+    local out = {}
+    for _, a in ipairs(lhs) do
+      for _, b in ipairs(lhs) do
+        -- #a > 1 skips the bare `\` map itself: mini.clue's <LocalLeader>
+        -- trigger, which manages continuation rather than stalling on it.
+        if a ~= b and #a > 1 and b:sub(1, #a) == a then
+          table.insert(out, a .. " stalls under " .. b)
+        end
+      end
+    end
+    table.sort(out)
+    return {
+      stalls = table.concat(out, "; "),
+      n = #lhs,
+      -- The specific key the group prefixes were chosen to protect.
+      accept_suggestion = vim.fn.maparg("\\s", "n", false, true).desc or "UNMAPPED",
+    }
+  end)()]])
+  -- Non-vacuity: lean.nvim's own maps alone put a dozen keys here, so an empty
+  -- list would mean the scan found nothing rather than nothing being wrong.
+  expect.equality(report.n > 10, true)
+  expect.equality(report.stalls, "")
+  -- And \s is still a working leaf, not a group prefix.
+  expect.equality(report.accept_suggestion, "Accept the first infoview suggestion.")
+end
+
 return T

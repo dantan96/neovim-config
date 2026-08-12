@@ -89,6 +89,28 @@ elaborator inserted where you wrote none. If one shows up on a name you meant
 to be a real constant (`nat` where you wanted `Nat`), that is the bug it exists
 to catch.
 
+## Module hierarchy
+
+Which files does this one pull in, and who pulls in this one? MIL chapters open
+with a wall of `import Mathlib.…`; these answer "is the lemma I want already in
+scope?" without grepping `.lake/packages`.
+
+| Keys | Action |
+|------|--------|
+| `\mi` | Imports of this module, as a tree (`:LeanModuleImports`) |
+| `\mI` | Modules that import this one (`:LeanModuleImportedBy`) |
+
+## Finding lemmas — the pickers
+
+| Keys | Action |
+|------|--------|
+| `\ll` | Loogle: search mathlib by **type pattern** (needs network) |
+| `\lw` | Workspace symbols: fuzzy over every declaration in the project |
+| `\la` | Unicode abbreviations: search the `\…` table by name |
+
+`\lw` is the one to reach for with a half-remembered name. Ranking is mediocre;
+scroll. See *Finding lemmas* below for when to prefer `exact?` over any of them.
+
 ## Folding
 
 Folds come from the language server, so they follow declarations rather than
@@ -115,7 +137,9 @@ indentation. Every fold starts open.
 | `:LeanInfoviewToggle` | Toggle the infoview |
 | `:LeanInfoviewAddPin` / `…ClearPins` | Manage pins |
 | `:LeanGotoInfoview` | Jump into the infoview |
-| `:Telescope loogle` | Search mathlib by type signature (needs network) |
+| `:LeanModuleImports` / `:LeanModuleImportedBy` | Import trees (`\mi` / `\mI`) |
+| `:Telescope loogle` | Search mathlib by type signature (`\ll`, needs network) |
+| `:Telescope lean_abbreviations` | The `\…` table, searchable (`\la`) |
 
 ## Finding lemmas
 
@@ -126,9 +150,9 @@ Loogle needs a type pattern. These do not — prefer them.
 | A goal | `exact?` | Searches for a lemma that closes it. `\s` accepts the suggestion. |
 | A goal you want to rewrite | `rw?` | Lists every applicable rewrite **with the resulting goal** under each. |
 | Words, not syntax | `#leansearch "…?"` | Natural language. Query must end `.` or `?`. Sends to leansearch.net. |
-| A half-remembered name | `:Telescope lsp_dynamic_workspace_symbols` | Fuzzy name search over the whole project. Ranking is mediocre; scroll. |
+| A half-remembered name | `\lw` | Fuzzy name search over the whole project. Ranking is mediocre; scroll. |
 | A proof state | `#statesearch` | Same family as `#leansearch`. |
-| A type pattern | `:Telescope loogle` or `#loogle` | See the commands table above. |
+| A type pattern | `\ll` or `#loogle` | See the commands table above. |
 | Nothing specific | `:Telescope live_grep` in `.lake/packages/mathlib` | Crude, surprisingly effective. |
 
 `exact?` is the one to reach for by default: it needs no query at all, just a
