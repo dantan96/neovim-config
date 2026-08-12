@@ -1,52 +1,44 @@
-" after/syntax/lean.vim — pull the propositional vocabulary out of lean.nvim's
-" syntax file so proofs and data look different.
+" after/syntax/lean.vim — colour the one thing in a Lean proof that nothing
+" else colours: references to global constants, i.e. the lemma names.
 "
-" WHY SYNTAX AND NOT SEMANTIC TOKENS: Lean's language server cannot tell us
-" what is a Prop. Asked for textDocument/semanticTokens/full on a real mathlib
-" file, leanls returns 542 tokens of exactly two types — `keyword` and
-" `variable` — out of the 24 its legend advertises. There is no token type or
-" modifier carrying a term's sort, so "colour everything whose type is Prop"
-" is not implementable at all; the server simply does not say. What IS
-" available is the propositional *vocabulary*, which is syntactic:
+" A proof line like
 "
-"   * `theorem` / `lemma` / `axiom` and the names they bind, versus `def`
-"     (lean.nvim puts all of them in one leanDeclaration group, so `theorem
-"     foo` and `def foo` are pixel-identical today);
-"   * `Prop` itself, which shares leanSort with `Type` and `Sort`;
-"   * the connectives and quantifiers, which share leanOp with `+` and `*`.
+"   rw [← mul_assoc, inv_mul_cancel, one_mul]
 "
-" Colours live in lua/plugins/themes.lua, next to the other Lean overrides.
-" The `hi def link`s below are fallbacks: `def` does not overwrite a group the
-" colorscheme already defined, so they only bite under a derived Ghostty
-" profile, where themes.lua stands down.
-
-" Re-binding a keyword moves it out of whichever group claimed it earlier, so
-" ordering after lean.nvim's syntax/lean.vim is all that is needed. The
-" nextgroup mirrors the original declaration rule; without it the bound name
-" falls back to leanDeclarationName and stays Function-coloured.
-syn keyword leanPropDeclaration theorem lemma axiom
-      \ skipwhite nextgroup=leanPropName
-syn match leanPropName ' *[^:({\[[:space:]]*' contained
-syn match leanPropName ' *«[^»]*»' contained
-
-" `example` binds no name, so no nextgroup: with one, the trailing spaces
-" before `(x : ℝ)` would highlight as an empty declaration name.
-syn keyword leanPropDeclaration example
-
-" `Prop` out of leanSort; `Type` and `Sort` stay where they were.
-syn keyword leanProp Prop
-
-" Connectives and quantifiers out of leanOp. Deliberately unicode-only: the
-" ASCII `=`, `<` and `>` are in leanOp as single characters, so claiming them
-" would also recolour the `=` of `:=` and the angle brackets of `⟨_, _⟩`-free
-" ASCII notation. Everything genuinely logical is unicode in mathlib anyway.
+" arrives with exactly one highlight on it. `rw` is a semantic token of type
+" `keyword`; the three lemma names are not tokens at all, and lean.nvim's
+" syntax file has no rule that reaches them, so they render as plain Normal
+" text. Same for `apply inv_eq_of_mul_eq_one` and `exact eq_one_of_idem`.
+" Confirmed against leanls on MIL/C02_Basics/S02: over the whole MyGroup
+" section the server emits tokens for `theorem`, `by`, `rw`, `have`, `exact`,
+" `apply` and for every LOCAL (a, b, c, G, h, idem) — and for nothing else.
 "
-" `←` is deliberately absent despite being an arrow: in Lean source it is
-" almost always the direction marker of `rw [← foo]`, which is on most tactic
-" lines and is not a connective.
-syn match leanLogicOp "[∀∃¬∧∨↔→≠≤≥∈∉⊆⊂∅]"
+" That asymmetry is what makes this work. The rule below claims every
+" identifier, which would be far too much on its own; but locals carry a
+" semantic token, and a semantic extmark outranks syntax, so every local is
+" immediately painted back over by @lsp.type.variable.lean. What survives is
+" precisely the set of names the server did NOT call a local variable — the
+" global references. In a proof body those are the lemmas.
+"
+" The trade-off, stated plainly: the server does not distinguish a lemma from
+" any other global, so `Nat`, `Finset` and the like are caught too. There is no
+" signal available that separates them — leanls sends no token, no modifier and
+" no type information for either.
+"
+" It also means an unattached buffer (file outside a Lean project, or the first
+" second before the server answers) shows everything in the constant colour
+" until the tokens arrive.
 
-hi def link leanPropDeclaration   Statement
-hi def link leanPropName          Type
-hi def link leanProp              Type
-hi def link leanLogicOp           Operator
+" Dotted names are one item so `Nat.succ_le_of_lt` does not fragment. Leading
+" character is deliberately not \w: that would swallow leanNumber, which is
+" defined earlier and would otherwise lose the tie.
+syn match leanConstant "\<[A-Za-z_][A-Za-z0-9_'?!]*\%(\.[A-Za-z_][A-Za-z0-9_'?!]*\)*\>"
+
+" ...but not module paths. `import Mathlib.Algebra.Ring.Defs` and
+" `namespace MyGroup` are structure, not references, and were plain before.
+" Defined after leanConstant so it wins the tie at the same start position.
+syn match leanModulePath
+      \ "\%(\<\%(import\|open\|namespace\|end\|export\|section\)\s\+\)\@<=[A-Za-z_][A-Za-z0-9_.'?!]*"
+
+hi def link leanConstant  Constant
+hi def link leanModulePath Normal

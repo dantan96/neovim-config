@@ -62,13 +62,10 @@ return {
             --
             -- Green doubles as String in catppuccin, which is a real but tiny
             -- collision: string literals barely occur in mathlib-style Lean.
-            -- These four are shared with lua/config/lean/tokens.lua, which
-            -- repaints the propositional keywords that leanls would otherwise
-            -- flatten into one colour along with every tactic.
-            leanPropDeclaration = { fg = C.green, bold = true },
-            leanPropName = { fg = C.green },
-            leanProp = { fg = C.green, bold = true },
-            leanLogicOp = { fg = C.teal },
+            -- Lemma references (after/syntax/lean.vim). Peach, because
+            -- catppuccin's Constant is peach and these ARE global constants;
+            -- named here only so the intent is greppable. One line to change.
+            leanConstant = { link = "Constant" },
           }
         end,
       },

@@ -34,9 +34,10 @@ T["lean"] = new_set({
       -- No lakefile here on purpose: lean.nvim finds no project and starts
       -- no language server, so these cases test the config, not the server.
       vim.fn.writefile({
-        "example : 1 = 1 := rfl",
+        "import Mathlib.Data.Real.Basic",
         "def dvalue : Nat := 3",
         "theorem tvalue (p : Prop) : p ∨ p → p := id",
+        "  rw [← mul_assoc, Nat.succ_le_of_lt]",
       }, tmp_dir .. "/probe.lean")
       child.lua(string.format("vim.cmd.edit(%q)", tmp_dir .. "/probe.lean"))
       child.lua("vim.wait(2000)")
@@ -143,10 +144,16 @@ T["lean"]["cheatsheet file exists"] = function()
 end
 
 -- ── after/syntax/lean.vim ──────────────────────────────────────────────
--- lean.nvim files `theorem` and `def` in one group and every operator in
--- another, so proofs and data look identical. These pin the split. Byte
--- columns are found by search rather than counted, because the probe line
--- contains multibyte operators.
+-- Lemma references are the one part of a proof nothing highlights: leanls
+-- sends no semantic token for them and lean.nvim's syntax file has no rule
+-- that reaches them. These pin the rule that claims them, and the two
+-- exclusions it has to respect. Byte columns are found by search rather than
+-- counted, because the probe lines contain multibyte operators.
+--
+-- NOTE this child has no language server (no lakefile in the temp dir), so
+-- what is under test is the SYNTAX layer alone. In a live buffer the locals
+-- are painted back over by @lsp.type.variable.lean, which is the whole reason
+-- a rule this broad is safe; that half was verified in a pty-hosted TUI.
 local function syntax_at(lnum, needle)
   return child.lua_get(string.format(
     [[(function()
@@ -162,55 +169,30 @@ local function syntax_at(lnum, needle)
   ))
 end
 
-T["lean"]["propositional vocabulary is its own syntax group"] = new_set({
+T["lean"]["lemma references are highlighted"] = new_set({
   parametrize = {
-    { 1, "example", "leanPropDeclaration" },
-    { 2, "def", "leanDeclaration" },
+    { 4, "mul_assoc", "leanConstant" },
+    -- Dotted names stay one item rather than fragmenting at the dot.
+    { 4, "Nat.succ_le_of_lt", "leanConstant" },
+    -- Declaration names keep lean.nvim's own group: the rule must lose to
+    -- leanDeclaration's nextgroup, not shadow it.
     { 2, "dvalue", "leanDeclarationName" },
-    { 3, "theorem", "leanPropDeclaration" },
-    { 3, "tvalue", "leanPropName" },
-    { 3, "Prop", "leanProp" },
-    { 3, "∨", "leanLogicOp" },
-    { 3, "→", "leanLogicOp" },
+    { 3, "tvalue", "leanDeclarationName" },
+    -- Numbers are defined earlier in lean.nvim's syntax file and would lose
+    -- the tie to any rule starting with \w.
+    { 2, "3", "leanNumber" },
+    -- Module paths were plain text before and stay that way.
+    { 1, "Mathlib.Data.Real.Basic", "leanModulePath" },
+    -- Untouched: the stock keyword and sort groups, which this file no longer
+    -- splits. Colours the user already had must not move.
+    { 2, "def", "leanDeclaration" },
+    { 3, "theorem", "leanDeclaration" },
+    { 3, "Prop", "leanSort" },
+    { 3, "∨", "leanOp" },
   },
 }, {
   test = function(lnum, needle, group)
     expect.equality(syntax_at(lnum, needle), group)
-  end,
-})
-
--- The split above is invisible without this: leanls tags `theorem` as semantic
--- token type `keyword`, and a semantic extmark outranks syntax. Clearing the
--- group (rather than colouring it) lets the syntax group underneath render.
--- An accidental recolour here would silently flatten the whole scheme.
--- The syntax split above is invisible on its own: leanls tags `theorem` as
--- semantic token type `keyword`, and a semantic extmark sits above syntax. The
--- repaint has to be surgical, because the SAME token type covers every tactic
--- — `rw exact apply ring norm_num symm rfl` are all `keyword`, and lean.nvim's
--- syntax file lists no tactic names, so a blanket opt-out would strip them.
-T["lean"]["only propositional keywords are repainted"] = new_set({
-  parametrize = {
-    { "keyword", "theorem", "leanPropDeclaration" },
-    { "keyword", "lemma", "leanPropDeclaration" },
-    { "keyword", "example", "leanPropDeclaration" },
-    { "keyword", "Prop", "leanProp" },
-    { "keyword", "∀", "leanLogicOp" },
-    -- Tactics and the rest of Lean's keywords must come back nil, i.e. keep
-    -- the colour the language server's own token type gives them.
-    { "keyword", "rw", "left alone" },
-    { "keyword", "exact", "left alone" },
-    { "keyword", "apply", "left alone" },
-    { "keyword", "ring", "left alone" },
-    { "keyword", "by", "left alone" },
-    { "keyword", "import", "left alone" },
-    -- Right spelling, wrong token type: the mapping must not fire on an
-    -- identifier that happens to be spelled like a propositional keyword.
-    { "variable", "theorem", "left alone" },
-  },
-}, {
-  test = function(token_type, text, group)
-    local tokens = dofile(H.cfg .. "/lua/config/lean/tokens.lua")
-    expect.equality(tokens.hl_for(token_type, text) or "left alone", group)
   end,
 })
 

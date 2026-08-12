@@ -103,11 +103,6 @@ return {
     -- otherwise propagate out of the finder. Remove once upstream returns a
     -- table unconditionally.
     config = function()
-      -- Before the loogle guards below, which return early. Registers the
-      -- LspTokenUpdate handler that keeps `theorem` from being painted the
-      -- same colour as `rw` — see the module for why syntax alone cannot.
-      require("config.lean.tokens")
-
       local ok, loogle = pcall(require, "lean.loogle")
       if not ok or type(loogle.search) ~= "function" then
         return
