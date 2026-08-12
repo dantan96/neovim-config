@@ -3050,7 +3050,17 @@ T["lean"]["markview's attach annotation is still patched"] = function()
   end
   local src = table.concat(vim.fn.readfile(path), "\n")
   local decl = src:match("(---@param _state%??) markview%.state%.buf\nactions%.attach")
-  expect.equality(decl, "---@param _state?")
+  -- Compare a SENTENCE, not the annotation: a bare equality failure here
+  -- reads as `expected "---@param _state?" got "---@param _state"`, which
+  -- tells someone on a fresh machine nothing. This prints the fix.
+  local state = (decl == "---@param _state?") and "patched"
+    or ("UNPATCHED. This is a local patch to a plugin in lazy's directory, so "
+      .. "it does not travel with the config and a plugin update reverts it. "
+      .. "Add the `?` to `---@param _state` (one character) at "
+      .. path .. ":515. Do NOT instead pass a second argument -- `{}` is "
+      .. "truthy and skips state.lua:190's early return, rebuilding the "
+      .. "buffer's state from defaults. Got: " .. tostring(decl))
+  expect.equality(state, "patched")
 end
 
 -- Second upstream annotation patch, same shape and same tripwire reasoning as
@@ -3073,9 +3083,22 @@ T["lean"]["multicursor's OperatorOpts fields are still optional"] = function()
   local src = table.concat(vim.fn.readfile(path), "\n")
   local block = src:match("%-%-%- @class mc%.OperatorOpts\n(.-)\n\n")
   expect.equality(type(block), "string")
+  -- Same reasoning as the markview case above: report the fix, not a diff.
+  local missing = {}
   for _, f in ipairs({ "pattern", "motion", "visual", "wordBoundary" }) do
-    expect.equality({ f, block:find("@field " .. f .. "%?") ~= nil }, { f, true })
+    if not block:find("@field " .. f .. "%?") then
+      missing[#missing + 1] = f
+    end
   end
+  local state = (#missing == 0) and "patched"
+    or ("UNPATCHED. Local patch to a plugin in lazy's directory: it does not "
+      .. "travel with the config and a plugin update reverts it. Add `?` to "
+      .. "these `@field` lines in the `mc.OperatorOpts` class at " .. path
+      .. ":1121 -- " .. table.concat(missing, ", ") .. ". Do NOT instead pass "
+      .. "the fields at the call site: `wordBoundary` defaults to `vMode == "
+      .. "nil`, computed from the mode at call time, so any static value "
+      .. "changes what `mw` does in normal mode.")
+  expect.equality(state, "patched")
 end
 
 return T
