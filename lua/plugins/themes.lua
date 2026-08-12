@@ -86,18 +86,31 @@ return {
             -- for. The extra categories are wired up but parked on their
             -- current appearance, so turning one on is a one-line edit.
 
-            -- THE CHANGE. Things of type Prop, in the blue lemma references
-            -- already had. The server sends these as two groups so they can be
-            -- told apart; they are linked together here because they are the
-            -- same idea — a term whose TYPE is a proposition — differing only
-            -- in provenance. Unlink to colour a hypothesis differently from a
-            -- lemma you are citing.
-            ["@lsp.type.leanProof.lean"] = { link = "Function" }, -- theorem refs
-            ["@lsp.type.leanHypothesis.lean"] = { link = "Function" }, -- `h : a = b`
-            -- A proposition itself (`p` in `(p : Prop)`, `True`, `Even n`) —
-            -- the statement rather than a proof of it. Sapphire reads as
-            -- adjacent to the proof blue without collapsing into it.
-            ["@lsp.type.leanProp.lean"] = { fg = C.sapphire },
+            -- THE CHANGE — CURRENTLY NOT EXPRESSED, AND THIS IS A DECISION FOR
+            -- YOU TO MAKE. Prop-ness used to arrive as three token TYPES
+            -- (leanProof / leanHypothesis / leanProp) and three groups were
+            -- defined for them here. The server stopped sending those types
+            -- when the declaration kind moved into the token type and
+            -- everything else became modifiers, so all three groups had been
+            -- dead for some time — they matched nothing, while looking exactly
+            -- like working entries in `:highlight`. They are removed rather
+            -- than left as decoration; tests/test_lean.lua now fails on any
+            -- group naming a token the server does not emit.
+            --
+            -- Prop-ness is now a MODIFIER PAIR, not a type: a proof is
+            -- `propWorld` + `element`, a proposition is `propWorld` + `sort`,
+            -- and a predicate such as `Even` is `propWorld` + `former`.
+            -- Neovim's group syntax reaches one modifier at a time
+            -- (`@lsp.mod.<m>.lean`, `@lsp.typemod.<type>.<m>.lean`) and cannot
+            -- require two, so there is no drop-in replacement:
+            --   * `@lsp.mod.propWorld.lean` colours the whole Prop column —
+            --     proofs, propositions and predicates alike;
+            --   * `@lsp.typemod.theorem.propWorld.lean` reaches cited lemmas
+            --     but not hypotheses, which are `variable`;
+            --   * telling a proposition from a proof of it needs a
+            --     LspTokenUpdate handler that inspects both modifiers.
+            -- Pick one deliberately rather than restoring a name that no
+            -- longer exists.
 
             -- Everything below is PARKED ON ITS CURRENT APPEARANCE. The server
             -- distinguishes all of it; these links only decide how much of the
@@ -112,17 +125,27 @@ return {
             -- whatever kind the environment says they are.
             ["@lsp.type.class.lean"] = { link = "Function" },
             ["@lsp.type.struct.lean"] = { link = "Function" },
-            ["@lsp.type.leanInductive.lean"] = { link = "Function" },
             ["@lsp.type.enumMember.lean"] = { link = "Function" }, -- constructors
             ["@lsp.type.function.lean"] = { link = "Function" },
-            ["@lsp.type.leanRecursor.lean"] = { link = "Function" },
+            -- NOTE the three below lost their `lean` prefix when the server
+            -- renamed its token types; the old spellings had silently stopped
+            -- matching. `leanSorryLike` above keeps its prefix, being upstream's
+            -- own name rather than one this branch invented.
+            ["@lsp.type.recursor.lean"] = { link = "Function" },
             -- An `axiom` is the one thing a proof can rest on without proof,
             -- so this is the group most worth un-parking.
-            ["@lsp.type.leanAxiom.lean"] = { link = "Function" },
+            ["@lsp.type.axiom.lean"] = { link = "Function" },
             -- Tactic names, separable from term keywords like `fun` and `let`
             -- for the first time. Park as keyword; give it its own colour to
             -- see the tactic skeleton of a proof at a glance.
-            ["@lsp.type.leanTactic.lean"] = { link = "@lsp.type.keyword.lean" },
+            ["@lsp.type.tactic.lean"] = { link = "@lsp.type.keyword.lean" },
+            -- NOT DEFINED, and worth a decision: the server also emits `enum`
+            -- (every plain `inductive`, which is `Nat`, `True` and `List`),
+            -- `property` (projections), `theorem` and `opaque`. A semantic
+            -- token outranks the syntax layer, so those four now lose the blue
+            -- that after/syntax/lean.vim's leanConstant rule used to give them
+            -- — which is at odds with the "everything that already had a colour
+            -- keeps it" rule above. `@lsp.type.enum.lean` is the big one.
 
             -- Modifiers. Only `deprecated` is styled — Mathlib deprecates
             -- aggressively (825 files) and a struck-through name is
