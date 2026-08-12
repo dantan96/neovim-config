@@ -10,15 +10,31 @@
 -- Merged in, not replacing: the resolved capabilities still carry blink.cmp's
 -- (via vim.lsp.config("*") in plugins/lsp.lua) and lean.nvim's own
 -- `capabilities.lean = { silentDiagnosticSupport, rpcWireFormat }`.
+--
+-- ── the one conditional key ───────────────────────────────────────────────
+-- `experimental.leanRichTokens` opts in to the rich semantic-token legend of
+-- the patched toolchain in ~/ClaudeProjects/leanSetup/lean4-rich-tokens. The
+-- extra token types are capability-gated THERE, so a client that has not asked
+-- for them keeps receiving the stock legend, and a stock server ignores the
+-- field entirely (LSP requires unknown capabilities to be ignored).
+--
+-- It is OMITTED rather than set to false when the user has forced standard
+-- mode (`vim.g.lean_rich_tokens = false`): "not advertised" is the state the
+-- server's gate is written against, and a literal `false` on the wire is a
+-- different claim. Sending nothing is also what a client without this file
+-- does, which is the behaviour being reproduced.
+--
+-- This file is `loadfile`d fresh on every vim.lsp.config resolution
+-- (runtime/lua/vim/lsp.lua:351), and disabling a server drops the cached
+-- resolution — so `:LeanRichTokens on|off` can change the answer within a
+-- session by restarting leanls. See lua/config/lean/rich_tokens.lua.
+if not require("config.lean.rich_tokens").advertise() then
+  return {}
+end
+
 return {
   capabilities = {
     experimental = {
-      -- Opt in to the rich semantic-token legend of the patched toolchain in
-      -- ~/ClaudeProjects/leanSetup/lean4-rich-tokens. The extra token types
-      -- are capability-gated there so a client that has not asked for them
-      -- keeps receiving the stock legend. A stock server ignores the field
-      -- entirely (LSP requires unknown capabilities to be ignored), so this
-      -- is inert on leanprover/lean4:v4.x releases.
       leanRichTokens = true,
     },
   },

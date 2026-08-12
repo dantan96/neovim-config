@@ -335,14 +335,44 @@ end
 -- hardcoded copy would be the identical bug one level up: it would agree with
 -- itself forever while the server moved. Only the two `names` arrays are
 -- parsed, because `Watchdog.lean` advertises exactly those as the LSP legend.
+--
+-- ── the checkout this needs, and what happens without it ──────────────────
+-- Reading the enum means reading the patched server's SOURCE, which lives
+-- outside this repo. That checkout is on the machine this branch was written
+-- on and on no other; this config is pushed and used elsewhere.
+--
+-- So the two cases that parse it SKIP, loudly, rather than fail — but they
+-- skip from INSIDE the case body, via MiniTest.skip(). Guarding at file load
+-- would drop them from the collection entirely, and a case that is not there
+-- is indistinguishable from a case that passed, which is the precise failure
+-- mode this whole section exists to prevent. A skipped case reports as `O`
+-- (pass with notes) and its reason is printed under "Fails and Notes", so the
+-- suite says out loud what it could not check and why.
+--
+-- Everything else in this file — including the sibling case asserting that
+-- every `@lsp.*.lean` group resolves to real attributes — is independent of
+-- the checkout and still runs.
 local LEAN_LEGEND_SRC = vim.fn.expand("~")
   .. "/ClaudeProjects/leanSetup/lean4-rich-tokens/src/Lean/Data/Lsp/LanguageFeatures.lean"
 
+--- Skip the current case unless the patched server's source is here.
+--- Call from a case body; MiniTest.skip() is implemented as a thrown error.
+local function need_legend_src()
+  if not vim.uv.fs_stat(LEAN_LEGEND_SRC) then
+    MiniTest.skip(
+      "SKIPPED: needs the patched Lean server checkout at "
+        .. LEAN_LEGEND_SRC
+        .. " — the token legend is read from the server's own enum and there is "
+        .. "nothing to read it from here. This case was NOT run; it did not pass."
+    )
+  end
+end
+
 local function lean_legend()
   local f = io.open(LEAN_LEGEND_SRC, "r")
-  -- Fail loudly rather than skipping. A silent skip when the checkout moves
-  -- would turn every case below into a vacuous pass, which is the exact
-  -- failure mode this file is being hardened against.
+  -- Still an error, not a skip: need_legend_src() already established the file
+  -- is there, so failing to open it now is a real fault (permissions, a race),
+  -- not an absent checkout.
   if not f then
     error("patched Lean server source not found: " .. LEAN_LEGEND_SRC)
   end
@@ -369,6 +399,7 @@ end
 -- that matched the WRONG array would mislead. Pin the entries that must be
 -- present under any naming scheme, including across the `lean`-prefix rename.
 T["lean"]["token legend parses"] = function()
+  need_legend_src()
   local types, mods = lean_legend()
   expect.equality(types["keyword"], true)
   expect.equality(types["variable"], true)
@@ -382,6 +413,7 @@ T["lean"]["token legend parses"] = function()
 end
 
 T["lean"]["token legend: every @lsp.*.lean group names a token the server emits"] = function()
+  need_legend_src()
   local types, mods = lean_legend()
   local groups = child.lua_get([[(function()
     local out = {}
