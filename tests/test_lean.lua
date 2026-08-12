@@ -100,10 +100,29 @@ end
 T["lean"]["configured via vim.g.lean_config, not setup()"] = function()
   expect.equality(child.lua_get("type(vim.g.lean_config)"), "table")
   expect.equality(child.lua_get("vim.g.lean_config.mappings"), true)
-  expect.equality(child.lua_get("vim.g.lean_config.infoview.width"), 55)
+  -- A FRACTION, not a column count. lean.nvim's `res_dim` reads < 1 as a
+  -- proportion of vim.o.columns and >= 1 as a literal width, so the property
+  -- worth pinning is which side of 1 this falls on -- pinning 0.4 exactly
+  -- would just re-break on any retune.
+  local width = child.lua_get("vim.g.lean_config.infoview.width")
+  expect.equality(type(width), "number")
+  expect.equality(width > 0 and width < 1, true)
   -- Pinned, because lean.nvim's default "auto" picks by aspect ratio and
   -- lands on a horizontal split in an ordinary ~100x50 window.
   expect.equality(child.lua_get("vim.g.lean_config.infoview.orientation"), "vertical")
+end
+
+-- The fraction above is resolved ONCE, when the infoview is created
+-- (infoview.lua:400), and the only VimResized handler lean.nvim installs
+-- re-renders pin content (tui.lua:1204) without touching the window -- which
+-- also carries `winfixwidth`. So without this autocmd the width matches the
+-- terminal at startup and then drifts permanently. Verified in a live TUI:
+-- with it, 80->120 columns moves the infoview 32->48; without it, the
+-- infoview stays at 32 while the code window grows 47->87.
+T["lean"]["a VimResized hook re-resolves the infoview's fractional width"] = function()
+  local n = child.lua_get([[#vim.api.nvim_get_autocmds({
+    group = "LeanInfoviewWidth", event = "VimResized" })]])
+  expect.equality(n, 1)
 end
 
 -- textwidth=100 alone hard-wraps Lean terms mid-expression, because the global

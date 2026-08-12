@@ -58,10 +58,17 @@ return {
           -- ~100x50 window and silently flips layout when the terminal is
           -- resized or the window is split. Pin it.
           orientation = "vertical",
-          -- Goal states are wide (mathlib hypotheses run long), so give the
-          -- infoview a fixed column count rather than a fraction of a window
-          -- that may itself already be split.
-          width = 55,
+          -- A FRACTION of the total columns, not a fixed count. lean.nvim
+          -- supports this natively: `res_dim` (infoview.lua:233) reads any
+          -- value < 1 as a proportion of `vim.o.columns` and any value >= 1
+          -- as a literal column count. 0.4 is ~55 columns at 137, which is
+          -- what the previous fixed value was tuned to.
+          --
+          -- The fraction alone is NOT enough — see the VimResized autocmd in
+          -- `init` below. It is applied once when the infoview is created and
+          -- upstream never recomputes it, so without that hook this tracks
+          -- the terminal size at startup and then never again.
+          width = 0.4,
           -- Only consulted for horizontal infoviews, which the pin above
           -- rules out; kept so removing the pin restores sane behaviour.
           horizontal_position = "bottom",
@@ -90,6 +97,35 @@ return {
         progress_bars = { enable = true },
         stderr = { enable = true },
       }
+
+      -- Make the fractional `infoview.width` above actually track the
+      -- terminal. Upstream resolves the fraction ONCE, when the infoview is
+      -- created (infoview.lua:400), and the only VimResized handler it
+      -- installs re-renders pin CONTENT (tui.lua:1204) without touching the
+      -- window. The window also carries `winfixwidth` (infoview.lua:930), so
+      -- Neovim's own equalisation will not move it either. Net effect without
+      -- this hook: the width matches the terminal at startup and then drifts
+      -- permanently out of proportion after the first resize.
+      --
+      -- `infoview.reposition()` is public and recomputes from
+      -- `res_dim(options.width, vim.o.columns)` (infoview.lua:552), so it is
+      -- exactly the right call — no reimplementation of the sizing rule.
+      --
+      -- This lives in `init` rather than after/ftplugin/lean.lua deliberately:
+      -- tests/test_invariants.lua asserts that re-sourcing changes no autocmd
+      -- population, and an ftplugin runs once per buffer.
+      vim.api.nvim_create_autocmd("VimResized", {
+        group = vim.api.nvim_create_augroup("LeanInfoviewWidth", { clear = true }),
+        desc = "Re-resolve the Lean infoview's fractional width",
+        callback = function()
+          local ok, infoview = pcall(require, "lean.infoview")
+          -- Only meaningful once lean.nvim has loaded; it is lazy on
+          -- BufReadPre *.lean, so this fires as a no-op in every other buffer.
+          if ok and type(infoview.reposition) == "function" then
+            pcall(infoview.reposition)
+          end
+        end,
+      })
 
       -- :LeanRichTokens and the legend sniffing behind it. Set up here rather
       -- than in the plugin's `config`, for two reasons: after/lsp/leanls.lua
