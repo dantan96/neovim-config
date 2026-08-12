@@ -179,10 +179,27 @@ return {
             -- An `axiom` is the one thing a proof can rest on without proof,
             -- so this is the group most worth un-parking.
             ["@lsp.type.axiom.lean"] = { link = "Function" },
-            -- Tactic names, separable from term keywords like `fun` and `let`
-            -- for the first time. Park as keyword; give it its own colour to
-            -- see the tactic skeleton of a proof at a glance.
-            ["@lsp.type.tactic.lean"] = { link = "@lsp.type.keyword.lean" },
+            -- TACTICS OFF THE KEYWORD PURPLE. Dan: "SO MUCH FUCKING PURPLE
+            -- ... Yes, split the keyword purple too." Every keyword was
+            -- mauve and this group linked straight to it, so `rw`, `simp`,
+            -- `exact`, `ring` — the verbs of a proof, and by count the
+            -- single biggest contributor to the purple — were mauve too.
+            --
+            -- Blue, bold: the rebuild moved proofs off `#89b4fa` onto deep
+            -- pink, so nothing in the widened palette claims blue any more,
+            -- and it is a colour already in use elsewhere in this config.
+            -- Declaration keywords (`theorem`, `def`) stay mauve; they are
+            -- the skeleton and should stay quiet.
+            --
+            -- ONLY THIS GROUP. Restyling `@lsp.type.keyword.lean` would take
+            -- the tactics with it — 19 keyword atoms include `rw`, `exact`,
+            -- `apply` and `ring` — and it is separately addressable only
+            -- because the server emits `tactic` for tactic head atoms at
+            -- priority 6, above the keyword token covering the same atom.
+            -- `import`, `open`, `namespace`, `end` and `section` also arrive
+            -- as `keyword` and CANNOT be split here; they belong to the
+            -- syntax/treesitter layer.
+            ["@lsp.type.tactic.lean"] = { fg = "#89b4fa", bold = true },
 
             -- ── THE MECHANISM THAT MAKES THIS LIST LOAD-BEARING ─────────
             -- Every time the server starts emitting a STANDARD LSP token
@@ -223,11 +240,10 @@ return {
             --   `@lsp.type.function.lean` as well as the syntax layer. That
             --   is why the typemod line below is needed even though
             --   `function` is already pinned.
-            -- ② Not wrong — mauve is what keywords should be — but it was
-            --   arriving by inheritance, and `@lsp.type.tactic.lean` below
-            --   links to it. tests/test_lean.lua already carried a comment
-            --   saying that chain "would silently go colourless if that ever
-            --   stopped". Pinned, so it cannot.
+            -- ② Not wrong — mauve is what DECLARATION keywords should be —
+            --   but it was arriving by inheritance. Pinned, so it cannot go
+            --   colourless. `@lsp.type.tactic.lean` used to link to it and
+            --   no longer does; see the split above.
             -- ③ Custom names no theme will ever define, so the extmark
             --   contributes nothing and the syntax layer shows through:
             --   still blue, by accident. Pinned because the accident is not
@@ -253,7 +269,11 @@ return {
             ["@lsp.type.theorem.lean"] = { fg = HUES.prop_element }, -- a cited lemma
             ["@lsp.type.opaque.lean"] = { link = "Function" }, -- ditto
             ["@lsp.typemod.function.defaultLibrary.lean"] = { link = "Function" }, -- imported defs
-            ["@lsp.type.keyword.lean"] = { link = "Keyword" }, -- what tactic links to
+            -- Declaration and term keywords, mauve. NOT to be restyled: 19
+            -- keyword atoms include `rw`, `exact`, `apply` and `ring`, so a
+            -- change here reaches every tactic too. Tactics are split off
+            -- above, through their own token type.
+            ["@lsp.type.keyword.lean"] = { link = "Keyword" },
 
             -- Modifiers. Only `deprecated` is styled — Mathlib deprecates
             -- aggressively (825 files) and a struck-through name is

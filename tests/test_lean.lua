@@ -688,9 +688,11 @@ end
 -- is not. Neovim's `@`-group inheritance is not a safety net here — it aborts
 -- as soon as a child defines anything of its own (`sg_cleared`) — so a group
 -- linked to a cleared or undefined target renders as plain text while looking
--- perfectly configured. `@lsp.type.tactic.lean` links to `@lsp.type.keyword.lean`,
--- which no file in this config defines; it resolves only through Neovim's own
--- fallback chain, and would silently go colourless if that ever stopped.
+-- perfectly configured. `@lsp.type.tactic.lean` used to link to
+-- `@lsp.type.keyword.lean`, which resolves only through Neovim's own fallback
+-- chain and would have gone colourless if that ever stopped; it now carries
+-- its own colour, and the keyword group is pinned. The sweep stays: the next
+-- group added by link is the one this catches.
 T["lean"]["token legend: every Lean token group resolves to real attributes"] = function()
   local unstyled = child.lua_get([[(function()
     local out = {}
@@ -1090,6 +1092,33 @@ T["lean"]["highlights: keyword, tactic and sorry are not repainted"] = function(
   expect.equality(got.sorry, "nil")
   expect.equality(got.partial, "nil")
   expect.no_equality(got.full, "nil")
+end
+
+-- TACTICS ARE NOT KEYWORDS ANY MORE. Dan: "SO MUCH FUCKING PURPLE ... Yes,
+-- split the keyword purple too." `@lsp.type.tactic.lean` used to LINK to
+-- `@lsp.type.keyword.lean`, so every `rw`, `simp`, `exact` and `ring` was
+-- mauve along with `theorem` and `fun` — and tactics are the verbs of a
+-- proof, so by count they were most of the purple.
+--
+-- This is a themes.lua assertion rather than a palette one: both groups are
+-- outside the `@lean.*` grid (SKIP), so nothing in highlights.lua can see
+-- them. The failure it guards is someone "tidying" the split back into a
+-- link, which is invisible in review and reverts the whole change.
+T["lean"]["highlights: tactics are split off the keyword purple"] = function()
+  local got = child.lua_get([[(function()
+    local function look(n)
+      local h = vim.api.nvim_get_hl(0, { name = n, link = false })
+      return { fg = h.fg and string.format("#%06x", h.fg) or "nil", bold = h.bold or false }
+    end
+    return { tac = look("@lsp.type.tactic.lean"), kw = look("@lsp.type.keyword.lean") }
+  end)()]])
+  -- Non-vacuity: both are real, resolved colours, not two nils comparing
+  -- equal and not one group that was never defined (A4).
+  expect.no_equality(got.tac.fg, "nil")
+  expect.no_equality(got.kw.fg, "nil")
+  expect.no_equality(got.tac.fg, got.kw.fg)
+  expect.equality(got.tac.fg, "#89b4fa") -- blue, bold: the verbs of a proof
+  expect.equality(got.tac.bold, true)
 end
 
 -- The failure that is invisible in review and fatal in use: a module with a
