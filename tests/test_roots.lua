@@ -112,18 +112,14 @@ T["find_marksman_config"] = new_set()
 
 T["find_marksman_config"]["finds .marksman.toml"] = function()
   H.with_temp_dir(function(dir)
-    local f = io.open(dir .. "/.marksman.toml", "w")
-    f:write("")
-    f:close()
+    H.write_file(dir .. "/.marksman.toml")
     expect.equality(roots.find_marksman_config(dir), dir .. "/.marksman.toml")
   end)
 end
 
 T["find_marksman_config"]["finds marksman.toml"] = function()
   H.with_temp_dir(function(dir)
-    local f = io.open(dir .. "/marksman.toml", "w")
-    f:write("")
-    f:close()
+    H.write_file(dir .. "/marksman.toml")
     expect.equality(roots.find_marksman_config(dir), dir .. "/marksman.toml")
   end)
 end
@@ -143,18 +139,14 @@ T["find_remark_config"] = new_set()
 
 T["find_remark_config"]["finds .remarkrc.json"] = function()
   H.with_temp_dir(function(dir)
-    local f = io.open(dir .. "/.remarkrc.json", "w")
-    f:write("")
-    f:close()
+    H.write_file(dir .. "/.remarkrc.json")
     expect.equality(roots.find_remark_config(dir), dir .. "/.remarkrc.json")
   end)
 end
 
 T["find_remark_config"]["finds .remarkrc.mjs"] = function()
   H.with_temp_dir(function(dir)
-    local f = io.open(dir .. "/.remarkrc.mjs", "w")
-    f:write("")
-    f:close()
+    H.write_file(dir .. "/.remarkrc.mjs")
     expect.equality(roots.find_remark_config(dir), dir .. "/.remarkrc.mjs")
   end)
 end

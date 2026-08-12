@@ -33,8 +33,10 @@
 local M = {}
 
 ---Longest suffix of `path` that lies under `dir`, or nil.
+---`dir` is nil-tolerant on purpose: the three rules in M.of are tried in
+---sequence and each supplier may legitimately have nothing to offer.
 ---@param path string
----@param dir string
+---@param dir string|nil
 ---@return string|nil
 local function relative_to(path, dir)
   if dir == nil or dir == "" then

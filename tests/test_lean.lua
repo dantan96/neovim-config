@@ -1079,6 +1079,514 @@ end
 -- │ END: Lean colour design                                              │
 -- ╰──────────────────────────────────────────────────────────────────────╯
 
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ BEGIN: <leader>K token inspector                                     │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+--
+-- lua/config/lean/inspect_token.lua. WHAT CAN AND CANNOT BE TESTED HERE:
+--
+-- The interesting half of that module reads the RENDERED SCREEN, and this
+-- child is headless, so it applies no semantic tokens at all (M5 / GOTCHAS
+-- A1) and would report an empty stack at every position while looking like a
+-- clean pass. Anything asserting a colour, a priority or a winner therefore
+-- belongs in a pty-hosted TUI and NOT in this file — see the commit, which
+-- pastes the live output for six token kinds.
+--
+-- What is testable without a server, and is tested below:
+--   * the binding exists, is buffer-local, is not global, and is
+--     discoverable from both the clue window and the cheatsheet;
+--   * adding a <Leader> clue to vim.b.miniclue_config did not CLOBBER the
+--     <LocalLeader> clues already there (mini.clue concatenates — clue.lua
+--     H.get_config — but that is its behaviour to change, not ours to assume);
+--   * the module survives the positions that produce no data at all, which
+--     is where a display tool actually breaks;
+--   * every name in the server's legend has an English gloss. That is the
+--     one property most likely to rot: the legend is 29 types and 31
+--     modifiers today and the module's tables are hand-written.
+--   * the merge rules the display teaches are the rules it implements.
+
+local INSPECT_MOD = H.cfg .. "/lua/config/lean/inspect_token.lua"
+
+--- Fresh module instance per case, as with `hl()` above: the config has
+--- already required this module in the ftplugin and a shared instance would
+--- let one case's state reach another.
+local function ins(body)
+  return child.lua_get(
+    ("(function() local M = dofile(%q) %s end)()"):format(INSPECT_MOD, body)
+  )
+end
+
+T["lean"]["inspector: <leader>K is buffer-local, not global"] = function()
+  -- Buffer-local maps report the lhs with the leader already expanded.
+  local got = child.lua_get([[(function()
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+      if m.lhs == " K" then return m.desc or "" end
+    end
+    return "MISSING"
+  end)()]])
+  expect.equality(got, "Inspect token highlighting")
+  -- tests/test_keymap_ownership.lua sees global maps only, so this is the
+  -- only place the Lean-only-ness of a <Leader> map can be pinned. A global
+  -- one would fire the Lean inspector from a Lua buffer.
+  expect.equality(
+    child.lua_get([[(function()
+      for _, m in ipairs(vim.api.nvim_get_keymap("n")) do
+        if m.lhs == " K" then return true end
+      end
+      return false
+    end)()]]),
+    false
+  )
+end
+
+-- The clobber check. after/ftplugin/lean.lua appends one <Leader> clue to
+-- vim.b.miniclue_config, which already held a dozen <LocalLeader> ones; if
+-- the append were ever rewritten as an assignment, every Lean clue but this
+-- one would vanish and `\` would stop being a discovery key. Asserting only
+-- that the new entry is present would not catch that.
+T["lean"]["inspector: the <Leader>K clue did not displace the <LocalLeader> ones"] = function()
+  local got = child.lua_get([[(function()
+    local c = vim.b.miniclue_config or {}
+    local keys = {}
+    for _, x in ipairs(c.clues or {}) do keys[x.keys] = x.desc or "" end
+    local triggers = {}
+    for _, t in ipairs(c.triggers or {}) do triggers[#triggers + 1] = t.keys end
+    return { leaderK = keys["<Leader>K"], localleader_i = keys["<LocalLeader>i"],
+             cheatsheet = keys["<LocalLeader>?"], n = vim.tbl_count(keys),
+             triggers = triggers }
+  end)()]])
+  expect.equality(got.leaderK, "Inspect token highlighting")
+  -- ...and the pre-existing ones are all still there.
+  expect.equality(got.localleader_i, "Toggle infoview")
+  expect.equality(got.cheatsheet, "Lean cheatsheet")
+  expect.equality(got.n > 20, true)
+  -- The buffer trigger for `\` must survive too; the global <Leader> trigger
+  -- comes from plugins/mini.lua and is what shows the new clue.
+  expect.equality(got.triggers, { "<LocalLeader>" })
+end
+
+-- Same rule as the parity bindings: a key absent from the cheatsheet is a
+-- key nobody finds even after pressing the discovery key.
+T["lean"]["inspector: <leader>K is in the cheatsheet"] = function()
+  local f = assert(io.open(H.cfg .. "/lean-cheatsheet.md", "r"))
+  local text = f:read("*a")
+  f:close()
+  expect.equality(text:find("`<leader>K`", 1, true) ~= nil, true)
+end
+
+-- The positions where a display tool actually breaks. All three must produce
+-- LINES that SAY something, not an error and not silence — and they must say
+-- DIFFERENT things, because "no client", "no token" and "on whitespace" are
+-- three different facts and collapsing them is the A4 failure mode.
+T["lean"]["inspector: empty positions report rather than error"] = function()
+  local got = ins([[
+    -- A buffer with no language server at all. `report` must still work: two
+    -- of its three sections are read from the buffer, not from a server.
+    --
+    -- 'syntax' rather than 'filetype': setting the filetype would run the
+    -- FileType chain and could start a leanls for an unnamed buffer, which is
+    -- exactly the condition this case is trying to be the absence of. The
+    -- window is restored by hand because every case after this one reads
+    -- buffer 0, and `:bwipeout` returns to the PREVIOUS window, which in a
+    -- Lean child may be lean.nvim's infoview.
+    local prev_win = vim.api.nvim_get_current_win()
+    vim.cmd("new")
+    local w, b = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(b, 0, -1, false, { "theorem t : True := trivial", "" })
+    vim.bo[b].syntax = "lean"
+    local out = {}
+    local function grab(key, row, col)
+      local ok, R = pcall(M.report, w, b, row, col)
+      if not ok then out[key] = { err = tostring(R) } return end
+      local ok2, lines = pcall(M.render, R)
+      out[key] = {
+        err = not ok2 and tostring(lines) or nil,
+        n = ok2 and #lines or 0,
+        text = ok2 and table.concat(lines, "\n") or "",
+        on_blank = R.on_blank,
+        attached = R.attached,
+        highlighter = R.highlighter_running,
+        ntokens = #R.tokens,
+      }
+    end
+    grab("word", 0, 8)        -- on `t`
+    grab("blank", 0, 7)       -- the space before it
+    grab("emptyline", 1, 0)   -- an entirely empty line
+    vim.cmd("bwipeout!")
+    if vim.api.nvim_win_is_valid(prev_win) then
+      vim.api.nvim_set_current_win(prev_win)
+    end
+    return {
+      word = { err = out.word.err, n = out.word.n, blank = out.word.on_blank,
+               attached = out.word.attached,
+               says_no_client = out.word.text:find("No `leanls` client", 1, true) ~= nil },
+      blank = { err = out.blank.err, n = out.blank.n, blank = out.blank.on_blank,
+                says_blank = out.blank.text:find("whitespace or end of line", 1, true) ~= nil },
+      emptyline = { err = out.emptyline.err, n = out.emptyline.n,
+                    blank = out.emptyline.on_blank },
+    }
+  ]])
+  for _, case in ipairs({ "word", "blank", "emptyline" }) do
+    expect.equality(got[case].err, nil)
+    -- Non-vacuity: a report that rendered nothing would also raise nothing.
+    expect.equality(got[case].n > 20, true)
+  end
+  expect.equality(got.word.blank, false)
+  expect.equality(got.word.attached, false)
+  expect.equality(got.word.says_no_client, true)
+  expect.equality(got.blank.blank, true)
+  expect.equality(got.blank.says_blank, true)
+  expect.equality(got.emptyline.blank, true)
+end
+
+-- ── the glosses ────────────────────────────────────────────────────────
+-- The display's whole value in section 1 is that it translates the server's
+-- vocabulary. A name with no gloss is a blank column in the one place the
+-- user came to read prose.
+--
+-- Read from the server's own enum for the same reason the sibling case above
+-- does: a hardcoded copy here would agree with itself forever while the
+-- server moved. Skips loudly (from INSIDE the case) when the checkout is
+-- absent, and the hardcoded core case below still runs.
+T["lean"]["inspector: every name in the server legend has an English gloss"] = function()
+  need_legend_src()
+  local types, mods = lean_legend()
+  local have = ins([[
+    local t, m = {}, {}
+    for k in pairs(M.TYPE_GLOSS) do t[#t + 1] = k end
+    for k in pairs(M.MOD_GLOSS) do m[#m + 1] = k end
+    return { types = t, mods = m }
+  ]])
+  local have_t, have_m = {}, {}
+  for _, k in ipairs(have.types) do
+    have_t[k] = true
+  end
+  for _, k in ipairs(have.mods) do
+    have_m[k] = true
+  end
+
+  local missing = {}
+  for name in pairs(types) do
+    if not have_t[name] then
+      table.insert(missing, "type " .. name)
+    end
+  end
+  for name in pairs(mods) do
+    if not have_m[name] then
+      table.insert(missing, "modifier " .. name)
+    end
+  end
+  table.sort(missing)
+  expect.equality(missing, {})
+
+  -- ...and nothing glossed that the server cannot send, which is how the
+  -- three `lean`-prefixed groups died silently in themes.lua.
+  local dead = {}
+  for _, k in ipairs(have.types) do
+    if not types[k] then
+      table.insert(dead, "type " .. k)
+    end
+  end
+  for _, k in ipairs(have.mods) do
+    if not mods[k] then
+      table.insert(dead, "modifier " .. k)
+    end
+  end
+  table.sort(dead)
+  expect.equality(dead, {})
+
+  -- Non-vacuity: an empty legend would clear both loops above.
+  expect.equality(vim.tbl_count(types) >= 29, true)
+  expect.equality(vim.tbl_count(mods) >= 31, true)
+end
+
+-- The half of the coverage that does not depend on a checkout being present,
+-- so the suite is never silently uncovered here. Every name NAMES.md's own
+-- tables turn on, plus the historical-note names that must NOT come back.
+T["lean"]["inspector: the NAMES.md core vocabulary is glossed"] = function()
+  local CORE_TYPES = {
+    "keyword", "variable", "function", "property", "struct", "class", "enum",
+    "enumMember", "typeParameter", "theorem", "axiom", "opaque", "recursor",
+    "tactic", "leanSorryLike",
+  }
+  local CORE_MODS = {
+    "propWorld", "dataWorld", "polyWorld", "element", "sort", "former",
+    "implicit", "strictImplicit", "instBinder", "local", "autoImplicit",
+    "simp", "instance", "reducible", "irreducible", "private", "protected",
+    "noncomputable", "matchPattern", "elabWithoutExpectedType", "abbrev",
+    "declaration", "deprecated", "defaultLibrary",
+  }
+  local got = ins(([[
+    local out = { missing = {}, empty = {}, unordered = {} }
+    for _, t in ipairs(%s) do
+      if not M.TYPE_GLOSS[t] then table.insert(out.missing, "type " .. t)
+      elseif M.TYPE_GLOSS[t] == "" then table.insert(out.empty, "type " .. t) end
+    end
+    for _, m in ipairs(%s) do
+      if not M.MOD_GLOSS[m] then table.insert(out.missing, "mod " .. m)
+      elseif M.MOD_GLOSS[m] == "" then table.insert(out.empty, "mod " .. m) end
+      -- Every real modifier must also have a place in the display order, or
+      -- it silently sorts to the end with the never-set ones.
+      if not M.MOD_ORDER[m] then table.insert(out.unordered, m) end
+    end
+    -- The names NAMES.md's historical note retired. A gloss for one of these
+    -- would mean the module was written against a stale document.
+    out.zombies = {}
+    for _, z in ipairs({ "leanProof", "leanHypothesis", "leanProp",
+                         "leanInductive", "leanTheorem", "leanAxiom",
+                         "leanRecursor", "leanTactic", "leanPropWorld",
+                         "leanSortType", "leanFormer", "leanElement" }) do
+      if M.TYPE_GLOSS[z] or M.MOD_GLOSS[z] then table.insert(out.zombies, z) end
+    end
+    table.sort(out.missing) table.sort(out.empty) table.sort(out.unordered)
+    return out
+  ]]):format(vim.inspect(CORE_TYPES), vim.inspect(CORE_MODS)))
+  expect.equality(got.missing, {})
+  expect.equality(got.empty, {})
+  expect.equality(got.unordered, {})
+  expect.equality(got.zombies, {})
+end
+
+-- The sentence NAMES.md itself writes: propWorld + element + local must read
+-- as "a hypothesis: a local whose type is a proposition". If only one thing
+-- in this section is worth pinning, it is that one.
+T["lean"]["inspector: the world x level grid reads as English"] = function()
+  local got = ins([[
+    local function say(ty, mods)
+      local s = M.sentence(ty, mods)
+      return s.headline .. " | " .. (s.detail or "") ..
+             (#s.clauses > 0 and (" | " .. table.concat(s.clauses, " / ")) or "")
+    end
+    return {
+      hypothesis = say("variable", { propWorld = true, element = true, ["local"] = true }),
+      datum      = say("variable", { dataWorld = true, element = true, ["local"] = true }),
+      typevar    = say("variable", { dataWorld = true, sort = true, ["local"] = true }),
+      lemma      = say("theorem", { propWorld = true, element = true, defaultLibrary = true }),
+      predicate  = say("theorem", { propWorld = true, former = true }),
+      sorrylike  = say("leanSorryLike", {}),
+      tactic     = say("tactic", {}),
+      -- Degrade: no token at all, and a type the module has never heard of.
+      nothing    = say(nil, nil),
+      unknown    = say("someNewTokenType", { propWorld = true }),
+    }
+  ]])
+  -- NAMES.md's own words, near enough to be recognisable as them.
+  expect.equality(got.hypothesis, "a hypothesis | a local whose type is a proposition — so it is a proof")
+  expect.equality(got.datum, "a data local | a local whose type is some `Type u` — so it is a datum")
+  expect.equality(got.typevar, "a type variable | a local that IS a type")
+  expect.equality(
+    got.lemma,
+    "a theorem | a term whose type is a proposition — so it is a proof"
+      .. " | imported from the library, not proved in this file"
+  )
+  expect.equality(
+    got.predicate,
+    "a theorem | a term that is a predicate: a function producing propositions"
+  )
+  -- The three token types outside the grid say so rather than inventing a
+  -- world; that is what makes them fall through to themes.lua.
+  expect.equality(got.sorrylike:find("^a hole | the server sent no world/level") ~= nil, true)
+  expect.equality(got.tactic:find("^a tactic | the server sent no world/level") ~= nil, true)
+  -- Total: never a blank line, whatever it is handed.
+  expect.equality(got.nothing, "no semantic token here | ")
+  expect.equality(
+    got.unknown,
+    "a `someNewTokenType` token | in the propWorld, but the server sent no level (element / sort / former)"
+  )
+end
+
+-- The sentence must be a function of the modifier SET, not of the order Lua
+-- happens to walk it in — the same property highlights.lua's group names have,
+-- and for the same reason: it is invisible until it is wrong.
+T["lean"]["inspector: modifier order is stable and categorical"] = function()
+  local got = ins([[
+    local a = M.sorted_mods({ ["local"] = true, element = true, propWorld = true,
+                              declaration = true, simp = true })
+    local b = M.sorted_mods({ simp = true, declaration = true, propWorld = true,
+                              element = true, ["local"] = true })
+    return { a = a, b = b,
+             -- an unknown name must still appear, and last
+             novel = M.sorted_mods({ zzUnknown = true, propWorld = true }) }
+  ]])
+  -- Universe, then level, then flags, then the standard LSP ones: NAMES.md's
+  -- own categories, so the two axes that decide the colour are read first.
+  expect.equality(got.a, { "propWorld", "element", "local", "simp", "declaration" })
+  expect.equality(got.b, got.a)
+  expect.equality(got.novel, { "propWorld", "zzUnknown" })
+end
+
+-- ── the merge model ────────────────────────────────────────────────────
+-- Section 3 of the display teaches three rules. This pins that the code
+-- implements the rules the prose claims. It does NOT prove the rules are
+-- Neovim's — nothing headless can — which is exactly why M.report() also
+-- reads the real cell and the display diffs the two.
+T["lean"]["inspector: the composition model matches the rules it teaches"] = function()
+  local got = ins([[
+    local function L(priority, group, attrs)
+      return { priority = priority, group = group, attrs = attrs, defined = true }
+    end
+    -- Priority-ASCENDING, as M.compose requires.
+    local c = M.compose({
+      L(50,  "syntax",  { fg = 0x111111, bold = true, underdouble = true }),
+      L(125, "type",    { fg = 0x222222 }),
+      L(128, "synth",   { fg = 0x333333, italic = true, underdotted = true,
+                          sp = 0x444444 }),
+    })
+    local function at(k) return c[k] and { c[k].value, c[k].group } or nil end
+    return {
+      fg = at("fg"), sp = at("sp"),
+      -- OR: nothing above 50 mentions bold, so the syntax layer's survives.
+      bold = at("bold"), italic = at("italic"),
+      -- one underline slot: 128's dotted replaces 50's double outright
+      underdouble = at("underdouble"), underdotted = at("underdotted"),
+      -- and an undefined layer contributes nothing at any priority
+      ignored = (function()
+        local d = M.compose({ L(50, "syntax", { fg = 0x111111 }),
+          { priority = 9999, group = "dead", attrs = {}, defined = false } })
+        return d.fg and d.fg.group
+      end)(),
+    }
+  ]])
+  expect.equality(got.fg, { "#333333", "synth" })
+  expect.equality(got.sp, { "#444444", "synth" })
+  -- The point of the section: an attribute the winner never mentions still
+  -- reaches the cell, from a layer 78 priorities below it.
+  expect.equality(got.bold, { true, "syntax" })
+  expect.equality(got.italic, { true, "synth" })
+  expect.equality(got.underdouble, nil)
+  expect.equality(got.underdotted, { true, "synth" })
+  -- An undefined group at priority 9999 loses to a defined one at 50.
+  expect.equality(got.ignored, "syntax")
+end
+
+-- The seven standard LSP modifiers NAMES.md records as "kept for legend
+-- compatibility and never set". The module flags a token that carries one,
+-- because that means the server's vocabulary moved and every gloss in the
+-- file was written against the old meaning. Three ways that can rot: a name
+-- drops out of the legend, a name gains a real gloss without leaving the
+-- never-set table, or a real modifier is wrongly listed as never-set.
+T["lean"]["inspector: the never-set modifiers are consistent with the legend"] = function()
+  need_legend_src()
+  local _, mods = lean_legend()
+  local got = ins([[
+    local never, glossed_never = {}, {}
+    for k in pairs(M.MOD_NEVER_SET) do never[#never + 1] = k end
+    -- Which names carry the never-set gloss, whatever the table says.
+    local NEVER_TEXT = M.MOD_GLOSS.definition
+    for k, v in pairs(M.MOD_GLOSS) do
+      if v == NEVER_TEXT then glossed_never[#glossed_never + 1] = k end
+    end
+    table.sort(never) table.sort(glossed_never)
+    return { never = never, glossed_never = glossed_never,
+             text = NEVER_TEXT,
+             -- ...and none of them may occupy a slot in the display order
+             -- ahead of a modifier that is actually sent.
+             ordered = (function()
+               local out = {}
+               for k in pairs(M.MOD_NEVER_SET) do
+                 if (M.MOD_ORDER[k] or 0) < (M.MOD_ORDER.defaultLibrary or 0) then
+                   out[#out + 1] = k
+                 end
+               end
+               table.sort(out)
+               return out
+             end)() }
+  ]])
+  expect.equality(got.never, {
+    "abstract", "async", "definition", "documentation", "modification",
+    "readonly", "static",
+  })
+  -- The table and the glosses must name exactly the same seven; a name in one
+  -- and not the other is the display saying two different things about it.
+  expect.equality(got.glossed_never, got.never)
+  expect.equality(got.text:find("never set by this server", 1, true) ~= nil, true)
+  expect.equality(got.ordered, {})
+  -- Every one must still be IN the legend — that is what "kept for
+  -- compatibility" means, and if one were dropped the flag could never fire.
+  local absent = {}
+  for _, k in ipairs(got.never) do
+    if not mods[k] then
+      table.insert(absent, k)
+    end
+  end
+  expect.equality(absent, {})
+end
+
+-- 'cursorlineopt' DEFAULTS to "both", so a substring test for "line" misses
+-- the default outright — which is the only configuration the synthetic
+-- CursorLine layer exists to explain. Latent when it was written (this config
+-- has 'cursorline' off), which is exactly why it needs a test rather than an
+-- observation.
+T["lean"]["inspector: CursorLine is recognised under every cursorlineopt"] = function()
+  local got = ins([[
+    local prev_win = vim.api.nvim_get_current_win()
+    vim.cmd("new")
+    local w, b = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(b, 0, -1, false, { "abc" })
+    vim.api.nvim_win_set_cursor(w, { 1, 1 })
+    local out = {}
+    local function seen(cul, opt)
+      vim.wo[w].cursorline = cul
+      vim.wo[w].cursorlineopt = opt
+      local R = M.report(w, b, 0, 1)
+      for _, L in ipairs(R.layers) do
+        if L.group == "CursorLine" then return true end
+      end
+      return false
+    end
+    out["off"] = seen(false, "both")
+    out["both"] = seen(true, "both")          -- the DEFAULT
+    out["line"] = seen(true, "line")
+    out["screenline"] = seen(true, "screenline")
+    out["number"] = seen(true, "number")      -- paints the gutter only
+    out["number,line"] = seen(true, "number,line")
+    vim.cmd("bwipeout!")
+    if vim.api.nvim_win_is_valid(prev_win) then
+      vim.api.nvim_set_current_win(prev_win)
+    end
+    return out
+  ]])
+  expect.equality(got["off"], false)
+  expect.equality(got["both"], true)
+  expect.equality(got["line"], true)
+  expect.equality(got["screenline"], true)
+  -- 'number' paints the number column, not the line: it must NOT be credited
+  -- with a background on the token's cell.
+  expect.equality(got["number"], false)
+  expect.equality(got["number,line"], true)
+end
+
+-- GOTCHAS A4: `nvim_get_hl` cannot tell an undefined group from a cleared one
+-- from a typo, so `defined` here means one thing only — "resolves to at least
+-- one attribute that affects the rendered cell". A cterm-only definition must
+-- NOT count, or a group that paints nothing in a truecolour terminal would be
+-- reported as the winner.
+T["lean"]["inspector: a cterm-only group does not count as defined"] = function()
+  local got = ins([[
+    vim.api.nvim_set_hl(0, "InspectProbeCtermOnly", { cterm = { bold = true } })
+    vim.api.nvim_set_hl(0, "InspectProbeReal", { fg = "#89b4fa" })
+    vim.api.nvim_set_hl(0, "InspectProbeCleared", {})
+    return {
+      cterm = M.resolve("InspectProbeCtermOnly").defined,
+      real = M.resolve("InspectProbeReal").defined,
+      cleared = M.resolve("InspectProbeCleared").defined,
+      never_named = M.resolve("InspectProbeNeverDefinedAtAll").defined,
+      describes = M.resolve("InspectProbeCleared").defined == false
+        and M.describe({ group = "x", defined = false, attrs = {} }) or "",
+    }
+  ]])
+  expect.equality(got.cterm, false)
+  expect.equality(got.real, true)
+  expect.equality(got.cleared, false)
+  expect.equality(got.never_named, false)
+  -- ...and the display says why that matters, rather than leaving a blank.
+  expect.equality(got.describes:find("contributes nothing", 1, true) ~= nil, true)
+end
+
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ END: <leader>K token inspector                                       │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+
 -- LspInlayHint is styled in the catppuccin overrides (so it survives a
 -- colorscheme reload, as with LineNrWrap). catppuccin's stock value is
 -- Comment's exact fg, which makes a hint read as a comment; ours must not be.
@@ -1213,8 +1721,12 @@ T["lean"]["lemma references are highlighted"] = new_set({
 T["infoview background"] = new_set({
   hooks = {
     pre_case = function()
-      local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
-      local func = vim.api.nvim_get_hl(0, { name = "Function" })
+      -- snapshot(), not a bare nvim_get_hl: the read shape is not the write
+      -- shape (config/hl.lua), and this restore runs in a finally hook where
+      -- a throw would leave the colorscheme wrecked for later cases.
+      local HL = require("config.hl")
+      local normal = HL.snapshot("Normal")
+      local func = HL.snapshot("Function")
       MiniTest.finally(function()
         vim.api.nvim_set_hl(0, "Normal", normal)
         vim.api.nvim_set_hl(0, "Function", func)
@@ -1632,8 +2144,9 @@ local function two_buffers_with_diagnostics()
   })
   MiniTest.finally(function()
     vim.diagnostic.reset(ns)
-    pcall(vim.cmd, "lclose")
-    pcall(vim.cmd, "cclose")
+    -- `vim.cmd` is a callable TABLE, not a function; wrap it (see 4824293).
+    pcall(function() vim.cmd("lclose") end)
+    pcall(function() vim.cmd("cclose") end)
     vim.fn.setqflist({})
     vim.api.nvim_buf_delete(a, { force = true })
     vim.api.nvim_buf_delete(b, { force = true })
@@ -1674,12 +2187,12 @@ T["messages"]["file() is one buffer, workspace() is all of them"] = function()
   expect.equality(loc, { "A-err", "A-warn1", "A-warn2" })
   -- The tally VS Code shows in the All Messages header.
   expect.equality(vim.fn.getloclist(win, { title = 0 }).title, "Lean messages — 1 error, 2 warnings")
-  pcall(vim.cmd, "lclose")
+  pcall(function() vim.cmd("lclose") end)
 
   vim.api.nvim_win_set_buf(0, a)
   m.workspace()
   expect.equality(#vim.fn.getqflist(), 4)
-  pcall(vim.cmd, "cclose")
+  pcall(function() vim.cmd("cclose") end)
 end
 
 T["messages"]["tally counts and pluralises"] = function()

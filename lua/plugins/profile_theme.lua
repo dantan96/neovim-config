@@ -25,7 +25,9 @@ end
 -- Merge new attributes onto a group's existing definition (nvim_set_hl
 -- REPLACES wholesale; this preserves e.g. a theme's segment fg colors).
 local function restyle(group, opts)
-  local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+  -- config.hl re-keys the read shape into the write shape; see that file for
+  -- why the two differ and why passing the read straight back can throw.
+  local hl = require("config.hl").snapshot(group, { link = false })
   for k, v in pairs(opts) do
     hl[k] = v
   end
@@ -283,7 +285,7 @@ local CLEAR_BG = {
 
 local function make_transparent()
   for _, group in ipairs(CLEAR_BG) do
-    local hl = vim.api.nvim_get_hl(0, { name = group, link = false })
+    local hl = require("config.hl").snapshot(group, { link = false })
     if hl.bg ~= nil then
       hl.bg = nil
       vim.api.nvim_set_hl(0, group, hl)

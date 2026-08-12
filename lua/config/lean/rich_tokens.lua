@@ -499,7 +499,11 @@ function M.set(mode)
 
   -- Bust the cached config even when nothing is running, so a client started
   -- later by lean.nvim sees the new capability set.
-  pcall(vim.lsp.config, M.SERVER, {})
+  -- Wrapped: `vim.lsp.config` is a callable table, not a function, so
+  -- passing it to pcall directly is not the call it looks like.
+  pcall(function()
+    vim.lsp.config(M.SERVER, {})
+  end)
 
   -- WHEN TO RESTART. Restarting leanls on a mathlib project costs a full
   -- re-elaboration, so the bar is "a restart could change something".
@@ -582,27 +586,39 @@ function M.setup()
     end,
   })
 
+  -- One source of truth for the accepted words, shared by the dispatch, the
+  -- completion list and the error message -- they were three copies before.
+  --
+  -- MODES also carries the literal type through to `M.set`, which takes
+  -- `"on"|"off"|"auto"`. An `arg == "on" or arg == "off" or ...` chain does
+  -- not narrow a string, so that call could not be type-checked at all; a
+  -- table lookup can be.
+  ---@type table<string, "on"|"off"|"auto">
+  local MODES = { on = "on", off = "off", auto = "auto" }
+  local WORDS = { "on", "off", "toggle", "auto", "status" }
+
   vim.api.nvim_create_user_command("LeanRichTokens", function(opts)
     local arg = opts.args ~= "" and opts.args or "status"
+    local mode = MODES[arg]
     if arg == "status" then
       vim.notify(table.concat(M.status_lines(), "\n"), vim.log.levels.INFO)
-    elseif arg == "on" or arg == "off" or arg == "auto" then
-      vim.notify(M.set(arg), vim.log.levels.INFO)
+    elseif mode then
+      vim.notify(M.set(mode), vim.log.levels.INFO)
     elseif arg == "toggle" then
       -- From auto, toggling means "the opposite of what is happening now",
       -- which is the only reading that does something visible.
       vim.notify(M.set(M.enabled() and "off" or "on"), vim.log.levels.INFO)
     else
       vim.notify(
-        "LeanRichTokens: expected on|off|toggle|auto|status, got " .. arg,
+        "LeanRichTokens: expected " .. table.concat(WORDS, "|") .. ", got " .. arg,
         vim.log.levels.ERROR
       )
     end
   end, {
     nargs = "?",
-    desc = "Lean rich semantic tokens: on|off|toggle|auto|status",
+    desc = "Lean rich semantic tokens: " .. table.concat(WORDS, "|"),
     complete = function()
-      return { "on", "off", "toggle", "auto", "status" }
+      return WORDS
     end,
   })
 end

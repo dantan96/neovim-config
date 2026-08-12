@@ -170,11 +170,14 @@ vim.keymap.set("n", "<leader>vim", "<cmd>Oil ~/.config/nvim/<CR>", { desc = "Oil
 -- Statusline keymaps
 -- Global toggle: <leader>ts
 vim.keymap.set("n", "<leader>ts", function()
-  if vim.opt.laststatus:get() == 0 then
-    vim.opt.laststatus = 3 -- or 2, whatever you prefer
+  -- `vim.o`, not `vim.opt.laststatus:get()`: `vim.opt` entries are typed as
+  -- their value, so `:get()` is not a field on them, and for a plain integer
+  -- option the two are the same read.
+  if vim.o.laststatus == 0 then
+    vim.o.laststatus = 3
     vim.g.ministatusline_disable = false
   else
-    vim.opt.laststatus = 0
+    vim.o.laststatus = 0
     vim.g.ministatusline_disable = true
   end
   vim.cmd("redrawstatus")
