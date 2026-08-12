@@ -342,7 +342,13 @@ T["lean"]["rich tokens: the capability tracks vim.g.lean_rich_tokens"] = new_set
       setting
     ))
     expect.equality(got, expected)
-    child.lua([[vim.g.lean_rich_tokens = nil; vim.lsp.config("leanls", {})]])
+    -- Re-ENABLE, not just reset the config. `vim.lsp.enable("leanls", false)`
+    -- above is what drops the cached resolution, but leaving it disabled
+    -- silently prevents leanls attaching for the rest of this shared child —
+    -- which broke "a real Lean buffer is armed" further down the file, a case
+    -- in a different feature area that looked unrelated.
+    child.lua([[vim.g.lean_rich_tokens = nil; vim.lsp.config("leanls", {})
+      vim.lsp.enable("leanls", true)]])
   end,
 })
 
@@ -1214,15 +1220,27 @@ end
 -- advertises documentHighlightProvider whether or not `lake serve` can go on
 -- to serve anything), and the pair of autocmds armed on it.
 T["lean"]["a real Lean buffer is armed"] = function()
+  -- Earlier cases in this shared child :edit away from the probe buffer and
+  -- back, which detaches and re-attaches leanls. Arming happens on LspAttach,
+  -- which is async, so this must WAIT for it rather than sample once — reading
+  -- the list immediately is a race that passes or fails on scheduling. The
+  -- assertion below is unchanged; only the sampling is made deterministic.
   local events = child.lua_get([[(function()
-    local out = {}
-    for _, au in ipairs(vim.api.nvim_get_autocmds({
-      group = "LeanDocumentHighlight", buffer = vim.fn.bufnr("probe.lean")
-    })) do
-      table.insert(out, au.event)
+    local function armed()
+      local buf = vim.fn.bufnr("probe.lean")
+      if buf < 0 then return {} end
+      local out = {}
+      for _, au in ipairs(vim.api.nvim_get_autocmds({
+        group = "LeanDocumentHighlight", buffer = buf
+      })) do
+        table.insert(out, au.event)
+      end
+      table.sort(out)
+      return out
     end
-    table.sort(out)
-    return out
+    vim.cmd.edit(vim.fn.fnamemodify(vim.fn.bufname(vim.fn.bufnr("probe.lean")), ":p"))
+    vim.wait(8000, function() return #armed() == 4 end)
+    return armed()
   end)()]])
   expect.equality(events, { "CursorHold", "CursorMoved", "InsertEnter", "WinLeave" })
 end
