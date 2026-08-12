@@ -102,9 +102,11 @@ M.TYPE_GLOSS = {
 }
 
 --- The seven standard LSP modifiers NAMES.md says are kept for legend
---- compatibility and never set. Named individually rather than derived, so
---- that a server that STARTS setting one is a test failure and not a silent
---- change of meaning.
+--- compatibility and never set. Named individually rather than derived,
+--- because the display uses this: a token that actually CARRIES one of these
+--- is flagged loudly, since it means the server's vocabulary changed and
+--- every gloss in this file was written against the old one. Pinned against
+--- the legend and against the glosses in tests/test_lean.lua.
 M.MOD_NEVER_SET = {
   definition = true,
   readonly = true,
@@ -598,7 +600,28 @@ function M.report(win, bufnr, row, col)
     }
   end
   R.attached = #clients > 0
-  R.rich = rich.enabled(bufnr)
+  -- THREE DIFFERENT FACTS, and rich_tokens.lua's own status command exists
+  -- because they disagree. Keeping them separate here is not pedantry: on the
+  -- patched toolchain with `vim.g.lean_rich_tokens = false`, `enabled()` is
+  -- false while the legend is still rich and the rich tokens still arrive
+  -- (this server build does not gate its legend on the capability — measured,
+  -- see that file). Reporting "this legend has no propWorld" there would be
+  -- flatly untrue, and it is the one sentence in this display a user would
+  -- take at face value.
+  --
+  --   legend_rich  what the SERVER sent. nil when no client answered.
+  --   mode_rich    whether rich client behaviour RUNS, which a forced-off
+  --                setting turns off regardless of the legend.
+  R.legend_rich = nil
+  for _, c in ipairs(R.clients) do
+    if c.rich == true then
+      R.legend_rich = true
+    elseif c.rich == false and R.legend_rich == nil then
+      R.legend_rich = false
+    end
+  end
+  R.mode_rich = rich.enabled(bufnr)
+  R.forced = rich.override()
 
   -- ── the token ────────────────────────────────────────────────────────
   -- nil and {} are DIFFERENT answers and the display keeps them apart: nil
@@ -649,10 +672,24 @@ function M.report(win, bufnr, row, col)
   -- is applied to the cell being read. It composes underneath everything, so
   -- it goes in at the bottom — otherwise the simulation predicts no
   -- background and the real cell has one, and the diff blames a mystery.
+  --
+  -- 'cursorlineopt' is a comma list whose DEFAULT is "both", so a `:find`
+  -- for "line" misses the default outright — and the default is the only
+  -- case this block exists for. Matched by element instead: "line",
+  -- "screenline" and "both" all paint the line; a bare "number" paints only
+  -- the number column and must not count.
+  local function paints_line()
+    for _, o in ipairs(vim.split(vim.wo[win].cursorlineopt, ",", { trimempty = true })) do
+      if o == "line" or o == "screenline" or o == "both" then
+        return true
+      end
+    end
+    return false
+  end
   if
     vim.wo[win].cursorline
     and vim.api.nvim_win_get_cursor(win)[1] - 1 == row
-    and vim.wo[win].cursorlineopt:find("line") ~= nil
+    and paints_line()
   then
     add("window", "CursorLine", nil, -1, "the cursor's line, drawn under everything")
   end
@@ -811,11 +848,19 @@ function M.render(R)
     put("  The server classifies identifiers; punctuation, whitespace and")
     put("  notation atoms it does not tokenise fall through to the syntax file.")
   end
-  if R.attached and not R.rich then
-    put()
+  -- Gated on the LEGEND, not on the mode. See the note in M.report().
+  if R.attached and R.legend_rich == false then
+    gap()
     put("  This legend has no `propWorld`, so no world/level classification")
     put("  arrives and the `@lean.*` grid cannot apply. `:LeanRichTokens status`")
     put("  reports which toolchain elan resolved.")
+  elseif R.attached and R.legend_rich and R.forced == false then
+    gap()
+    put("  NOTE `vim.g.lean_rich_tokens = false` — rich client behaviour is off,")
+    put("  and the legend above is rich ANYWAY. This server build does not gate")
+    put("  its legend on the capability, so the rich tokens keep arriving and")
+    put("  everything in sections 1 to 3 is real. What the setting turned off is")
+    put("  the capability on the wire, not the classification.")
   end
 
   for i, tok in ipairs(R.tokens) do
@@ -836,6 +881,7 @@ function M.render(R)
     if #names == 0 then
       put(("  %-11s %s"):format("modifiers", "(none)"))
     end
+    local surprises = {}
     for j, m in ipairs(names) do
       put(
         ("  %-11s %-24s %s"):format(
@@ -844,6 +890,25 @@ function M.render(R)
           M.MOD_GLOSS[m] or "(no gloss for this name — please add one)"
         )
       )
+      if M.MOD_NEVER_SET[m] then
+        surprises[#surprises + 1] = m
+      end
+    end
+    -- The seven standard LSP modifiers NAMES.md records as kept for legend
+    -- compatibility and NEVER SET. Seeing one on a real token is not a
+    -- cosmetic surprise: it means the server's vocabulary changed under this
+    -- config, and every gloss and grouping here was written against the old
+    -- meaning. Say so at the point of use rather than leaving the reader to
+    -- notice that a modifier's gloss says it cannot happen.
+    if #surprises > 0 then
+      put()
+      put(
+        ("  !! %s: NAMES.md says this server never sets %s. It just did, so the"):format(
+          table.concat(surprises, ", "),
+          #surprises > 1 and "these" or "this"
+        )
+      )
+      put("     legend's meaning has changed and the glosses above may be stale.")
     end
     local s = M.sentence(tok.type, tok.modifiers)
     put()

@@ -1456,6 +1456,103 @@ T["lean"]["inspector: the composition model matches the rules it teaches"] = fun
   expect.equality(got.ignored, "syntax")
 end
 
+-- The seven standard LSP modifiers NAMES.md records as "kept for legend
+-- compatibility and never set". The module flags a token that carries one,
+-- because that means the server's vocabulary moved and every gloss in the
+-- file was written against the old meaning. Three ways that can rot: a name
+-- drops out of the legend, a name gains a real gloss without leaving the
+-- never-set table, or a real modifier is wrongly listed as never-set.
+T["lean"]["inspector: the never-set modifiers are consistent with the legend"] = function()
+  need_legend_src()
+  local _, mods = lean_legend()
+  local got = ins([[
+    local never, glossed_never = {}, {}
+    for k in pairs(M.MOD_NEVER_SET) do never[#never + 1] = k end
+    -- Which names carry the never-set gloss, whatever the table says.
+    local NEVER_TEXT = M.MOD_GLOSS.definition
+    for k, v in pairs(M.MOD_GLOSS) do
+      if v == NEVER_TEXT then glossed_never[#glossed_never + 1] = k end
+    end
+    table.sort(never) table.sort(glossed_never)
+    return { never = never, glossed_never = glossed_never,
+             text = NEVER_TEXT,
+             -- ...and none of them may occupy a slot in the display order
+             -- ahead of a modifier that is actually sent.
+             ordered = (function()
+               local out = {}
+               for k in pairs(M.MOD_NEVER_SET) do
+                 if (M.MOD_ORDER[k] or 0) < (M.MOD_ORDER.defaultLibrary or 0) then
+                   out[#out + 1] = k
+                 end
+               end
+               table.sort(out)
+               return out
+             end)() }
+  ]])
+  expect.equality(got.never, {
+    "abstract", "async", "definition", "documentation", "modification",
+    "readonly", "static",
+  })
+  -- The table and the glosses must name exactly the same seven; a name in one
+  -- and not the other is the display saying two different things about it.
+  expect.equality(got.glossed_never, got.never)
+  expect.equality(got.text:find("never set by this server", 1, true) ~= nil, true)
+  expect.equality(got.ordered, {})
+  -- Every one must still be IN the legend — that is what "kept for
+  -- compatibility" means, and if one were dropped the flag could never fire.
+  local absent = {}
+  for _, k in ipairs(got.never) do
+    if not mods[k] then
+      table.insert(absent, k)
+    end
+  end
+  expect.equality(absent, {})
+end
+
+-- 'cursorlineopt' DEFAULTS to "both", so a substring test for "line" misses
+-- the default outright — which is the only configuration the synthetic
+-- CursorLine layer exists to explain. Latent when it was written (this config
+-- has 'cursorline' off), which is exactly why it needs a test rather than an
+-- observation.
+T["lean"]["inspector: CursorLine is recognised under every cursorlineopt"] = function()
+  local got = ins([[
+    local prev_win = vim.api.nvim_get_current_win()
+    vim.cmd("new")
+    local w, b = vim.api.nvim_get_current_win(), vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(b, 0, -1, false, { "abc" })
+    vim.api.nvim_win_set_cursor(w, { 1, 1 })
+    local out = {}
+    local function seen(cul, opt)
+      vim.wo[w].cursorline = cul
+      vim.wo[w].cursorlineopt = opt
+      local R = M.report(w, b, 0, 1)
+      for _, L in ipairs(R.layers) do
+        if L.group == "CursorLine" then return true end
+      end
+      return false
+    end
+    out["off"] = seen(false, "both")
+    out["both"] = seen(true, "both")          -- the DEFAULT
+    out["line"] = seen(true, "line")
+    out["screenline"] = seen(true, "screenline")
+    out["number"] = seen(true, "number")      -- paints the gutter only
+    out["number,line"] = seen(true, "number,line")
+    vim.cmd("bwipeout!")
+    if vim.api.nvim_win_is_valid(prev_win) then
+      vim.api.nvim_set_current_win(prev_win)
+    end
+    return out
+  ]])
+  expect.equality(got["off"], false)
+  expect.equality(got["both"], true)
+  expect.equality(got["line"], true)
+  expect.equality(got["screenline"], true)
+  -- 'number' paints the number column, not the line: it must NOT be credited
+  -- with a background on the token's cell.
+  expect.equality(got["number"], false)
+  expect.equality(got["number,line"], true)
+end
+
 -- GOTCHAS A4: `nvim_get_hl` cannot tell an undefined group from a cleared one
 -- from a typo, so `defined` here means one thing only — "resolves to at least
 -- one attribute that affects the rendered cell". A cterm-only definition must
