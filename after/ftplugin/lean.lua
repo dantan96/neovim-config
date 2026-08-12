@@ -64,8 +64,20 @@ vim.wo[0][0].foldlevel = 99
 --
 -- The bufnr filter is not optional: vim.lsp.inlay_hint.enable(true) with no
 -- filter sets a GLOBAL flag and enables hints in every loaded buffer.
+--
+-- Applied ONCE PER BUFFER, not on every run of this file. An ftplugin re-runs
+-- on every :edit of the same buffer — including :edit! and the automatic
+-- reload after an external write (a `lake build` touching the file) — so an
+-- unconditional enable() here silently reverted any \h toggle the user had
+-- made: the toggle appeared to work and then quietly stopped holding. A
+-- buffer-local flag is the right memory for this, because :edit reloads a
+-- buffer's CONTENTS without destroying the buffer, so `b:` variables survive
+-- exactly the event that was undoing the toggle.
 local bufnr = vim.api.nvim_get_current_buf()
-vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+if not vim.b[bufnr].lean_inlay_hints_defaulted then
+  vim.b[bufnr].lean_inlay_hints_defaulted = true
+  vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+end
 
 -- Primed names (`h'`, `ih₂'`) are pervasive in Lean and mathlib, so `w`, `*`
 -- and completion should treat the apostrophe as part of the identifier.
