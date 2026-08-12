@@ -106,6 +106,25 @@ Two rules that are not obvious:
 | `\h` | Toggle inlay hints for this buffer (on by default) |
 | `[d` `]d` | Previous / next diagnostic |
 
+## Messages — the whole-file census
+
+The infoview shows the diagnostics on the **current line** only, so "six
+`sorry`s and two real errors — am I done?" is otherwise a scroll.
+
+| Keys | Action |
+|------|--------|
+| `\q` | Every message in **this file** → location list (`:LeanMessages`) |
+| `\Q` | Every message in **every buffer** → quickfix (`:LeanAllMessages`) |
+
+The location list's title carries the tally VS Code puts in its All Messages
+header — `Lean messages — 6 warnings, 2 errors`. `quicker.nvim` decorates
+both lists: `>` expands context, `<` collapses, and the list is editable.
+
+Two keys and not one because they are genuinely different, and the difference
+is invisible at the call site: `vim.diagnostic.setqflist({ bufnr = 0 })` does
+**not** scope to a buffer — `setqflist` has no `bufnr` option and ignores the
+key, so it always gathers every buffer.
+
 `grn` `gra` `grr` `gri` `grt` are Neovim's own LSP maps and work here like
 anywhere else. They used to be dead: mini.operators' replace operator owned the
 `gr` prefix and its setup **deletes** those five built-ins. The operator now
@@ -245,6 +264,7 @@ indentation. Every fold starts open.
 | `:LeanGotoInfoview` | Jump into the infoview |
 | `:LeanModuleImports` / `:LeanModuleImportedBy` | Import trees (`\mi` / `\mI`) |
 | `:LeanCopyModuleName` | This file's dotted module name, to the clipboard (`\y`) |
+| `:LeanMessages` / `:LeanAllMessages` | Diagnostic census (`\q` / `\Q`) |
 | `:Telescope loogle` | Search mathlib by type signature (`\ll`, needs network) |
 | `:Telescope lean_abbreviations` | The `\…` table, searchable (`\la`) |
 

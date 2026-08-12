@@ -123,6 +123,8 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>lw", desc = "Workspace symbols (by name)" },
     { mode = "n", keys = "<LocalLeader>la", desc = "Unicode abbreviations" },
     { mode = "n", keys = "<LocalLeader>y", desc = "Yank module name" },
+    { mode = "n", keys = "<LocalLeader>q", desc = "Messages in this file" },
+    { mode = "n", keys = "<LocalLeader>Q", desc = "Messages in all buffers" },
   },
 }
 
@@ -211,6 +213,24 @@ local module_name = require("config.lean.module_name")
 map("<LocalLeader>y", module_name.copy, "Yank module name")
 vim.api.nvim_buf_create_user_command(0, "LeanCopyModuleName", module_name.copy, {
   desc = "Copy this file's dotted Lean module name to the clipboard",
+})
+
+-- ── \q / \Q · the message census ──────────────────────────────────────────
+-- VS Code's "All Messages" (#1) and "Problems" (#37). The infoview shows the
+-- CURRENT LINE's diagnostics only, so "how many sorries and how many real
+-- errors are left in this exercise?" has, until now, been a scroll.
+--
+-- Two keys, not one, because they are two audit rows and the difference is
+-- invisible at the call site: `vim.diagnostic.setqflist` IGNORES a `bufnr`
+-- key. See the header of config.lean.messages.
+local messages = require("config.lean.messages")
+map("<LocalLeader>q", messages.file, "Messages in this file")
+map("<LocalLeader>Q", messages.workspace, "Messages in all buffers")
+vim.api.nvim_buf_create_user_command(0, "LeanMessages", messages.file, {
+  desc = "Every diagnostic in this file, in the location list",
+})
+vim.api.nvim_buf_create_user_command(0, "LeanAllMessages", messages.workspace, {
+  desc = "Every diagnostic in every buffer, in the quickfix list",
 })
 
 -- Lean cheatsheet. Built as a scratch buffer rather than :edit-ing the file,

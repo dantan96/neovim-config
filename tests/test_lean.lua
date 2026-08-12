@@ -1395,6 +1395,99 @@ T["module name"]["declines rather than inventing a name"] = function()
   expect.equality(err("/Users/dan/scratch/Foo.lean", nil):find("not inside") ~= nil, true)
 end
 
+-- ── \q / \Q · the message census (parity audit #1 and #37) ─────────────
+-- The interesting case is the ROADMAP'S TRAP, and it is the reason these two
+-- are separate keys: research/12-parity-roadmap.md §3 item 3 prescribes
+-- `vim.diagnostic.setqflist({ bufnr = 0 })` for the whole-FILE census, and
+-- `setqflist` has no `bufnr` option — `set_list()` leaves the buffer filter
+-- nil whenever it is not building a location list
+-- (runtime/lua/vim/diagnostic.lua:1004-1015). Written that way, #1 would have
+-- shipped as #37 and passed any single-buffer test.
+--
+-- Diagnostics and list windows work perfectly well headless, so this runs in
+-- the parent — no child, no Lean server, no plugins.
+T["messages"] = new_set()
+
+local function two_buffers_with_diagnostics()
+  local ns = vim.api.nvim_create_namespace("test_lean_messages")
+  local a = vim.api.nvim_create_buf(true, true)
+  local b = vim.api.nvim_create_buf(true, true)
+  vim.api.nvim_buf_set_lines(a, 0, -1, false, { "one", "two", "three" })
+  vim.api.nvim_buf_set_lines(b, 0, -1, false, { "one", "two" })
+  local S = vim.diagnostic.severity
+  vim.diagnostic.set(ns, a, {
+    { lnum = 0, col = 0, message = "A-err", severity = S.ERROR },
+    { lnum = 1, col = 0, message = "A-warn1", severity = S.WARN },
+    { lnum = 2, col = 0, message = "A-warn2", severity = S.WARN },
+  })
+  vim.diagnostic.set(ns, b, {
+    { lnum = 0, col = 0, message = "B-err", severity = S.ERROR },
+  })
+  MiniTest.finally(function()
+    vim.diagnostic.reset(ns)
+    pcall(vim.cmd, "lclose")
+    pcall(vim.cmd, "cclose")
+    vim.fn.setqflist({})
+    vim.api.nvim_buf_delete(a, { force = true })
+    vim.api.nvim_buf_delete(b, { force = true })
+  end)
+  return a, b
+end
+
+T["messages"]["setqflist ignores bufnr — the trap that made these two keys"] = function()
+  local a = two_buffers_with_diagnostics()
+  vim.api.nvim_win_set_buf(0, a)
+  -- Exactly the call the roadmap prescribes.
+  vim.diagnostic.setqflist({ bufnr = a, open = false })
+  local msgs = {}
+  for _, item in ipairs(vim.fn.getqflist()) do
+    table.insert(msgs, item.text)
+  end
+  table.sort(msgs)
+  -- Non-vacuity: it gathered SOMETHING.
+  expect.equality(#msgs, 4)
+  -- ...and "something" includes the other buffer's diagnostic, which is the
+  -- whole point. If a future Neovim honours `bufnr`, this fails and
+  -- config.lean.messages can be simplified — that is a wanted failure.
+  expect.equality(vim.tbl_contains(msgs, "B-err"), true)
+end
+
+T["messages"]["file() is one buffer, workspace() is all of them"] = function()
+  local a = two_buffers_with_diagnostics()
+  local m = dofile(H.cfg .. "/lua/config/lean/messages.lua")
+  vim.api.nvim_win_set_buf(0, a)
+  local win = vim.api.nvim_get_current_win()
+
+  m.file()
+  local loc = {}
+  for _, item in ipairs(vim.fn.getloclist(win)) do
+    table.insert(loc, item.text)
+  end
+  table.sort(loc)
+  expect.equality(loc, { "A-err", "A-warn1", "A-warn2" })
+  -- The tally VS Code shows in the All Messages header.
+  expect.equality(vim.fn.getloclist(win, { title = 0 }).title, "Lean messages — 1 error, 2 warnings")
+  pcall(vim.cmd, "lclose")
+
+  vim.api.nvim_win_set_buf(0, a)
+  m.workspace()
+  expect.equality(#vim.fn.getqflist(), 4)
+  pcall(vim.cmd, "cclose")
+end
+
+T["messages"]["tally counts and pluralises"] = function()
+  local m = dofile(H.cfg .. "/lua/config/lean/messages.lua")
+  expect.equality(m.tally({ error = 0, warn = 0, info = 0, hint = 0, total = 0 }), "No messages")
+  expect.equality(
+    m.tally({ error = 1, warn = 0, info = 0, hint = 0, total = 1 }),
+    "1 error"
+  )
+  expect.equality(
+    m.tally({ error = 2, warn = 1, info = 0, hint = 3, total = 6 }),
+    "2 errors, 1 warning, 3 hints"
+  )
+end
+
 -- ── the coverage test_invariants.lua had to give up ────────────────────
 -- The PROBES list there deliberately has no probe.lean, because lean.nvim
 -- leaks the GLOBAL 'breakat' and the shared invariants child cannot survive it
@@ -1479,6 +1572,8 @@ local PARITY_MAPS = {
   { "\\la", "Unicode abbreviations" },
   -- Second wave, 2026-08-13: research/12-parity-roadmap.md §3 items 2, 3, 6.
   { "\\y", "Yank module name" },
+  { "\\q", "Messages in this file" },
+  { "\\Q", "Messages in all buffers" },
 }
 
 local parity_parametrize = {}
