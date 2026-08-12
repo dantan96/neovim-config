@@ -564,6 +564,21 @@ local function resolve(name, generated)
   return out
 end
 
+--- `resolve` for a group the generator DID produce. Its `generated` argument
+--- is non-nil, so its result is too — which is what `nvim_set_hl` needs, and
+--- what `resolve` alone cannot promise.
+---
+--- A separate name rather than a looser annotation on `resolve`: that
+--- function's nil path is real and deliberate (`apply_foreign_overrides`
+--- passes nil for a group the generator never made), and declaring it away
+--- would be a lie lua_ls then propagates into every caller as a fact.
+--- @param name string
+--- @param generated table
+--- @return table spec
+local function resolved(name, generated)
+  return resolve(name, generated) or generated
+end
+
 -- ── the derived palette ────────────────────────────────────────────────
 --- Every colour this file can produce, flat, so the whole palette is one
 --- table to read. Derived entries are computed here rather than in the style
@@ -789,7 +804,7 @@ local stats = { hits = 0, misses = 0 }
 --- picker can show "generated X, overridden to Y" for the same group.
 local function define(name, spec)
   specs[name] = spec
-  vim.api.nvim_set_hl(0, name, resolve(name, spec))
+  vim.api.nvim_set_hl(0, name, resolved(name, spec))
 end
 
 --- What a group the generator does NOT produce looked like before we first
@@ -1018,7 +1033,7 @@ end
 --- without recomputing the generator. What every override mutation calls.
 function M.repaint()
   for name, spec in pairs(specs) do
-    vim.api.nvim_set_hl(0, name, resolve(name, spec))
+    vim.api.nvim_set_hl(0, name, resolved(name, spec))
   end
   apply_foreign_overrides()
   refresh_live_buffers()
@@ -1247,7 +1262,7 @@ function M.setup(o)
       -- the next `:colorscheme` and then vanish.
       define_grid()
       for name, spec in pairs(specs) do
-        vim.api.nvim_set_hl(0, name, resolve(name, spec))
+        vim.api.nvim_set_hl(0, name, resolved(name, spec))
       end
       -- The theme has just rebuilt its pins, so the remembered "before"
       -- values are stale. Re-capture them HERE — after catppuccin, before
