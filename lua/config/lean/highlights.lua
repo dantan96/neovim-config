@@ -337,6 +337,22 @@ local DEFAULTS = {
     -- to `true`, and drops it — so an already-saved palette keeps working
     -- and nobody inherits the lie.
     simp_marker = true,
+    -- NEW 2026-08-13. "Is this lemma mine, or Mathlib's?" — the highest-value
+    -- distinction the server sends and the one this file has listed as
+    -- unspent since it was written. Dan: "there should be a distinction
+    -- between mathlib lemmas and our lemmas — perhaps mathlib lemmas should
+    -- be underlined, or underdotted".
+    --
+    -- STRAIGHT underline, not dotted, and the choice is not cosmetic:
+    -- `@lean.ns.prefix` in namespace_hl.lua is underdotted and is applied to
+    -- the namespace prefix of a dotted reference — which is very nearly the
+    -- same population. `Iff.mp`, `Filter.ext`, `Nat.succ_le_of_lt` would
+    -- carry one mark meaning two things.
+    --
+    -- No `sp`: Neovim draws an `sp`-less underline in the foreground colour,
+    -- which is the quietest form available, and it makes the `fg ~= sp`
+    -- invariant unfalsifiable here rather than merely satisfied.
+    imported_underline = "underline",
     axiom_underline = "underdouble",
     auto_underline = "underdashed",
     auto_recolour = true, -- auto-implicits also take the alarm fg
@@ -464,7 +480,7 @@ function M.validate(raw)
         end
       end
     end
-    for _, k in ipairs({ "axiom_underline", "auto_underline" }) do
+    for _, k in ipairs({ "axiom_underline", "auto_underline", "imported_underline" }) do
       local v = raw.channels[k]
       if v ~= nil then
         if is_style(v) then
@@ -813,6 +829,30 @@ local function build_flags(o)
         -- Background, so it stacks with whatever underline the axiom or
         -- auto flags later claim, instead of competing for the one slot.
         spec.bg = M.palette.simp_bg
+      end,
+    }
+  end
+  -- THE UNDERLINE PRECEDENCE, and the reason `imported` is placed HERE.
+  --
+  -- One underline style per cell (B4), and three flags now want it. The last
+  -- matching entry in this list owns the slot, so the order below reads
+  -- imported < axiom < auto — i.e. `imported` YIELDS to both.
+  --
+  -- Rarity wins the slot. `defaultLibrary` is on the majority of the
+  -- identifiers in a Mathlib-importing file (258 of 1,189 tokens in MIL C09
+  -- S01, and 36 of the 50 `theorem` tokens in HighlightGallery), while
+  -- `axiom` and `auto` are rare AND urgent: "this rests on nothing" and "the
+  -- elaborator bound this name, you did not" must not be silently overwritten
+  -- by a mark meaning "imported". `Classical.choice` is exactly that
+  -- collision and it is a real constant, not a constructed case.
+  if c.imported_underline ~= "none" then
+    flags[#flags + 1] = {
+      "imported",
+      function(_, mods)
+        return mods.defaultLibrary
+      end,
+      function(spec)
+        set_underline(spec, c.imported_underline, nil)
       end,
     }
   end
@@ -1386,6 +1426,7 @@ local ANCHOR_GLOSS = {
 }
 local SUFFIX_GLOSS = {
   ["local"] = "bound here (binder list or tactic block), not imported",
+  imported = "from an import — Mathlib's, not one you proved in this file",
   simp = "carries @[simp] — simp already knows this one",
   axiom = "an axiom — it rests on nothing",
   auto = "auto-bound implicit — the elaborator bound it, you did not",
@@ -1465,7 +1506,11 @@ function M.warm()
     { "variable", { polyWorld = true, element = true, ["local"] = true } },
     { "variable", { polyWorld = true, sort = true, ["local"] = true } },
     { "theorem", { propWorld = true, element = true } },
+    { "theorem", { propWorld = true, element = true, defaultLibrary = true } },
     { "theorem", { propWorld = true, element = true, simp = true } },
+    -- The collision that decides the underline precedence: `Classical.choice`
+    -- is imported AND an axiom, and the axiom mark has to survive.
+    { "axiom", { propWorld = true, element = true, defaultLibrary = true } },
     { "function", { propWorld = true, former = true } },
     { "function", { dataWorld = true, former = true } },
     { "function", { dataWorld = true, element = true } },
@@ -1549,15 +1594,13 @@ end
 -- off because of the budget, not because they are worthless. In rough order
 -- of value:
 --
---   defaultLibrary  "is this lemma mine, or Mathlib's?" — see the header.
---                   There WAS a one-line answer here: blend the foreground
---                   one notch toward `recede` for imported names. It is
---                   gone with the blend, and good riddance — a "one notch
---                   dimmer" version of every colour is the timid palette
---                   Dan rejected, applied a second time. The honest
---                   expressions left are a hue pair per world (expensive)
---                   or a style channel, and every style channel is spent.
---                   Genuinely open.
+--   defaultLibrary  SPENT, 2026-08-13. It is a straight underline; see
+--                   `channels.imported_underline`. The old note here said
+--                   every style channel was spent and the honest options
+--                   were a hue pair per world or nothing — that was wrong by
+--                   one, because moving `simp` to a background had already
+--                   freed the underline slot and only `axiom` and `auto`
+--                   were competing for it.
 --   instance        a registered instance, as opposed to a plain def.
 --   irreducible     `simp` and `rw` will not unfold it, which is exactly
 --                   the surprise that costs a reader ten minutes.

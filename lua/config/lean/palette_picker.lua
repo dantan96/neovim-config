@@ -361,6 +361,12 @@ local function generator_rows()
     bool_row("former → bold", { "channels", "former_bold" }, "the head of a type expression"),
     bool_row("local → italic", { "channels", "local_italic" }, "bound here, not imported"),
     bool_row("simp → bg tint", { "channels", "simp_marker" }, "carries @[simp]"),
+    enum_row(
+      "imported → ",
+      { "channels", "imported_underline" },
+      HL.underline_styles,
+      "Mathlib's lemma, not yours — yields the slot to axiom and auto"
+    ),
     enum_row("axiom → ", { "channels", "axiom_underline" }, HL.underline_styles, "rests on nothing"),
     enum_row("auto → ", { "channels", "auto_underline" }, HL.underline_styles, "the elaborator bound it"),
     bool_row("auto → alarm fg", { "channels", "auto_recolour" }, "loud on purpose"),

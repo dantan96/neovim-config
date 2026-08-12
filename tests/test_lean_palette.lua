@@ -869,8 +869,13 @@ T["palette"]["the specimen exercises every category the palette distinguishes"] 
     ["@lean.data.element.local"] = "a data local",
     ["@lean.data.sort.local"] = "a type variable",
     ["@lean.prop.former"] = "a Set-valued definition",
-    ["@lean.prop.element.simp"] = "a simp lemma",
-    ["@lean.prop.element.axiom"] = "an axiom reference",
+    -- Both carry `.imported` as well as of the 2026-08-13 retune: every
+    -- specimen lemma is Mathlib's, and `defaultLibrary` is now a channel.
+    -- The axiom one is the underline-precedence case in the flesh —
+    -- `imported` sets a straight underline and `axiom` must take the slot
+    -- back for its double.
+    ["@lean.prop.element.simp.imported"] = "a simp lemma",
+    ["@lean.prop.element.imported.axiom"] = "an axiom reference",
     ["@lean.poly.sort.local"] = "a sort-polymorphic type variable",
     ["@lsp.type.leanSorryLike.lean"] = "a sorry",
   }

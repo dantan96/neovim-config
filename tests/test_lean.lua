@@ -1208,6 +1208,55 @@ T["lean"]["highlights: tactics are split off the keyword purple"] = function()
   expect.equality(got.tac.bold, true)
 end
 
+-- B4: HL_UNDERLINE_MASK is three bits, so a cell has exactly ONE underline
+-- style. Three flags now want it — `imported` (a Mathlib lemma), `axiom` and
+-- `auto` — and the order in `build_flags` is the whole of the precedence.
+--
+-- RARITY WINS THE SLOT. `defaultLibrary` is on the majority of identifiers in
+-- a Mathlib-importing file (258 of 1,189 tokens in MIL C09 S01); `axiom` and
+-- `auto` are rare and urgent. `Classical.choice` is imported AND an axiom,
+-- so this is a real constant and not a constructed case.
+--
+-- Asserting on the SPEC and not on `nvim_get_hl`: a style that lost still
+-- shows as absent either way, but a leftover `sp` from the loser only shows
+-- in the spec, and B4 records that a stray `sp` survives an overridden style
+-- and draws a coloured underline from a group that lost.
+T["lean"]["highlights: the underline precedence is imported < axiom < auto"] = function()
+  local got = hl([[
+    M.setup()
+    local function spec(ty, mods)
+      return M._specs()[M.group(ty, mods)]
+    end
+    local function styles(s)
+      local out = {}
+      for _, k in ipairs({ "underline", "undercurl", "underdouble",
+                           "underdotted", "underdashed" }) do
+        if s[k] then out[#out + 1] = k end
+      end
+      out[#out + 1] = "sp=" .. tostring(s.sp)
+      return table.concat(out, "+")
+    end
+    local prop = { propWorld = true, element = true }
+    local both = { propWorld = true, element = true, defaultLibrary = true }
+    return {
+      imported = styles(spec("theorem", both)),
+      axiom_only = styles(spec("axiom", prop)),
+      imported_axiom = styles(spec("axiom", both)),
+      imported_auto = styles(spec("variable",
+        { propWorld = true, element = true, defaultLibrary = true, autoImplicit = true })),
+      plain = styles(spec("theorem", prop)),
+    }
+  ]])
+  -- Non-vacuity: the plain cell must carry NO underline, or "the imported one
+  -- lost" and "nothing ever sets an underline" are the same observation.
+  expect.equality(got.plain, "sp=nil")
+  expect.equality(got.imported, "underline+sp=nil")
+  expect.equality(got.axiom_only, "underdouble+sp=#f38ba8")
+  -- ...and the collision. `Classical.choice` keeps "rests on nothing".
+  expect.equality(got.imported_axiom, "underdouble+sp=#f38ba8")
+  expect.equality(got.imported_auto, "underdashed+sp=nil")
+end
+
 -- The retune, stated as an invariant rather than as a list of hexes.
 --
 -- Dan, 2026-08-13: "making such a bright colour almost always bold as well
