@@ -1135,6 +1135,36 @@ local function ins(body)
   )
 end
 
+-- `@lean.*` is no longer the grid's private namespace: namespace_hl.lua
+-- synthesises `@lean.ns.prefix` at priority 129, ABOVE highlights.lua's 128,
+-- and after/syntax/lean.vim contributes `@lean.path.*`. The grid attribution
+-- must still name the grid cell — reporting a namespace-prefix mark as "the
+-- @lean.* grid" would be exactly the confident wrong answer this tool exists
+-- to prevent, and nothing about the output would look off.
+T["lean"]["inspector: the grid attribution ignores non-grid @lean.* marks"] = function()
+  local got = ins([[
+    local layers = {
+      { group = "leanConstant",       priority = 50 },
+      { group = "@lsp.type.theorem.lean", priority = 125 },
+      { group = "@lean.prop.element", priority = 128 },
+      { group = "@lean.ns.prefix",    priority = 129 },
+    }
+    local grid = M.grid_layer(layers)
+    return {
+      picked = grid and grid.group or "nil",
+      -- and it is nil, not a wrong guess, when only non-grid marks are there
+      none = (M.grid_layer({ { group = "@lean.ns.dot", priority = 129 },
+                             { group = "@lean.path.final", priority = 50 },
+                             { group = "@lean.binder.keyword", priority = 129 } })
+              or { group = "nil" }).group,
+      worlds = vim.tbl_count(M.GRID_WORLD),
+    }
+  ]])
+  expect.equality(got.picked, "@lean.prop.element")
+  expect.equality(got.none, "nil")
+  expect.equality(got.worlds, 3)
+end
+
 T["lean"]["inspector: <leader>K is buffer-local, not global"] = function()
   -- Buffer-local maps report the lhs with the leader already expanded.
   local got = child.lua_get([[(function()
