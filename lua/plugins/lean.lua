@@ -25,291 +25,177 @@
 -- also maplocalleader. They do not contend: expansion is insert-mode only,
 -- while the <LocalLeader> mappings are normal-mode.
 
-return {
-  {
-    "Julian/lean.nvim",
-    event = { "BufReadPre *.lean", "BufNewFile *.lean" },
-    dependencies = {
-      "nvim-lua/plenary.nvim",
-      "nvim-telescope/telescope.nvim", -- :Telescope loogle
-    },
-    -- Configured through vim.g.lean_config in `init`, NOT lazy's `opts`.
-    -- lean.nvim self-activates on load and reads this global; `opts` would make
-    -- lazy call require("lean").setup(), which is deprecated and warns:
-    --   "require(\"lean\").setup is deprecated, use vim.g.lean_config instead.
-    --    Feature will be removed in lean.nvim v2026.9.1"
-    -- `init` runs at startup, before the plugin loads on the event below, so
-    -- the global is in place by the time lean.nvim reads it.
-    --
-    -- blink.cmp's capabilities reach this server without being named here:
-    -- plugins/lsp.lua applies them via vim.lsp.config("*"), and lean.nvim
-    -- starts leanls through vim.lsp, so the "*" defaults merge in. Verified
-    -- by diffing the live client's completionList capability against
-    -- require("blink.cmp").get_lsp_capabilities() — they match exactly.
-    init = function()
-      vim.g.lean_config = {
-        mappings = true,
+-- Where lean.nvim comes from. On this machine it is a permanently local fork
+-- (decisions.md D15); on WorkBox and main, which share this tree through
+-- chezmoi, the fork does not exist and lazy fetches upstream as before. The
+-- decision, the path and the existence test all live in one module so nothing
+-- re-derives them — see lua/config/lean/fork.lua.
+local fork = require("config.lean.fork")
 
-        infoview = {
-          autoopen = true,
-          -- Always a side pane. The default is "auto", which only goes
-          -- vertical when `columns > 2.5 * lines` (infoview.lua:442) — an
-          -- aspect-ratio guess that lands on horizontal in an ordinary
-          -- ~100x50 window and silently flips layout when the terminal is
-          -- resized or the window is split. Pin it.
-          orientation = "vertical",
-          -- A FRACTION of the total columns, not a fixed count. lean.nvim
-          -- supports this natively: `res_dim` (infoview.lua:233) reads any
-          -- value < 1 as a proportion of `vim.o.columns` and any value >= 1
-          -- as a literal column count. 0.4 is ~55 columns at 137, which is
-          -- what the previous fixed value was tuned to.
-          --
-          -- The fraction alone is NOT enough — see the VimResized autocmd in
-          -- `init` below. It is applied once when the infoview is created and
-          -- upstream never recomputes it, so without that hook this tracks
-          -- the terminal size at startup and then never again.
-          width = 0.4,
-          -- Only consulted for horizontal infoviews, which the pin above
-          -- rules out; kept so removing the pin restores sane behaviour.
-          horizontal_position = "bottom",
-          indicators = "auto",
-        },
-
-        lsp = {
-          enhanced_handlers = { hover = true, diagnostics = true },
-          init_options = {
-            editDelay = 10,
-            hasWidgets = true,
-          },
-        },
-
-        abbreviations = {
-          enable = true,
-          leader = "\\",
-        },
-
-        -- Widget graphics render through the Kitty protocol, which Ghostty
-        -- speaks. SVG output additionally needs resvg on PATH (installed via
-        -- brew); raster images work without it.
-        graphics = { enabled = true },
-
-        goal_markers = { unsolved = " ⚒ ", accomplished = "🎉" },
-        progress_bars = { enable = true },
-        stderr = { enable = true },
-      }
-
-      -- Make the fractional `infoview.width` above actually track the
-      -- terminal. Upstream resolves the fraction ONCE, when the infoview is
-      -- created (infoview.lua:400), and the only VimResized handler it
-      -- installs re-renders pin CONTENT (tui.lua:1204) without touching the
-      -- window. The window also carries `winfixwidth` (infoview.lua:930), so
-      -- Neovim's own equalisation will not move it either. Net effect without
-      -- this hook: the width matches the terminal at startup and then drifts
-      -- permanently out of proportion after the first resize.
-      --
-      -- `infoview.reposition()` is public and recomputes from
-      -- `res_dim(options.width, vim.o.columns)` (infoview.lua:552), so it is
-      -- exactly the right call — no reimplementation of the sizing rule.
-      --
-      -- This lives in `init` rather than after/ftplugin/lean.lua deliberately:
-      -- tests/test_invariants.lua asserts that re-sourcing changes no autocmd
-      -- population, and an ftplugin runs once per buffer.
-      vim.api.nvim_create_autocmd("VimResized", {
-        group = vim.api.nvim_create_augroup("LeanInfoviewWidth", { clear = true }),
-        desc = "Re-resolve the Lean infoview's fractional width",
-        callback = function()
-          local ok, infoview = pcall(require, "lean.infoview")
-          -- Only meaningful once lean.nvim has loaded; it is lazy on
-          -- BufReadPre *.lean, so this fires as a no-op in every other buffer.
-          if ok and type(infoview.reposition) == "function" then
-            pcall(infoview.reposition)
-          end
-        end,
-      })
-
-      -- :LeanRichTokens and the legend sniffing behind it. Set up here rather
-      -- than in the plugin's `config`, for two reasons: after/lsp/leanls.lua
-      -- asks this module whether to advertise the capability, and that file is
-      -- read the moment lean.nvim calls vim.lsp.enable("leanls") — before any
-      -- `config` function would have run; and `:LeanRichTokens status` should
-      -- answer from a scratch buffer, not only after a .lean file has been
-      -- opened. `init` runs at startup, which satisfies both. Must precede the
-      -- line below for the first of those reasons.
-      require("config.lean.rich_tokens").setup()
-
-      -- :LeanSetupInfo — the pasteable half of VS Code's `Troubleshooting:
-      -- Show Setup Information` (parity #57). Global and registered here for
-      -- the same reason `:LeanRichTokens` is: "why is Lean not working here"
-      -- is asked before a .lean file has been opened. The load-bearing field
-      -- — which toolchain elan actually resolved — is `:LeanRichTokens
-      -- status`'s and is not duplicated; this adds OS/CPU/RAM, tool versions,
-      -- the project path and the installed-toolchain list as one Markdown
-      -- block on the clipboard.
-      require("config.lean.setup_info").setup()
-
-      -- Occurrence highlighting, which the server has always been able to
-      -- serve and nothing ever asked for. Set up here rather than in
-      -- after/ftplugin/lean.lua because it is autocmds, and that file must
-      -- define none — it re-runs on every :edit, and
-      -- tests/test_invariants.lua asserts the autocmd population is unchanged
-      -- by a re-source. `init` runs at startup, before lean.nvim itself
-      -- loads, which is early enough for the module's LspAttach hook to see
-      -- the first Lean file of the session.
-      require("config.lean.document_highlight").setup()
-
-      -- Namespace components, module paths and the keyword split. Same
-      -- placement and the same reason: it is autocmds (LspTokenUpdate and
-      -- ColorScheme), and after/ftplugin/lean.lua must define none. It also
-      -- has to be defined before the first Lean file is drawn, because
-      -- after/syntax/lean.vim links into the highlight groups it owns.
-      require("config.lean.namespace_hl").setup()
-    end,
-
-    -- Workaround for an upstream crash in `:Telescope loogle`.
-    --
-    -- lean/loogle.lua's search() returns `nil, err` when Loogle rejects a
-    -- query. lean.nvim's telescope finder only turns that into `{}` when
-    -- `#prompt > 4`; for a shorter prompt both guard branches are skipped and
-    -- it returns the nil straight into telescope, which calls ipairs() on it:
-    --
-    --   finders.lua:144: bad argument #1 to 'ipairs' (table expected, got nil)
-    --
-    -- The finder runs per keystroke, so this fires as soon as you type a short
-    -- prefix Loogle cannot parse — i.e. almost immediately. Verified directly:
-    -- loogle.search("abc") returns nil plus "unknown identifier 'abc'", while
-    -- "Nat" and "List.map" return tables.
-    --
-    -- Wrapping search() rather than the finder keeps the fix to one function
-    -- and leaves the notify/empty behaviour for long prompts untouched. The
-    -- pcall also covers search()'s error() on a non-200 status, which would
-    -- otherwise propagate out of the finder. Remove once upstream returns a
-    -- table unconditionally.
-    config = function()
-      -- ── Abbreviations outside Lean buffers ──────────────────────────────
-      -- Two things, both in lua/config/lean/abbreviations.lua and both
-      -- explained there: `\to` now expands in telescope prompts (parity #40,
-      -- verified in a pty-hosted TUI), and lean.nvim's `abbreviations.load()`
-      -- is patched so `:Telescope lean_abbreviations` (`\la`) stops throwing —
-      -- upstream resolves its JSON with `debug.getinfo(2)`, the CALLER's
-      -- frame, which is wrong for every caller outside `lua/lean/`.
-      --
-      -- Here rather than in `init`: both need lean.nvim itself, and this runs
-      -- exactly when it loads. Not in the ftplugin, which must define no
-      -- autocmds (tests/test_invariants.lua).
-      require("config.lean.abbreviations").setup()
-
-      -- ── satellite.nvim: whole-file elaboration progress ─────────────────
-      -- lean.nvim ships lua/lean/satellite.lua, a Satellite.Handler plotting
-      -- lean.progress onto the whole-document scrollbar — the thing the sign
-      -- column cannot do, because signs only exist for visible lines. Nothing
-      -- inside lean.nvim requires it (`grep -rn 'lean.satellite' lua/ plugin/`
-      -- in the plugin matches only its own header), so it is inert until asked
-      -- for. Requiring it here loads satellite as a side effect, which is the
-      -- correct order: satellite.handlers.init() runs at the FIRST RENDER and
-      -- only calls setup() on handlers registered before that point.
-      --
-      -- The setup() call afterwards is for the other order — satellite already
-      -- rendered once (it loads on VeryLazy) before the session's first Lean
-      -- file. Without it lean's handler is registered but never set up, which
-      -- costs the `leanProgressBar` highlight (so the marks are invisible) and
-      -- the progress-event refresh. Running it twice is harmless: the function
-      -- is a `nvim_create_augroup(..., {})` — i.e. clearing — plus a
-      -- tbl_deep_extend onto its own config.
-      --
-      -- AND A SHIM, because lean.nvim's handler does not currently run at all
-      -- against satellite's `main`. lean/satellite.lua:68 opens update() with
-      --
-      --     local pred = async.winbuf_pred(bufnr, winid)
-      --
-      -- but satellite moved winbuf_pred from `satellite.async` to
-      -- `satellite.util` in its commit fc9672c ("refactor: update async lib to
-      -- newer conventions") — its own diagnostic handler calls
-      -- `util.winbuf_pred` (handlers/diagnostic.lua:96). So the field is nil and
-      -- every render throws:
-      --
-      --     vim.schedule callback: .../lean/satellite.lua:68:
-      --       attempt to call field 'winbuf_pred' (a nil value)
-      --
-      -- Measured that way, not guessed: the traceback appeared in :messages the
-      -- moment a buffer long enough to need a scrollbar was opened, and the
-      -- handler's mark count sat at 0 throughout. Restoring the name onto the
-      -- module table is enough — lean/satellite.lua holds `async` as an upvalue
-      -- and indexes the field at call time, so this reaches it whichever module
-      -- loaded first. Guarded, so it disappears the day upstream fixes it.
-      --
-      -- The one thing not restored is the early abort: `async.ipairs` now takes
-      -- a single argument, so the `pred` lean passes as a second one is ignored
-      -- and its loop runs to completion instead of bailing when the buffer
-      -- changes underneath it. Harmless — the marks are recomputed on the next
-      -- render anyway — and not something to paper over from here.
-      local has_async, satellite_async = pcall(require, "satellite.async")
-      if has_async and satellite_async.winbuf_pred == nil then
-        local has_util, satellite_util = pcall(require, "satellite.util")
-        if has_util and type(satellite_util.winbuf_pred) == "function" then
-          satellite_async.winbuf_pred = satellite_util.winbuf_pred
-        end
-      end
-
-      local has_satellite, sat = pcall(require, "satellite.handlers")
-      if has_satellite then
-        pcall(require, "lean.satellite")
-        for _, handler in ipairs(sat.handlers or {}) do
-          if handler.name == "lean.nvim" and handler.setup then
-            pcall(
-              handler.setup,
-              require("satellite.config").user_config.handlers["lean.nvim"] or {},
-              require("satellite.view").schedule_refresh
-            )
-          end
-        end
-      end
-
-      local ok, loogle = pcall(require, "lean.loogle")
-      if not ok or type(loogle.search) ~= "function" then
-        return
-      end
-      local search = loogle.search
-      loogle.search = function(...)
-        local called, results, err = pcall(search, ...)
-        if not called then
-          return {}, tostring(results)
-        end
-        return results or {}, err
-      end
-
-      -- The finder has a second nil path, and it is the one that actually
-      -- fires: `if not prompt or prompt == '' then return nil end`, hit the
-      -- instant the picker opens with an empty prompt. Wrapping search()
-      -- cannot reach it, so wrap the extension too and guarantee the finder
-      -- it builds never hands telescope a nil. new_dynamic is swapped only
-      -- for the synchronous call that constructs the picker, then restored.
-      local tok, telescope = pcall(require, "telescope")
-      if not tok then
-        return
-      end
-      local eok, ext = pcall(function()
-        return telescope.extensions.loogle
-      end)
-      if not eok or type(ext) ~= "table" or type(ext.loogle) ~= "function" then
-        return
-      end
-      local picker = ext.loogle
-      ext.loogle = function(opts)
-        local finders = require("telescope.finders")
-        local new_dynamic = finders.new_dynamic
-        finders.new_dynamic = function(o)
-          local fn = o.fn
-          o.fn = function(prompt)
-            return fn(prompt) or {}
-          end
-          return new_dynamic(o)
-        end
-        local called, err = pcall(picker, opts)
-        finders.new_dynamic = new_dynamic
-        if not called then
-          error(err)
-        end
-      end
-    end,
+local spec = {
+  "Julian/lean.nvim",
+  event = { "BufReadPre *.lean", "BufNewFile *.lean" },
+  dependencies = {
+    "nvim-lua/plenary.nvim",
+    "nvim-telescope/telescope.nvim", -- :Telescope loogle
   },
+  -- Configured through vim.g.lean_config in `init`, NOT lazy's `opts`.
+  -- lean.nvim self-activates on load and reads this global; `opts` would make
+  -- lazy call require("lean").setup(), which is deprecated and warns:
+  --   "require(\"lean\").setup is deprecated, use vim.g.lean_config instead.
+  --    Feature will be removed in lean.nvim v2026.9.1"
+  -- `init` runs at startup, before the plugin loads on the event below, so
+  -- the global is in place by the time lean.nvim reads it.
+  --
+  -- blink.cmp's capabilities reach this server without being named here:
+  -- plugins/lsp.lua applies them via vim.lsp.config("*"), and lean.nvim
+  -- starts leanls through vim.lsp, so the "*" defaults merge in. Verified
+  -- by diffing the live client's completionList capability against
+  -- require("blink.cmp").get_lsp_capabilities() — they match exactly.
+  init = function()
+    vim.g.lean_config = {
+      mappings = true,
+
+      infoview = {
+        autoopen = true,
+        -- Always a side pane. The default is "auto", which only goes
+        -- vertical when `columns > 2.5 * lines` (infoview.lua:442) — an
+        -- aspect-ratio guess that lands on horizontal in an ordinary
+        -- ~100x50 window and silently flips layout when the terminal is
+        -- resized or the window is split. Pin it.
+        orientation = "vertical",
+        -- Goal states are wide (mathlib hypotheses run long), so give the
+        -- infoview a fixed column count rather than a fraction of a window
+        -- that may itself already be split.
+        -- A FRACTION of total columns, not a fixed count. lean.nvim's
+        -- `res_dim` (infoview.lua:233) reads any value < 1 as a proportion of
+        -- `vim.o.columns`. 0.4 is ~55 columns at 137 -- the width the previous
+        -- fixed value was tuned to. Tracked on resize by the autocmd below.
+        width = 0.4,
+        -- Only consulted for horizontal infoviews, which the pin above
+        -- rules out; kept so removing the pin restores sane behaviour.
+        horizontal_position = "bottom",
+        indicators = "auto",
+      },
+
+      lsp = {
+        enhanced_handlers = { hover = true, diagnostics = true },
+        init_options = {
+          editDelay = 10,
+          hasWidgets = true,
+        },
+      },
+
+      abbreviations = {
+        enable = true,
+        leader = "\\",
+      },
+
+      -- Widget graphics render through the Kitty protocol, which Ghostty
+      -- speaks. SVG output additionally needs resvg on PATH (installed via
+      -- brew); raster images work without it.
+      graphics = { enabled = true },
+
+      goal_markers = { unsolved = " ⚒ ", accomplished = "🎉" },
+      progress_bars = { enable = true },
+      stderr = { enable = true },
+    }
+
+    -- :LeanRichTokens and the legend sniffing behind it. Set up here rather
+    -- than in the plugin's `config`, for two reasons: after/lsp/leanls.lua
+    -- asks this module whether to advertise the capability, and that file is
+    -- read the moment lean.nvim calls vim.lsp.enable("leanls") — before any
+    -- `config` function would have run; and `:LeanRichTokens status` should
+    -- answer from a scratch buffer, not only after a .lean file has been
+    -- opened. `init` runs at startup, which satisfies both. Must precede the
+    -- line below for the first of those reasons.
+    -- Make the fractional `infoview.width` above track the terminal.
+    -- Upstream resolves the fraction once, at infoview creation
+    -- (infoview.lua:400); its only VimResized handler re-renders pin CONTENT
+    -- (tui.lua:1204) without touching the window, and the window carries
+    -- `winfixwidth` (infoview.lua:930) so Neovim will not equalise it either.
+    -- Without this the width is right at startup and permanently wrong after
+    -- the first resize. Verified live: 80 -> 120 columns moves it 32 -> 48;
+    -- deleting this autocmd leaves it at 32 while the code window grows.
+    --
+    -- In `init` rather than the ftplugin: tests/test_invariants.lua asserts a
+    -- re-source changes no autocmd population.
+    vim.api.nvim_create_autocmd("VimResized", {
+      group = vim.api.nvim_create_augroup("LeanInfoviewWidth", { clear = true }),
+      desc = "Re-resolve the Lean infoview's fractional width",
+      callback = function()
+        local ok, iv = pcall(require, "lean.infoview")
+        if ok and type(iv.reposition) == "function" then
+          pcall(iv.reposition)
+        end
+      end,
+    })
+
+    require("config.lean.rich_tokens").setup()
+
+    -- Occurrence highlighting, which the server has always been able to
+    -- serve and nothing ever asked for. Set up here rather than in
+    -- after/ftplugin/lean.lua because it is autocmds, and that file must
+    -- define none — it re-runs on every :edit, and
+    -- tests/test_invariants.lua asserts the autocmd population is unchanged
+    -- by a re-source. `init` runs at startup, before lean.nvim itself
+    -- loads, which is early enough for the module's LspAttach hook to see
+    -- the first Lean file of the session.
+    require("config.lean.document_highlight").setup()
+  end,
+
+  config = function()
+    -- Three lean.nvim defects this config used to patch from the outside.
+    -- They are real in-tree fixes in the fork now (FORK-CHANGES.md M1–M3);
+    -- this call is a no-op there and reapplies the old wrappers on machines
+    -- that fell back to upstream. Must run before anything requires
+    -- lean.satellite or builds the Loogle picker.
+    require("config.lean.upstream_fixes").setup()
+
+    -- ── satellite.nvim: whole-file elaboration progress ─────────────────
+    -- lean.nvim ships lua/lean/satellite.lua, a Satellite.Handler plotting
+    -- lean.progress onto the whole-document scrollbar — the thing the sign
+    -- column cannot do, because signs only exist for visible lines. Nothing
+    -- inside lean.nvim requires it (`grep -rn 'lean.satellite' lua/ plugin/`
+    -- in the plugin matches only its own header), so it is inert until asked
+    -- for. Requiring it here loads satellite as a side effect, which is the
+    -- correct order: satellite.handlers.init() runs at the FIRST RENDER and
+    -- only calls setup() on handlers registered before that point.
+    --
+    -- The setup() call afterwards is for the other order — satellite already
+    -- rendered once (it loads on VeryLazy) before the session's first Lean
+    -- file. Without it lean's handler is registered but never set up, which
+    -- costs the `leanProgressBar` highlight (so the marks are invisible) and
+    -- the progress-event refresh. Running it twice is harmless: the function
+    -- is a `nvim_create_augroup(..., {})` — i.e. clearing — plus a
+    -- tbl_deep_extend onto its own config.
+
+    -- The satellite shim that used to sit here is now a real in-tree fix in
+    -- the fork (FORK-CHANGES.md M3) and, for machines without it, lives in
+    -- config.lean.upstream_fixes, which the call at the top of this function
+    -- makes.
+
+    local has_satellite, sat = pcall(require, "satellite.handlers")
+    if has_satellite then
+      pcall(require, "lean.satellite")
+      for _, handler in ipairs(sat.handlers or {}) do
+        if handler.name == "lean.nvim" and handler.setup then
+          pcall(
+            handler.setup,
+            require("satellite.config").user_config.handlers["lean.nvim"] or {},
+            require("satellite.view").schedule_refresh
+          )
+        end
+      end
+    end
+  end,
 }
+
+-- The pin itself. Assigned rather than always-present-and-maybe-nil: lazy.nvim
+-- tells a managed plugin from a local one by whether the `dir` key exists at
+-- all, so a nil value is not the same as no key.
+if fork.enabled() then
+  spec.dir = fork.dir()
+end
+
+return { spec }
