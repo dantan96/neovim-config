@@ -20,7 +20,10 @@ end
 
 T["shebang"]["all shebangs start with #!"] = function()
   for ft, sb in pairs(shebang.shebangs) do
-    expect.equality(sb:match("^#!") ~= nil, true)
+    -- Pair the filetype into the assertion rather than dropping it: the
+    -- table is iterated in arbitrary order, so a bare `true`/`false` failure
+    -- would not say which entry was malformed.
+    expect.equality({ ft, sb:match("^#!") ~= nil }, { ft, true })
   end
 end
 

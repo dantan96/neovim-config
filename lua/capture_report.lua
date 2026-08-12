@@ -48,7 +48,10 @@ end
 -- • If the group ends in ".<ft>" and has no colour, try the unsuffixed form.
 -- • Then follow `link` pointers until a colour is found (guards against cycles).
 local function hl(name)
-  local root, group = name, name -- root for the “link” column
+  -- Only `group` is kept: it starts as the given name and is rewritten in
+  -- place when the dot-suffix is stripped, and it is what the "link" column
+  -- reports. A parallel `root` local was declared here and never read.
+  local group = name
   local fg, bg, attrs
   local seen = {}
 
@@ -67,8 +70,11 @@ local function hl(name)
       if h.underline then table.insert(flags, "underline") end
       attrs = table.concat(flags, " ")
     end
-    fg = fg or h.fg or h.foreground
-    bg = bg or h.bg or h.background
+    -- `fg`/`bg` only. The `foreground`/`background` fallbacks that used to be
+    -- here belonged to nvim_get_hl_by_name, which this function does not
+    -- call; nvim_get_hl has never returned those keys, so they were dead.
+    fg = fg or h.fg
+    bg = bg or h.bg
     return h.link
   end
 
