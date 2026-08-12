@@ -141,7 +141,7 @@ T["palette"]["changing a world hue moves that world and no other"] = function()
       before[g] = string.format("#%06x", h.fg)
     end
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.prop = "#00ff00"
+    inputs.hues.prop_element = "#00ff00"
     HL.apply(inputs)
     local after = {}
     for g in pairs(before) do
@@ -230,7 +230,9 @@ T["palette"]["apply regenerates the lazily-built variants, not just the grid"] =
     HL.setup()
     local g = HL.group("variable", { propWorld = true, element = true, ["local"] = true })
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.prop = "#123456"
+    inputs.hues.prop_element = "#123456"  -- the CELL key, not the family anchor: a hand-picked
+    -- cell shadows its anchor, so setting `hues.prop` alone would
+    -- (correctly) move nothing. See the fallback case below.
     HL.apply(inputs)
     local h = vim.api.nvim_get_hl(0, { name = g, link = false })
     return {
@@ -292,7 +294,9 @@ T["palette"]["an override survives a later generator change"] = function()
     local g, sib = "@lean.prop.element", "@lean.prop.sort"
     HL.set_override(g, { fg = "#ff00ff" })
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.prop = "#00ff00"
+    inputs.hues.prop_element = "#00ff00"  -- the CELL key, not the family anchor: a hand-picked
+    -- cell shadows its anchor, so setting `hues.prop` alone would
+    -- (correctly) move nothing. See the fallback case below.
     HL.apply(inputs)
     local a = vim.api.nvim_get_hl(0, { name = g, link = false })
     local b = vim.api.nvim_get_hl(0, { name = sib, link = false })
@@ -660,7 +664,9 @@ T["palette"]["changing one input repaints only the tokens it owns"] = function()
     end
     local before = snapshot()
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.data = "#00ff00"
+    inputs.hues.data_element = "#00ff00"  -- the CELL key, not the family anchor: a hand-picked
+    -- cell shadows its anchor, so setting `hues.prop` alone would
+    -- (correctly) move nothing. See the fallback case below.
     HL.apply(inputs)
     local after = snapshot()
     local moved, stayed_prop = {}, 0
@@ -723,6 +729,32 @@ end
 T["palette"]["the picker registers its command"] = function()
   child.lua([[require("config.lean.palette_picker").setup()]])
   expect.equality(H.cmd_exists(child, "LeanPalette"), true)
+end
+
+-- Every cell colour is hand-picked, which SHADOWS the family anchor. The
+-- anchor is not dead: it is the base for the fallback that serves any cell
+-- whose own colour has been cleared. Without this case that fallback is
+-- unreachable code no test would notice rotting.
+T["palette"]["a cleared cell falls back to its family anchor"] = function()
+  local got = pal([==[
+    HL.setup()
+    local inputs = vim.deepcopy(HL.opts)
+    inputs.hues.data_sort = nil
+    inputs.hues.data_sort_local = nil
+    inputs.hues.data = "#00ff00"
+    HL.apply(inputs)
+    local function f(n)
+      local h = vim.api.nvim_get_hl(0, { name = n, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    return { picked = f("@lean.data.element"), fell_back = f("@lean.data.sort") }
+  ]==])
+  -- the still-picked sibling is untouched by the anchor move
+  expect.equality(got.picked, "#fab387")
+  -- and the cleared cell is now driven by the anchor rather than by its
+  -- deleted pick
+  expect.no_equality(got.fell_back, "#eba0ac")
+  expect.no_equality(got.fell_back, "nil")
 end
 
 return T

@@ -21,97 +21,59 @@
 -- ─────────────────────────────────────────────────────────────────────────
 -- THE DESIGN PRINCIPLE, AND WHAT IT BUYS
 -- ─────────────────────────────────────────────────────────────────────────
--- Dan's rule, in his words:
+-- REWRITTEN 2026-08-13. The previous version of this header described a
+-- deliberately conservative palette: three hues, two computed brightnesses,
+-- and the two commonest things on screen pinned so they would NOT move. Dan
+-- rejected it outright, and the rejection is the useful part:
 --
---   "the most obviously different things are the ones that do not actually
---    need to have radically different hues; it is often those things that
---    are most similar, however, that do."
+--   "SO MUCH FUCKING PURPLE"  ·  "Too much blue"
+--   "Where is the magenta, or the bright/hot pink ... from my proven spthy
+--    syntax highlighting??"
+--   "Where are the fucking underlines? And background colours?"
+--   "FUCK any blending. It's HORSESHIT."
 --
--- Operationalised: spend contrast where confusion is POSSIBLE, and nowhere
--- else. The measured worst case is the binder list. In
+-- Two errors, named so they are not repeated:
 --
---     theorem two_le {m : ℕ} (h0 : m ≠ 0) (h1 : m ≠ 1) : 2 ≤ m
+-- 1. THE ANCHORS WERE WRONG TO KEEP. Blue for proofs and flamingo for data
+--    were held fixed "so the commonest things do not move" — a continuity
+--    rule (D6) from an earlier complaint about UNREQUESTED recolouring.
+--    Applying it to a task whose whole purpose is to move colours is
+--    backwards, and it is why the result read as the old palette with trim.
 --
--- `m`, `h0` and `h1` are all `@lsp.type.variable.lean`, which links to
--- `Identifier`, which is `#f2cdcd`. Three characters apart, rendering
--- identically — and one of them is a PROOF while the others are DATA. That
--- is where the contrast goes.
+-- 2. THE VIVID COLOURS WENT TO THE RAREST CELLS. Magenta went to `class`,
+--    pink to predicates — two of the least frequent things in a file — while
+--    keywords, proofs and data locals kept the hues they already had. Spend
+--    the gamut where the SCREEN is, not only where the ambiguity is.
 --
--- Everything at the other end of the scale gets nothing:
---   * binder annotation — `{x}` / `⦃x⦄` / `[Inst α]` are already brackets;
---   * `declaration` — the binding occurrence is already after `theorem`;
---   * `private`, `protected`, `noncomputable`, `reducible`, `irreducible`,
---     `abbrev` — an adjacent keyword or attribute already says so;
---   * `matchPattern`, `elabWithoutExpectedType` — no reader question is
---     attached to either;
---   * `tactic` vs `keyword` — a tactic is always in tactic position, so `rw`
---     and `fun` are not confusable. Both stay mauve. (This was left open as
---     "worth a decision" in themes.lua; the decision is: not worth a hue.)
---
--- ONE DELIBERATE OMISSION worth naming, because the honest rationale is
--- weaker than it looks: `defaultLibrary` distinguishes a lemma imported from
--- Mathlib from one proved thirty lines up in this file, and NOTHING in the
--- source answers that. Italic below answers local-vs-global, which is a
--- different question. It is genuinely the highest-value remaining channel —
--- but every non-hue channel is already spoken for, and adding an eighth hue
--- breaks the ≤7-anchor budget. Left un-parked deliberately; see the note at
--- the bottom of this file for the one-line edit.
+-- What survives from the old principle is narrower than it looks. "Contrast
+-- where confusion is possible" still decides which cells must be TOLD APART.
+-- It does not get to decide how vivid the palette is; that is an aesthetic
+-- goal Dan stated at the outset and it outranks the information argument.
 --
 -- ─────────────────────────────────────────────────────────────────────────
--- CHANNELS — one question each, so they decode independently
+-- CHANNELS
 -- ─────────────────────────────────────────────────────────────────────────
---   hue           which world?         prop = blue, data = flamingo,
---                                      poly = teal
---   brightness    a term, or type-level scaffolding?
---                                      element = anchor, sort/former = dusty
---   bold          within the scaffolding, is this the head?
---                                      former = bold
---   italic        bound here, or from the library?   local = italic
---   underline     which invisible attribute?  (ONE slot — the underline
---                 style is a 3-bit enum, so these can never co-occur)
---                                      simp   = dotted, yellow sp
---                                      axiom  = double, red sp
---                                      auto   = dashed, red sp
---   strikethrough deprecated  (set separately by @lsp.mod.deprecated.lean,
---                 and it stacks freely — M4)
---   background    NOT USED HERE, on purpose. It already means "this is not
---                 ordinary source text" twice over — the `sorry` chip and
---                 LspInlayHint — and a third meaning would dissolve the
---                 first two. It is deliberately NOT an input of the picker
---                 either: exposing it would let a user paint over the
---                 `leanSorryLike` chip that `SKIP` below exists to protect.
+--   hue           world × level × local, ALL HAND-PICKED. No blending: every
+--                 value in `DEFAULTS.hues` is a literal somebody chose.
+--   `local`       picks a DIFFERENT HUE, not merely an italic. This is the
+--                 change that halves the blue and the flamingo: a hypothesis
+--                 and a cited lemma are both prop+element and together are
+--                 most of what is on screen.
+--   italic        still set for `local`, as a secondary cue on top of the
+--                 hue split. Free, so it stays.
+--   bold          former — the head of a type expression.
+--   background    IN USE. `simp` is a warm background tint. The previous
+--                 header reserved backgrounds by argument ("a third meaning
+--                 would dissolve the first two"); Dan withdrew the
+--                 reservation. Moving simp here also frees `#f9e2af` to be a
+--                 foreground, and leaves the single underline slot to the
+--                 two flags that genuinely need it.
+--   underline     ONE slot (3-bit enum, B4): axiom = double, auto = dashed.
+--   strikethrough deprecated, set separately, stacks freely (M4).
 --
--- ─────────────────────────────────────────────────────────────────────────
--- WHY THESE THREE HUES, SPECIFICALLY
--- ─────────────────────────────────────────────────────────────────────────
--- The palette is chosen so that the two most common things on screen DO NOT
--- MOVE, and the change is paid for entirely by the thing that was wrong:
---
---   propWorld = blue #89b4fa    — catppuccin's `blue`, which is what
---     `Function`, and therefore after/syntax/lean.vim's `leanConstant`, and
---     therefore every cited lemma, already is. `rw [mul_assoc]` renders
---     exactly as it does today, because a cited lemma is prop + element.
---
---   dataWorld = flamingo #f2cdcd — catppuccin's `flamingo`, which is what
---     `Identifier`, and therefore `@lsp.type.variable.lean`, and therefore
---     every `a`, `b`, `m`, `n`, already is. Data locals do not move either.
---
---   polyWorld = teal #94e2d5     — the genuinely-undetermined world (`Sort u`
---     with `u` a parameter). No other hue on this screen is teal.
---
--- So exactly two things change colour, and they are the same statement read
--- in each direction:
---   * a hypothesis `h` moves flamingo → blue: it is a proof, not a datum;
---   * a global `def` such as `Nat.factorial` moves blue → flamingo: it is a
---     datum, not a proof.
--- That is the whole design. Everything else is one step of shade or one
--- attribute bit away from where it already was.
---
--- Hue budget (Healey, ≤ ~7 anchors) counting what is ALREADY on screen:
--- mauve keywords, green strings, peach numbers, grey comments, plus blue,
--- flamingo and teal here. Seven. Red appears only as an underline colour and
--- on auto-implicits, reusing the error association rather than adding an
--- eighth anchor.
+-- STILL OUT OF REACH FROM THIS FILE, and being handled elsewhere: namespace
+-- components (`Nat.` in `Nat.Prime` is not a separate token) and import
+-- paths (not semantic tokens at all). Neither is a palette problem.
 --
 -- ─────────────────────────────────────────────────────────────────────────
 -- THE INPUT MODEL — what is chosen, and what is COMPUTED from it
@@ -234,13 +196,76 @@ M.underline_styles = {
 --- it too, to clear a generated underline that a hand-set one replaces.
 local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted", "underdashed" }
 
+-- ── the twelve colours ─────────────────────────────────────────────────
+-- Design and reasoning: docs/lean-highlighting/palette-widening-design.md in
+-- ~/ClaudeProjects/leanSetup. Three hues at two computed brightnesses became
+-- twelve hand-picked colours, because "generated" was doing the work that
+-- choosing should have done.
+--
+-- TWO HEXES ARE RESERVED OUT OF THIS TABLE and must stay reserved:
+-- `#f9e2af` (the simp underline) and `#f38ba8` (the axiom/auto alarm). They
+-- are `sp` colours carrying meaning, so a yellow foreground under a yellow
+-- dotted underline loses its signal silently. That is why there is no yellow
+-- and no red here, despite the spthy palette this is modelled on using both —
+-- spthy's underlines inherit their foreground; ours do not.
+--
+-- The `prop` / `data` / `poly` entries are the FAMILY ANCHORS. They name
+-- `@lean.<world>`, and they are the base for the blend fallback that serves
+-- any cell nobody hand-picked. They are not redundant with `prop_element`
+-- and friends; deleting a cell key falls back to them.
+
 local DEFAULTS = {
   hues = {
-    prop = "#89b4fa", -- blue      — proofs, propositions, predicates
-    data = "#f2cdcd", -- flamingo  — data, types, constructors
-    poly = "#94e2d5", -- teal      — sort-polymorphic: could be either
+    -- Family anchors. Only reachable now as the fallback for a cell whose
+    -- own colour has been cleared; every cell below is hand-picked.
+    prop = "#FF1493",
+    data = "#a6e3a1",
+    poly = "#94e2d5",
+
+    -- ── world × level × local, all hand-picked ────────────────────────
+    -- `local` splits the hue, it does not merely add italic. That split is
+    -- the point: a hypothesis and a cited lemma are both prop+element, and
+    -- together they are most of what is on screen. One blue for both is
+    -- what made the old palette read as monochrome.
+
+    -- Prop world. A proof, a proposition, a predicate.
+    prop_element_local = "#FF1493", -- DeepPink  — A HYPOTHESIS. `h0`, `h1`
+    prop_element = "#f9e2af", -- yellow    — A CITED LEMMA. `mul_assoc`
+    prop_sort_local = "#f5c2e7", -- pink      — a local `p : Prop`
+    prop_sort = "#FFC0CB", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
+    prop_former_local = "#FF5FFF", -- magenta   — a local predicate `p : α → Prop`
+    prop_former = "#FF5FFF", -- magenta   — A PREDICATE. `Even`, `Prime`, `Set`
+
+    -- Data world.
+    data_element_local = "#a6e3a1", -- green     — A DATUM YOU BOUND. `m`, `n`
+    data_element = "#fab387", -- peach     — A GLOBAL DATUM. `Nat.factorial`
+    data_sort_local = "#89dceb", -- sky       — A TYPE VARIABLE. `α`, `G`
+    data_sort = "#eba0ac", -- maroon    — A CONCRETE TYPE. `ℕ`, `Filter α`
+    data_former_local = "#eba0ac", -- maroon    — a local type family
+    data_former = "#8B4513", -- SaddleBrown — A TYPE CONSTRUCTOR. `List`, `Prod`
+
+    -- Poly world — genuinely undetermined `Sort u`. A deliberately tight
+    -- family, because these are rare and should read as one thing.
+    poly_element_local = "#94e2d5", -- teal
+    poly_element = "#94e2d5",
+    poly_sort_local = "#74c7ec", -- sapphire
+    poly_sort = "#74c7ec",
+    poly_former_local = "#89dceb",
+    poly_former = "#89dceb",
+
+    -- Kind overrides, scoped in KIND_HUE below. NOT a general kind axis:
+    -- keying hue on kind would collapse `m`/`h0`/`h1` in `two_le`, which
+    -- are all `kind = variable` and differ only by world.
+    kind_constructor = "#FFC0CB", -- pinkPlain   — `enumMember`: how you BUILD data
+    kind_projection = "#908070", -- dark gold   — `property`: structural plumbing
+    kind_class = "#f38ba8", -- red         — `class`: Mathlib's scaffolding
   },
-  simp_sp = "#f9e2af", -- yellow — "the automation knows about this"
+  simp_bg = "#3a3a2a", -- a warm tint — "the automation knows about this".
+  -- A BACKGROUND, not an underline. Two reasons: it frees `#f9e2af` to be a
+  -- foreground (a cited lemma), and the single underline slot (B4) was
+  -- three meanings deep. Backgrounds were previously reserved by argument;
+  -- Dan withdrew that reservation.
+  simp_sp = "#f9e2af", -- kept so an existing saved palette still validates
   alarm = "#f38ba8", -- red      — axioms and auto-bound implicits
   recede = "#7f849c", -- catppuccin mocha overlay1: the "recede" target
   dust = 0.42, -- one step back; measured by looking, not derived
@@ -473,6 +498,7 @@ local function rebuild_palette(o)
     p[k] = nil
   end
   p.simp_sp, p.alarm, p.recede = o.simp_sp, o.alarm, o.recede
+  p.simp_bg = o.simp_bg
   -- Every hue gets its computed dusty partner, whatever it is called. Three
   -- today; the design intent is a hand-picked colour per cell, and nothing
   -- here counts them.
@@ -494,22 +520,73 @@ rebuild_palette(M.opts)
 local WORLDS = { propWorld = "prop", dataWorld = "data", polyWorld = "poly" }
 local LEVELS = { element = true, sort = true, former = true }
 
+-- Kind overrides. A token type listed here takes its own colour INSTEAD of
+-- the cell colour, but only in the cells named — everywhere else the
+-- world/level reading wins, because it is the more important fact.
+--
+-- The scope is not arbitrary. It is exactly the two places where the cell
+-- colour leaves a real ambiguity that no other channel resolves:
+--   * data.element — italic separates the local, so `m` is distinct; but a
+--     def, a constructor and a projection are identical to each other.
+--   * data.sort / data.former — class, struct and inductive are identical.
+--     This is the acute one: all but six of Mathlib's classes ARE structures
+--     (see lean-internals.md §3), so `isClass`-before-`isStructure` bought a
+--     distinction that nothing has rendered until now.
+-- `struct` and `enum` deliberately keep the plain cell colour: class-vs-not
+-- carries information, struct-vs-inductive is much lower stakes.
+local KIND_HUE = {
+  enumMember = { hue = "kind_constructor", suffix = "constructor", cells = { data_element = true } },
+  property = { hue = "kind_projection", suffix = "projection", cells = { data_element = true } },
+  class = {
+    hue = "kind_class",
+    suffix = "class",
+    bold = true,
+    cells = { data_sort = true, data_former = true },
+  },
+}
+
 --- Complete spec for one grid cell. Never a delta — see mechanic 1.
-local function cell_spec(world, level)
-  local base = M.palette[world]
-  local dust = M.palette[world .. "_dust"]
-  if level == "element" then
-    -- The term you manipulate: full strength.
-    return { fg = base }
-  elseif level == "sort" then
-    -- A type or a proposition. Ambient context; step back.
-    return { fg = dust }
-  else -- former
-    -- The head of a type expression — `Set`, `Eq`, `Even`. Same band as a
-    -- sort, because it lives at the same place in the tower; bold because
-    -- it is the thing doing the work.
-    return { fg = dust, bold = M.opts.channels.former_bold or nil }
+--- @param world string prop | data | poly
+--- @param level string element | sort | former
+--- @param ty string|nil the token type, for the KIND_HUE overrides
+--- @return table spec, string|nil name_suffix
+local function cell_spec(world, level, ty, is_local)
+  -- `local` picks a DIFFERENT HUE, not merely italic. A hypothesis and a
+  -- cited lemma are both prop+element and together are most of what is on
+  -- screen; giving them one hue and an italic is what made the previous
+  -- palette read as monochrome. Italic stays on top as a secondary cue.
+  local key = world .. "_" .. level .. (is_local and "_local" or "")
+  if not M.palette[key] then
+    key = world .. "_" .. level -- a cleared local variant falls back to the cell
   end
+  local former_bold = level == "former" and M.opts.channels.former_bold or nil
+
+  -- 1 · a kind override, where one is in scope for this cell. Scoped on the
+  -- cell WITHOUT the local variant: a constructor, a projection and a class
+  -- are all globals, so `data_element_local` should never match one.
+  local ov = ty and KIND_HUE[ty]
+  if ov and ov.cells[world .. "_" .. level] and M.palette[ov.hue] then
+    return { fg = M.palette[ov.hue], bold = ov.bold or former_bold }, ov.suffix
+  end
+
+  -- 2 · the hand-picked cell colour. This is the normal path.
+  local picked = M.palette[key]
+  if picked then
+    return { fg = picked, bold = former_bold }, nil
+  end
+
+  -- 3 · fallback, for a cell nobody picked — the original generated
+  -- behaviour, kept because deleting a cell key should degrade to something
+  -- sensible rather than to nothing. Element at full strength, type-level
+  -- scaffolding blended one step toward `recede`.
+  local base = M.palette[world]
+  if not base then
+    return { fg = M.palette.prop }, nil
+  end
+  if level == "element" then
+    return { fg = base }, nil
+  end
+  return { fg = M.palette[world .. "_dust"] or base, bold = former_bold }, nil
 end
 
 -- ── flags that change the spec ─────────────────────────────────────────
@@ -554,7 +631,7 @@ local function build_flags(o)
       end,
     }
   end
-  if c.simp_underline ~= "none" then
+  if c.simp_underline ~= "none" then -- name kept; the channel is now a bg
     flags[#flags + 1] = {
       "simp",
       function(_, mods)
@@ -563,7 +640,9 @@ local function build_flags(o)
       function(spec)
         -- `@[simp]`-ness is invisible at the use site and is exactly what a
         -- reader asks when deciding whether `simp` will close a goal.
-        set_underline(spec, c.simp_underline, M.palette.simp_sp)
+        -- Background, so it stacks with whatever underline the axiom or
+        -- auto flags later claim, instead of competing for the one slot.
+        spec.bg = M.palette.simp_bg
       end,
     }
   end
@@ -698,8 +777,11 @@ local function build(ty, mods)
     return nil
   end
 
-  local name = "@lean." .. world .. "." .. level
-  local spec = cell_spec(world, level)
+  local spec, kind_suffix = cell_spec(world, level, ty, mods["local"] and true or false)
+  -- The kind suffix sits directly after the level and BEFORE any flag, so
+  -- the name stays a function of the (type, modifier-set) pair and not of
+  -- table order. Without it two different colours would share a group name.
+  local name = "@lean." .. world .. "." .. level .. (kind_suffix and ("." .. kind_suffix) or "")
   for _, f in ipairs(FLAGS) do
     local suffix, pred, mutate = f[1], f[2], f[3]
     if pred(ty, mods) then
@@ -751,7 +833,19 @@ local function define_grid()
     -- spec like every other group here; nothing inherits from it.
     define("@lean." .. world, { fg = M.palette[world] })
     for level in pairs(LEVELS) do
-      define("@lean." .. world .. "." .. level, cell_spec(world, level))
+      -- Parenthesised: cell_spec returns (spec, suffix) and Lua would
+      -- otherwise expand both into `define`'s argument list.
+      define("@lean." .. world .. "." .. level, (cell_spec(world, level)))
+    end
+  end
+  -- The kind-override groups, eagerly, for the same reason as the grid: so
+  -- `:highlight @lean.` shows the whole palette without a live server, and
+  -- so the picker's raw mode can reach them before a Lean buffer exists.
+  for ty, ov in pairs(KIND_HUE) do
+    for key in pairs(ov.cells) do
+      local world, level = key:match("^(%a+)_(%a+)$")
+      local spec, suffix = cell_spec(world, level, ty)
+      define("@lean." .. world .. "." .. level .. "." .. suffix, spec)
     end
   end
 end

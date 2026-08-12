@@ -739,7 +739,11 @@ T["lean"]["standard token names are pinned, not inherited from catppuccin"] = fu
                          "axiom", "recursor" }) do
       local g = "@lsp.type." .. t .. ".lean"
       local h = vim.api.nvim_get_hl(0, { name = g, link = false })
-      out[t] = (h.fg == ref) and "ref" or (h.fg and string.format("#%06x", h.fg) or "nil")
+      -- Was: "is it the same colour as Function?". The fall-through layer now
+    -- takes each kind's own widened-grid colour, so uniformity is no longer
+    -- the property worth asserting -- BEING PINNED AT ALL is. An unpinned
+    -- group is the actual bug (catppuccin silently owns it).
+    out[t] = h.fg and string.format("#%06x", h.fg) or "nil"
     end
     out._ref = ref and string.format("#%06x", ref) or "nil"
     return out
@@ -750,7 +754,7 @@ T["lean"]["standard token names are pinned, not inherited from catppuccin"] = fu
   for _, t in ipairs({ "enum", "property", "theorem", "opaque",
                        "struct", "enumMember", "function", "class",
                        "axiom", "recursor" }) do
-    expect.equality({ t, got[t] }, { t, "ref" })
+    expect.no_equality({ t, got[t] }, { t, "nil" })
   end
 end
 

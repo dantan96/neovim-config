@@ -136,12 +136,29 @@ return {
             -- told from a concrete type. Both looked like `variable` before.
             ["@lsp.type.type.lean"] = { link = "Identifier" },
             ["@lsp.type.typeParameter.lean"] = { link = "Identifier" },
-            -- Other globals were blue (leanConstant), so they stay blue
-            -- whatever kind the environment says they are.
-            ["@lsp.type.class.lean"] = { link = "Function" },
-            ["@lsp.type.struct.lean"] = { link = "Function" },
-            ["@lsp.type.enumMember.lean"] = { link = "Function" }, -- constructors
-            ["@lsp.type.function.lean"] = { link = "Function" },
+            -- These are the FALL-THROUGH layer: a token that arrives without
+            -- both a world and a level never reaches the `@lean.*` grid, so
+            -- whatever is pinned here is what it renders as.
+            --
+            -- They used to be uniformly `Function` (blue), which was right
+            -- when the grid had three hues. With the grid widened to twelve
+            -- (highlights.lua), a uniform blue fall-through would read as a
+            -- DIFFERENT palette — a classification miss would look like a
+            -- deliberate colour rather than an absence. So each one now takes
+            -- the colour its own kind takes in the grid, and a miss degrades
+            -- to a near neighbour instead of to an unrelated hue.
+            ["@lsp.type.class.lean"] = { fg = "#FF5FFF", bold = true }, -- kind_class
+            ["@lsp.type.struct.lean"] = { fg = "#fab387" }, -- data_sort
+            ["@lsp.type.enumMember.lean"] = { fg = "#a6e3a1" }, -- kind_constructor
+            -- A plain `def` is most often data-valued, so flamingo rather
+            -- than the blue it used to inherit from `Function`.
+            ["@lsp.type.function.lean"] = { fg = "#f2cdcd" }, -- data_element
+            -- `property`, `enum` and `theorem` are pinned further down, in
+            -- the block that keeps catppuccin from owning standard names.
+            -- They are recoloured there, not here — a second entry with the
+            -- same key is silently last-wins in a Lua table literal, which
+            -- is invisible at runtime and passes any test that asserts on
+            -- the effective colour.
             -- NOTE the three below lost their `lean` prefix when the server
             -- renamed its token types; the old spellings had silently stopped
             -- matching. `leanSorryLike` above keeps its prefix, being upstream's
@@ -217,9 +234,11 @@ return {
             -- tests/test_lean.lua enumerates them and requires every one
             -- whose name Lean's legend can produce to be either pinned here
             -- or exempted by name with a reason.
-            ["@lsp.type.enum.lean"] = { link = "Function" }, -- inductives: Nat, List, True
-            ["@lsp.type.property.lean"] = { link = "Function" }, -- structure projections
-            ["@lsp.type.theorem.lean"] = { link = "Function" }, -- custom name; pinned, not inherited
+            -- These three take their widened-grid colour, for the
+            -- fall-through reason given above the `class`/`struct` block.
+            ["@lsp.type.enum.lean"] = { fg = "#fab387" }, -- inductives: Nat, List, True — data_sort
+            ["@lsp.type.property.lean"] = { fg = "#908070" }, -- structure projections — kind_projection
+            ["@lsp.type.theorem.lean"] = { fg = "#89b4fa" }, -- prop_element; pinned, not inherited
             ["@lsp.type.opaque.lean"] = { link = "Function" }, -- ditto
             ["@lsp.typemod.function.defaultLibrary.lean"] = { link = "Function" }, -- imported defs
             ["@lsp.type.keyword.lean"] = { link = "Keyword" }, -- what tactic links to
