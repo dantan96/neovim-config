@@ -134,25 +134,6 @@ there is no `:Lsp*` command family on this Neovim: 0.12 ships a built-in
 deliberately defines none of `:LspRestart`/`:LspInfo`/`:LspLog` when it sees
 one (`plugin/lspconfig.lua:6-8`). Use `:lsp` and `:checkhealth vim.lsp`.
 
-## Messages — the whole-file census
-
-The infoview shows the diagnostics on the **current line** only, so "six
-`sorry`s and two real errors — am I done?" is otherwise a scroll.
-
-| Keys | Action |
-|------|--------|
-| `\q` | Every message in **this file** → location list (`:LeanMessages`) |
-| `\Q` | Every message in **every buffer** → quickfix (`:LeanAllMessages`) |
-
-The location list's title carries the tally VS Code puts in its All Messages
-header — `Lean messages — 6 warnings, 2 errors`. `quicker.nvim` decorates
-both lists: `>` expands context, `<` collapses, and the list is editable.
-
-Two keys and not one because they are genuinely different, and the difference
-is invisible at the call site: `vim.diagnostic.setqflist({ bufnr = 0 })` does
-**not** scope to a buffer — `setqflist` has no `bufnr` option and ignores the
-key, so it always gathers every buffer.
-
 `grn` `gra` `grr` `gri` `grt` are Neovim's own LSP maps and work here like
 anywhere else. They used to be dead: mini.operators' replace operator owned the
 `gr` prefix and its setup **deletes** those five built-ins. The operator now
@@ -178,6 +159,25 @@ Lean's only inlay hints are **auto-bound implicits** — the ` {α}` the
 elaborator inserted where you wrote none. If one shows up on a name you meant
 to be a real constant (`nat` where you wanted `Nat`), that is the bug it exists
 to catch.
+
+## Messages — the whole-file census
+
+The infoview shows the diagnostics on the **current line** only, so "six
+`sorry`s and two real errors — am I done?" is otherwise a scroll.
+
+| Keys | Action |
+|------|--------|
+| `\q` | Every message in **this file** → location list (`:LeanMessages`) |
+| `\Q` | Every message in **every buffer** → quickfix (`:LeanAllMessages`) |
+
+The location list's title carries the tally VS Code puts in its All Messages
+header — `Lean messages — 6 warnings, 2 errors`. `quicker.nvim` decorates
+both lists: `>` expands context, `<` collapses, and the list is editable.
+
+Two keys and not one because they are genuinely different, and the difference
+is invisible at the call site: `vim.diagnostic.setqflist({ bufnr = 0 })` does
+**not** scope to a buffer — `setqflist` has no `bufnr` option and ignores the
+key, so it always gathers every buffer.
 
 ## Reading the colours
 
@@ -411,6 +411,15 @@ disagree.
 | `:LeanRichTokens toggle` | Flip whichever is in effect |
 | `:LeanRichTokens auto` | Back to detecting from the legend (the default) |
 
+Changing the **mode** restarts the language server. Changing the
+**toolchain** is a different thing — `elan override set <toolchain>`, or
+`ELAN_TOOLCHAIN=…` in the environment nvim was launched from — and no editor
+command does it.
+
+Graphics widgets need `resvg` for SVG (installed) and a Kitty-protocol
+terminal — Ghostty qualifies. *Unverified*: headless testing cannot render
+images.
+
 ### Asking for help — `:LeanSetupInfo`
 
 One Markdown block on the clipboard: OS, CPU, RAM, Neovim, project path,
@@ -426,12 +435,3 @@ commit `d024af0996`, because the patched build pins `GIT_SHA1` to keep
 mathlib's olean cache valid. The `Active` row is what actually answers it.
 Pair it with `:LeanRichTokens status`, which checks the same question against
 the wire.
-
-Changing the **mode** restarts the language server. Changing the
-**toolchain** is a different thing — `elan override set <toolchain>`, or
-`ELAN_TOOLCHAIN=…` in the environment nvim was launched from — and no editor
-command does it.
-
-Graphics widgets need `resvg` for SVG (installed) and a Kitty-protocol
-terminal — Ghostty qualifies. *Unverified*: headless testing cannot render
-images.
