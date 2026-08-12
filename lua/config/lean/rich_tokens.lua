@@ -512,8 +512,11 @@ function M.set(mode)
   -- capability comparison settles after one restart, because the new client
   -- sends what was asked for by construction.
   --
-  -- And once M.server_gates is known false — observed, in diagnose() — even
-  -- that one restart is pointless for the off direction, so it is skipped.
+  -- And once M.server_gates is known false — observed, in diagnose(), never
+  -- assumed — even that one restart is pointless in EITHER direction: a
+  -- server that ignored the capability when it was withheld will ignore it
+  -- when it is sent. So the restart is skipped and the message says why, the
+  -- client-side half of the switch having already taken effect.
   local want = M.advertise()
   local clients = M.clients()
   local stale = false
