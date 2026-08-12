@@ -261,6 +261,17 @@ return {
     -- file is the one place in the config that already owns "highlight
     -- definitions that must survive a colorscheme reload" (LineNrWrap,
     -- LspInlayHint, @lsp.type.variable.lean, all above).
-    require("config.lean.highlights").setup()
+    --
+    -- `load_saved` is what makes `:LeanPalette` stick across restarts: it
+    -- reads the eleven INPUTS the palette is generated from out of
+    -- stdpath("data")/lean-palette.json and regenerates. It is opt-in here
+    -- rather than automatic inside setup() so that a bare setup() — what
+    -- every test calls — stays deterministic. The read is total: a missing,
+    -- truncated or hand-mangled file yields the shipped defaults rather than
+    -- throwing, because throwing HERE would abort the colorscheme and leave
+    -- the editor unthemed.
+    require("config.lean.highlights").setup({ load_saved = true })
+    -- :LeanPalette — the interactive picker over those inputs.
+    require("config.lean.palette_picker").setup()
   end,
 }
