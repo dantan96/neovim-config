@@ -50,7 +50,12 @@ return {
       -- cursor's line sit ABOVE the cursor's own row = its wrap-segment index.
       -- virtcol is 1-based == count of vcols up to & incl. the cursor; end_vcol
       -- is an exclusive upper bound, so pass it directly. -1 -> segments above.
+      -- virtcol() returns a [start, end] pair only when its `list` argument
+      -- is true; we pass false, so this is a plain number. Neovim's signature
+      -- does not model that overload, so assert the shape instead of assuming
+      -- it -- a table reaching end_vcol below would be a silent miscount.
       local cvc = vim.fn.virtcol({ clnum, pos[2] + 1 }, false, win)
+      assert(type(cvc) == "number")
       local cvirt = vim.api.nvim_win_text_height(win, {
         start_row = clnum - 1,
         end_row = clnum - 1,
