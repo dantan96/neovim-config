@@ -10,15 +10,38 @@
 -- Merged in, not replacing: the resolved capabilities still carry blink.cmp's
 -- (via vim.lsp.config("*") in plugins/lsp.lua) and lean.nvim's own
 -- `capabilities.lean = { silentDiagnosticSupport, rpcWireFormat }`.
+--
+-- ── the one conditional key ───────────────────────────────────────────────
+-- `experimental.leanRichTokens` asks for the rich semantic-token legend of the
+-- patched toolchain in ~/ClaudeProjects/leanSetup/lean4-rich-tokens. A stock
+-- server ignores the field entirely, LSP requiring unknown capabilities to be
+-- ignored, so it is inert on leanprover/lean4:v4.x releases.
+--
+-- IT IS NOT LOAD-BEARING TODAY, and an earlier version of this comment was
+-- wrong to say the extra token types were capability-gated on the server side.
+-- Measured against the patched build at d5f3797: `leanRichTokens` appears
+-- nowhere in its source, and initializing `lake serve` with and without the
+-- capability returns the identical rich legend. It is sent so that this client
+-- is already correct if the gate lands, and nothing is inferred from having
+-- sent it — lua/config/lean/rich_tokens.lua detects by reading the legend.
+--
+-- It is OMITTED rather than set to false when the user has forced standard
+-- mode (`vim.g.lean_rich_tokens = false`): a gate would be written against
+-- absence, and a literal `false` on the wire is a different claim. Sending
+-- nothing is also exactly what a client without this file does, which is the
+-- behaviour being reproduced.
+--
+-- This file is `loadfile`d fresh on every vim.lsp.config resolution
+-- (runtime/lua/vim/lsp.lua:351), and disabling a server drops the cached
+-- resolution — so `:LeanRichTokens on|off` can change the answer within a
+-- session by restarting leanls. See lua/config/lean/rich_tokens.lua.
+if not require("config.lean.rich_tokens").advertise() then
+  return {}
+end
+
 return {
   capabilities = {
     experimental = {
-      -- Opt in to the rich semantic-token legend of the patched toolchain in
-      -- ~/ClaudeProjects/leanSetup/lean4-rich-tokens. The extra token types
-      -- are capability-gated there so a client that has not asked for them
-      -- keeps receiving the stock legend. A stock server ignores the field
-      -- entirely (LSP requires unknown capabilities to be ignored), so this
-      -- is inert on leanprover/lean4:v4.x releases.
       leanRichTokens = true,
     },
   },

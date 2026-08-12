@@ -11,6 +11,8 @@
 -- server. vim.lsp.config resolution deep-merges every lsp/<name>.lua on the
 -- runtimepath with after/ last, so that file adds to lean.nvim's rather than
 -- replacing it — and it starts nothing, since only vim.lsp.enable does that.
+-- Whether that capability is advertised at all is decided by
+-- lua/config/lean/rich_tokens.lua, which also owns :LeanRichTokens.
 --
 -- No treesitter parser is installed for Lean on purpose: tree-sitter-lean is
 -- unfinished and absent from nvim-treesitter's `main` registry, so adding
@@ -88,6 +90,16 @@ return {
         progress_bars = { enable = true },
         stderr = { enable = true },
       }
+
+      -- :LeanRichTokens and the legend sniffing behind it. Set up here rather
+      -- than in the plugin's `config`, for two reasons: after/lsp/leanls.lua
+      -- asks this module whether to advertise the capability, and that file is
+      -- read the moment lean.nvim calls vim.lsp.enable("leanls") — before any
+      -- `config` function would have run; and `:LeanRichTokens status` should
+      -- answer from a scratch buffer, not only after a .lean file has been
+      -- opened. `init` runs at startup, which satisfies both. Must precede the
+      -- line below for the first of those reasons.
+      require("config.lean.rich_tokens").setup()
 
       -- Occurrence highlighting, which the server has always been able to
       -- serve and nothing ever asked for. Set up here rather than in

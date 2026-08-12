@@ -306,6 +306,224 @@ T["lean"]["leanls advertises experimental.leanRichTokens"] = function()
   )
 end
 
+-- ── the rich/standard switch ───────────────────────────────────────────
+-- lua/config/lean/rich_tokens.lua. Three settings, and the ADVERTISEMENT is
+-- the half that can be tested without a server: `nil` and `true` both put the
+-- capability on the wire (detection is impossible otherwise — the patched
+-- server withholds the rich legend from a client that did not ask), and only
+-- an explicit `false` withholds it.
+--
+-- Withholding must OMIT the key rather than send `leanRichTokens = false`.
+-- The server's gate is written against absence, and a `false` on the wire is a
+-- different claim; the deep-merge makes that easy to get wrong, since setting
+-- the key to `false` in after/lsp/leanls.lua would look like it worked.
+T["lean"]["rich tokens: the capability tracks vim.g.lean_rich_tokens"] = new_set({
+  parametrize = {
+    { "nil", true }, -- auto: ask, then look at what came back
+    { "true", true }, -- forced on: same wire, plus a warning if it is not there
+    -- Forced off: the key is ABSENT, not false. vim.NIL because a nil crossing
+    -- the child RPC boundary arrives as vim.NIL, and the distinction between
+    -- "absent" and "false" is the whole assertion.
+    { "false", vim.NIL },
+  },
+}, {
+  test = function(setting, expected)
+    -- Re-resolving is the point: the value is recomputed by loadfile() on
+    -- every resolution, and disabling the server is what drops the cache.
+    local got = child.lua_get(string.format(
+      [[(function()
+        vim.g.lean_rich_tokens = %s
+        vim.lsp.enable("leanls", false)
+        vim.lsp.config("leanls", {})
+        return vim.tbl_get(
+          vim.lsp.config["leanls"], "capabilities", "experimental", "leanRichTokens"
+        )
+      end)()]],
+      setting
+    ))
+    expect.equality(got, expected)
+    child.lua([[vim.g.lean_rich_tokens = nil; vim.lsp.config("leanls", {})]])
+  end,
+})
+
+-- The module's own view of the same three settings, which is what every
+-- consumer reads. `enabled()` is deliberately NOT "the user asked for rich":
+-- forcing rich against a stock server cannot conjure the tokens, so with no
+-- rich legend attached it stays false in all three settings.
+T["lean"]["rich tokens: advertise() and enabled() agree with the setting"] = function()
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.rich_tokens")
+    local out = {}
+    -- Spelled out rather than `and`/`or`: `x and false or nil` is nil, which
+    -- would silently test "auto" three times.
+    for _, v in ipairs({ "auto", "on", "off" }) do
+      if v == "auto" then
+        vim.g.lean_rich_tokens = nil
+      else
+        vim.g.lean_rich_tokens = (v == "on")
+      end
+      -- tostring() on purpose: a nil-valued field does not survive the RPC
+      -- round trip as a key, so `override = nil` would be indistinguishable
+      -- from a typo'd field name.
+      table.insert(out, {
+        override = tostring(m.override()),
+        advertise = m.advertise(),
+        -- No leanls client in this child, so nothing rich is attached.
+        enabled = m.enabled(),
+      })
+    end
+    vim.g.lean_rich_tokens = nil
+    return out
+  end)()]])
+  expect.equality(got, {
+    { override = "nil", advertise = true, enabled = false },
+    { override = "true", advertise = true, enabled = false },
+    { override = "false", advertise = false, enabled = false },
+  })
+end
+
+T["lean"]["rich tokens: :LeanRichTokens exists and takes the four words"] = function()
+  expect.equality(H.cmd_exists(child, "LeanRichTokens"), true)
+  expect.equality(
+    child.lua_get([[require("config.lean.rich_tokens").setup ~= nil]]),
+    true
+  )
+  local words = child.lua_get([[vim.fn.getcompletion("LeanRichTokens ", "cmdline")]])
+  table.sort(words)
+  expect.equality(words, { "auto", "off", "on", "status", "toggle" })
+end
+
+-- `status` must report BOTH halves — which toolchain elan resolved, and what
+-- the legend actually contains — because those can disagree, and the
+-- disagreement is the thing a user needs to see.
+T["lean"]["rich tokens: status reports toolchain and legend separately"] = function()
+  local text = child.lua_get([[
+    table.concat(require("config.lean.rich_tokens").status_lines(), "\n")
+  ]])
+  for _, needle in ipairs({
+    "mode in effect",
+    "requested",
+    -- Half one: elan's answer.
+    "active toolchain",
+    "project root",
+    -- Half two: the wire's answer.
+    "legend (the server decides",
+    -- The distinction the command exists to draw: a mode change restarts the
+    -- server, a toolchain change is elan's and is NOT what this command does.
+    "Changing MODE",
+    "Changing TOOLCHAIN",
+    "elan override set",
+  }) do
+    expect.equality({ needle, text:find(needle, 1, true) ~= nil }, { needle, true })
+  end
+end
+
+-- Whether a client is attached is not a fixed property of this child — leanls
+-- attaches to the temp buffer even with no lakefile (see the top of this file)
+-- and does not attach on a machine with no Lean. Both are fine; what must not
+-- happen is `status` erroring, or claiming a legend it never saw.
+T["lean"]["rich tokens: status describes the legend it actually has"] = function()
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.rich_tokens")
+    local text = table.concat(m.status_lines(), "\n")
+    return {
+      attached = #m.clients() > 0,
+      says_none = text:find("no leanls client attached", 1, true) ~= nil,
+      says_size = text:find("legend size", 1, true) ~= nil,
+    }
+  end)()]])
+  -- Exactly one of the two branches, and the right one.
+  expect.equality(got.says_none, not got.attached)
+  expect.equality(got.says_size, got.attached)
+end
+
+-- ── the warning, and the nil/false trap under it ───────────────────────
+-- diagnose() takes a client and decides whether to complain, so it can be
+-- exercised with a plain table carrying a legend — no server, no toolchain.
+--
+-- THIS CASE EXISTS BECAUSE OF A REAL BUG. `local rich = client and
+-- legend_is_rich(client) or nil` reads fine and is wrong: Lua's `and`/`or`
+-- collapses a legitimate `false` to nil, so a STOCK legend — the only input
+-- the warning fires on — came out as "no legend at all" and the forced-on
+-- warning could never trigger. Nothing failed; the warning was simply never
+-- raised. Caught by running against a stock toolchain and reading
+-- `legend_rich=nil` where it had to say `false`.
+local FAKE_CLIENT = [[(function(mods)
+  return {
+    id = 4242,
+    config = { capabilities = { experimental = { leanRichTokens = true } } },
+    server_capabilities = {
+      semanticTokensProvider = {
+        legend = { tokenTypes = { "keyword" }, tokenModifiers = mods },
+      },
+    },
+  }
+end)]]
+
+T["lean"]["rich tokens: a stock legend reads as false, not as absent"] = function()
+  local got = child.lua_get(([[(function()
+    local m = require("config.lean.rich_tokens")
+    local stock = %s({ "declaration", "deprecated" })
+    local rich  = %s({ "declaration", "propWorld" })
+    return {
+      stock = tostring(m.legend_is_rich(stock)),
+      rich = tostring(m.legend_is_rich(rich)),
+      none = tostring(m.legend_is_rich({ server_capabilities = {} })),
+    }
+  end)()]]):format(FAKE_CLIENT, FAKE_CLIENT))
+  -- Three distinct answers, and the middle one is the one that got lost.
+  expect.equality(got, { stock = "false", rich = "true", none = "nil" })
+end
+
+T["lean"]["rich tokens: forced on warns against a stock legend"] = function()
+  local got = child.lua_get(([[(function()
+    local m = require("config.lean.rich_tokens")
+    local out = {}
+    local stock = %s({ "declaration", "deprecated" })
+
+    vim.g.lean_rich_tokens = true
+    out.forced_on = vim.deepcopy(m.diagnose(stock))
+    -- Second look at the SAME client: still a mismatch, but do not re-notify.
+    out.again = vim.deepcopy(m.diagnose(stock))
+
+    -- Auto against the same stock legend is not a mismatch and must be silent.
+    vim.g.lean_rich_tokens = nil
+    out.auto = vim.deepcopy(m.diagnose(%s({ "declaration" })))
+
+    vim.g.lean_rich_tokens = nil
+    return out
+  end)()]]):format(FAKE_CLIENT, FAKE_CLIENT))
+
+  expect.equality(got.forced_on.mode, "standard")
+  expect.equality(got.forced_on.legend_rich, false)
+  expect.equality(got.forced_on.warned, true)
+  expect.equality(got.forced_on.notified, true)
+  -- The mismatch persists; the message does not repeat.
+  expect.equality(got.again.warned, true)
+  expect.equality(got.again.notified, false)
+  -- Auto detects standard and says nothing at all.
+  expect.equality(got.auto.mode, "standard")
+  expect.equality(got.auto.warned, false)
+  expect.equality(got.auto.notified, false)
+end
+
+-- Reading `elan show` rather than lean-toolchain: the file is only one of the
+-- four things elan consults. Skipped rather than failed where elan is absent,
+-- since this config is used on machines with no Lean at all.
+T["lean"]["rich tokens: the toolchain comes from elan"] = function()
+  if vim.fn.executable("elan") == 0 then
+    MiniTest.skip("elan is not on PATH; cannot check toolchain resolution")
+  end
+  local got = child.lua_get(
+    [[require("config.lean.rich_tokens").toolchain(vim.fn.expand("~"))]]
+  )
+  expect.equality(type(got), "string")
+  expect.no_equality(got, "")
+  -- `elan show`'s active line always names a toolchain; "unknown (…)" is the
+  -- module's own fallback and means the parse broke.
+  expect.equality(got:find("^unknown") == nil, true)
+end
+
 T["lean"]["adding the capability does not displace lean.nvim's own"] = function()
   expect.equality(
     child.lua_get(
@@ -342,14 +560,44 @@ end
 -- hardcoded copy would be the identical bug one level up: it would agree with
 -- itself forever while the server moved. Only the two `names` arrays are
 -- parsed, because `Watchdog.lean` advertises exactly those as the LSP legend.
+--
+-- ── the checkout this needs, and what happens without it ──────────────────
+-- Reading the enum means reading the patched server's SOURCE, which lives
+-- outside this repo. That checkout is on the machine this branch was written
+-- on and on no other; this config is pushed and used elsewhere.
+--
+-- So the two cases that parse it SKIP, loudly, rather than fail — but they
+-- skip from INSIDE the case body, via MiniTest.skip(). Guarding at file load
+-- would drop them from the collection entirely, and a case that is not there
+-- is indistinguishable from a case that passed, which is the precise failure
+-- mode this whole section exists to prevent. A skipped case reports as `O`
+-- (pass with notes) and its reason is printed under "Fails and Notes", so the
+-- suite says out loud what it could not check and why.
+--
+-- Everything else in this file — including the sibling case asserting that
+-- every `@lsp.*.lean` group resolves to real attributes — is independent of
+-- the checkout and still runs.
 local LEAN_LEGEND_SRC = vim.fn.expand("~")
   .. "/ClaudeProjects/leanSetup/lean4-rich-tokens/src/Lean/Data/Lsp/LanguageFeatures.lean"
 
+--- Skip the current case unless the patched server's source is here.
+--- Call from a case body; MiniTest.skip() is implemented as a thrown error.
+local function need_legend_src()
+  if not vim.uv.fs_stat(LEAN_LEGEND_SRC) then
+    MiniTest.skip(
+      "SKIPPED: needs the patched Lean server checkout at "
+        .. LEAN_LEGEND_SRC
+        .. " — the token legend is read from the server's own enum and there is "
+        .. "nothing to read it from here. This case was NOT run; it did not pass."
+    )
+  end
+end
+
 local function lean_legend()
   local f = io.open(LEAN_LEGEND_SRC, "r")
-  -- Fail loudly rather than skipping. A silent skip when the checkout moves
-  -- would turn every case below into a vacuous pass, which is the exact
-  -- failure mode this file is being hardened against.
+  -- Still an error, not a skip: need_legend_src() already established the file
+  -- is there, so failing to open it now is a real fault (permissions, a race),
+  -- not an absent checkout.
   if not f then
     error("patched Lean server source not found: " .. LEAN_LEGEND_SRC)
   end
@@ -376,6 +624,7 @@ end
 -- that matched the WRONG array would mislead. Pin the entries that must be
 -- present under any naming scheme, including across the `lean`-prefix rename.
 T["lean"]["token legend parses"] = function()
+  need_legend_src()
   local types, mods = lean_legend()
   expect.equality(types["keyword"], true)
   expect.equality(types["variable"], true)
@@ -389,6 +638,7 @@ T["lean"]["token legend parses"] = function()
 end
 
 T["lean"]["token legend: every @lsp.*.lean group names a token the server emits"] = function()
+  need_legend_src()
   local types, mods = lean_legend()
   local groups = child.lua_get([[(function()
     local out = {}
