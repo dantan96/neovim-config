@@ -378,11 +378,6 @@ local UNDERLINES = {
   "underdotted",
   "underdashed",
 }
-local IS_UNDERLINE = {}
-for _, u in ipairs(UNDERLINES) do
-  IS_UNDERLINE[u] = true
-end
-
 local function hex(n)
   return n and string.format("#%06x", n) or nil
 end
@@ -701,12 +696,15 @@ function M.report(win, bufnr, row, col)
   for _, s in ipairs(info.syntax or {}) do
     add("syntax", s.hl_group, s.hl_group_link, vim.hl.priorities.syntax)
   end
-  for _, t in ipairs(info.treesitter or {}) do
+  -- `ts`, not `t`: `t` is already bound in this function to the token under
+  -- the cursor, and shadowing it here would make the two impossible to tell
+  -- apart at a glance in exactly the place they are both in scope.
+  for _, ts in ipairs(info.treesitter or {}) do
     add(
       "treesitter",
-      t.hl_group,
-      t.hl_group_link,
-      (t.metadata and t.metadata.priority) or vim.hl.priorities.treesitter
+      ts.hl_group,
+      ts.hl_group_link,
+      (ts.metadata and ts.metadata.priority) or vim.hl.priorities.treesitter
     )
   end
   for _, s in ipairs(info.semantic_tokens or {}) do
@@ -1054,9 +1052,7 @@ function M.render(R)
 
   if R.cell then
     local a = R.cell.attrs
-    local shown = {}
     local function show(k, label, v)
-      shown[k] = true
       attrline(label, v, R.composed[k])
     end
     put(("  rendered cell  %q"):format(R.cell.char))

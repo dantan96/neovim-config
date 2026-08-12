@@ -100,10 +100,29 @@ end
 T["lean"]["configured via vim.g.lean_config, not setup()"] = function()
   expect.equality(child.lua_get("type(vim.g.lean_config)"), "table")
   expect.equality(child.lua_get("vim.g.lean_config.mappings"), true)
-  expect.equality(child.lua_get("vim.g.lean_config.infoview.width"), 55)
+  -- A FRACTION, not a column count. lean.nvim's `res_dim` reads < 1 as a
+  -- proportion of vim.o.columns and >= 1 as a literal width, so the property
+  -- worth pinning is which side of 1 this falls on -- pinning 0.4 exactly
+  -- would just re-break on any retune.
+  local width = child.lua_get("vim.g.lean_config.infoview.width")
+  expect.equality(type(width), "number")
+  expect.equality(width > 0 and width < 1, true)
   -- Pinned, because lean.nvim's default "auto" picks by aspect ratio and
   -- lands on a horizontal split in an ordinary ~100x50 window.
   expect.equality(child.lua_get("vim.g.lean_config.infoview.orientation"), "vertical")
+end
+
+-- The fraction above is resolved ONCE, when the infoview is created
+-- (infoview.lua:400), and the only VimResized handler lean.nvim installs
+-- re-renders pin content (tui.lua:1204) without touching the window -- which
+-- also carries `winfixwidth`. So without this autocmd the width matches the
+-- terminal at startup and then drifts permanently. Verified in a live TUI:
+-- with it, 80->120 columns moves the infoview 32->48; without it, the
+-- infoview stays at 32 while the code window grows 47->87.
+T["lean"]["a VimResized hook re-resolves the infoview's fractional width"] = function()
+  local n = child.lua_get([[#vim.api.nvim_get_autocmds({
+    group = "LeanInfoviewWidth", event = "VimResized" })]])
+  expect.equality(n, 1)
 end
 
 -- textwidth=100 alone hard-wraps Lean terms mid-expression, because the global
@@ -1707,13 +1726,16 @@ end
 -- colorscheme reload, as with LineNrWrap). catppuccin's stock value is
 -- Comment's exact fg, which makes a hint read as a comment; ours must not be.
 T["lean"]["LspInlayHint is distinguishable from Comment"] = function()
-  local hl = child.lua_get([[(function()
+  -- `fgs`, not `hl`: `hl()` is the file-level helper that runs a body against
+  -- a fresh highlights module, and a local of that name inside a case makes
+  -- the helper unreachable exactly where someone would reach for it.
+  local fgs = child.lua_get([[(function()
     local hint = vim.api.nvim_get_hl(0, { name = "LspInlayHint", link = false })
     local comment = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
     return { hint = hint.fg or "MISSING", comment = comment.fg or "MISSING" }
   end)()]])
-  expect.no_equality(hl.hint, "MISSING")
-  expect.no_equality(hl.hint, hl.comment)
+  expect.no_equality(fgs.hint, "MISSING")
+  expect.no_equality(fgs.hint, fgs.comment)
 end
 
 -- \? reads this at press time; a rename would fail silently into the fallback.
@@ -1837,8 +1859,12 @@ T["lean"]["lemma references are highlighted"] = new_set({
 T["infoview background"] = new_set({
   hooks = {
     pre_case = function()
-      local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
-      local func = vim.api.nvim_get_hl(0, { name = "Function" })
+      -- snapshot(), not a bare nvim_get_hl: the read shape is not the write
+      -- shape (config/hl.lua), and this restore runs in a finally hook where
+      -- a throw would leave the colorscheme wrecked for later cases.
+      local HL = require("config.hl")
+      local normal = HL.snapshot("Normal")
+      local func = HL.snapshot("Function")
       MiniTest.finally(function()
         vim.api.nvim_set_hl(0, "Normal", normal)
         vim.api.nvim_set_hl(0, "Function", func)

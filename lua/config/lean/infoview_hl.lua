@@ -44,15 +44,19 @@ function M.refresh()
   local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })
   -- A transparent colorscheme has no Normal bg to tint; leave it alone rather
   -- than inventing one and breaking the terminal's own background.
-  if not normal.bg then
+  -- Bind the background once rather than re-reading `normal.bg`: a field can
+  -- in principle change under the intervening nvim_get_hl call, so the guard
+  -- above says nothing about the two reads below. One value, checked once.
+  local base = normal.bg
+  if not base then
     return
   end
   -- Function is blue-ish in essentially every scheme, so the tint reads as a
   -- cool panel. Normal fg is the fallback: a plain lift, never a no-op.
   local accent = vim.api.nvim_get_hl(0, { name = "Function", link = false }).fg
     or normal.fg
-    or normal.bg
-  local bg = blend(normal.bg, accent, TINT)
+    or base
+  local bg = blend(base, accent, TINT)
 
   vim.api.nvim_set_hl(0, "LeanInfoviewNormal", { bg = bg })
   vim.api.nvim_set_hl(ns, "Normal", { link = "LeanInfoviewNormal" })

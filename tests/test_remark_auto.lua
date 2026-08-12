@@ -2,6 +2,7 @@ local new_set = MiniTest.new_set
 local expect = MiniTest.expect
 local T = new_set()
 
+local H = dofile("tests/helpers.lua")
 local remark = require("config.remark_auto")
 
 T["find_init_root"] = new_set()
@@ -50,9 +51,7 @@ T["find_init_root"]["setup"]["returns nil when remarkrc already exists"] = funct
   local dir = test_base .. "/hasrc"
   vim.fn.mkdir(dir, "p")
   MiniTest.finally(function() vim.fn.delete(dir, "rf") end)
-  local f = io.open(dir .. "/.remarkrc.json", "w")
-  f:write("{}")
-  f:close()
+  H.write_file(dir .. "/.remarkrc.json", "{}")
   expect.equality(remark._find_init_root(dir .. "/file.md"), nil)
 end
 

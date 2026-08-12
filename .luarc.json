@@ -1,0 +1,65 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime": {
+    "path": [
+      "lua/?.lua",
+      "lua/?/init.lua"
+    ],
+    "pathStrict": true,
+    "version": "LuaJIT"
+  },
+  "workspace": {
+    "checkThirdParty": false,
+    "ignoreDir": [
+      ".vscode"
+    ],
+    "library": [
+      "${env:VIMRUNTIME}",
+      "~/.local/share/bob/nightly/share/nvim/runtime",
+      "~/.local/share/bob/stable/share/nvim/runtime",
+      "/usr/local/share/nvim/runtime",
+      "/opt/homebrew/share/nvim/runtime",
+      "/usr/share/nvim/runtime",
+      "${3rd}/luv/library",
+      "~/.local/share/nvim/lazy/blink.cmp",
+      "~/.local/share/nvim/lazy/catppuccin",
+      "~/.local/share/nvim/lazy/conform.nvim",
+      "~/.local/share/nvim/lazy/friendly-snippets",
+      "~/.local/share/nvim/lazy/gitsigns.nvim",
+      "~/.local/share/nvim/lazy/grug-far.nvim",
+      "~/.local/share/nvim/lazy/harpoon",
+      "~/.local/share/nvim/lazy/lazy.nvim",
+      "~/.local/share/nvim/lazy/lazydev.nvim",
+      "~/.local/share/nvim/lazy/lean.nvim",
+      "~/.local/share/nvim/lazy/LuaSnip",
+      "~/.local/share/nvim/lazy/markview.nvim",
+      "~/.local/share/nvim/lazy/mason-lspconfig.nvim",
+      "~/.local/share/nvim/lazy/mason.nvim",
+      "~/.local/share/nvim/lazy/mini.nvim",
+      "~/.local/share/nvim/lazy/multicursor.nvim",
+      "~/.local/share/nvim/lazy/noice.nvim",
+      "~/.local/share/nvim/lazy/nui.nvim",
+      "~/.local/share/nvim/lazy/nvim-colorizer.lua",
+      "~/.local/share/nvim/lazy/nvim-dap",
+      "~/.local/share/nvim/lazy/nvim-lightbulb",
+      "~/.local/share/nvim/lazy/nvim-lspconfig",
+      "~/.local/share/nvim/lazy/nvim-surround",
+      "~/.local/share/nvim/lazy/nvim-treesitter",
+      "~/.local/share/nvim/lazy/nvim-treesitter-textobjects",
+      "~/.local/share/nvim/lazy/oil.nvim",
+      "~/.local/share/nvim/lazy/peek.nvim",
+      "~/.local/share/nvim/lazy/Penlight",
+      "~/.local/share/nvim/lazy/plenary.nvim",
+      "~/.local/share/nvim/lazy/quicker.nvim",
+      "~/.local/share/nvim/lazy/satellite.nvim",
+      "~/.local/share/nvim/lazy/snacks.nvim",
+      "~/.local/share/nvim/lazy/statuscol.nvim",
+      "~/.local/share/nvim/lazy/telescope-fzf-native.nvim",
+      "~/.local/share/nvim/lazy/telescope.nvim",
+      "~/.local/share/nvim/lazy/vim-obsession",
+      "~/.local/share/nvim/lazy/vim-tmux-navigator",
+      "~/.local/share/nvim/lazy/vimtex"
+    ],
+    "maxPreload": 8000
+  }
+}

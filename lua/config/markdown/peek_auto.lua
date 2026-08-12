@@ -40,7 +40,10 @@ function M.setup()
         -- It is lazy-loaded on keys, so usually it is not; calling the
         -- command unconditionally would just silently fail via pcall.
         if package.loaded["markview"] then
-          pcall(vim.cmd, "Markview Stop")
+          -- Wrapped: `vim.cmd` is a callable table, not a function.
+          pcall(function()
+            vim.cmd("Markview Stop")
+          end)
         end
         if pcall(require, "peek") then
           require("peek").open()

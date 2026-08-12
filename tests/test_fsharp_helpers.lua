@@ -95,7 +95,10 @@ T["pick_balanced_break"]["picks closest to target"] = function()
     { start = 25, tok = ", " },
   }
   local best = fsh._pick_balanced_break(breaks, 14)
-  expect.equality(best.start, 15)
+  -- `best` is genuinely nil-able -- the very next case asserts it returns nil
+  -- for an empty list -- so indexing it bare would turn a regression into
+  -- "attempt to index a nil value" instead of a readable failure.
+  expect.equality(best and best.start, 15)
 end
 
 T["pick_balanced_break"]["returns nil for empty"] = function()
@@ -108,9 +111,7 @@ T["find_editorconfig"] = new_set()
 
 T["find_editorconfig"]["finds in start dir"] = function()
   H.with_temp_dir(function(dir)
-    local f = io.open(dir .. "/.editorconfig", "w")
-    f:write("[*]\nmax_line_length = 120\n")
-    f:close()
+    H.write_file(dir .. "/.editorconfig", "[*]\nmax_line_length = 120\n")
     expect.equality(fsh.find_editorconfig(dir), dir .. "/.editorconfig")
   end)
 end
@@ -119,9 +120,7 @@ T["find_editorconfig"]["finds in parent dir"] = function()
   H.with_temp_dir(function(dir)
     local sub = dir .. "/sub"
     vim.fn.mkdir(sub, "p")
-    local f = io.open(dir .. "/.editorconfig", "w")
-    f:write("[*]\nmax_line_length = 80\n")
-    f:close()
+    H.write_file(dir .. "/.editorconfig", "[*]\nmax_line_length = 80\n")
     expect.equality(fsh.find_editorconfig(sub), dir .. "/.editorconfig")
   end)
 end

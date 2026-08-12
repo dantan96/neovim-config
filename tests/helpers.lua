@@ -75,6 +75,23 @@ function H.with_temp_dir(fn)
   return fn(dir)
 end
 
+--- Write a fixture file, creating it if absent.
+---
+--- Exists because `local f = io.open(p, "w"); f:write(...)` is a latent nil
+--- dereference: `io.open` returns `nil, err` on failure, so a fixture that
+--- cannot be created — a temp dir that was cleaned up early, a full disk,
+--- a path with a component that is not a directory — aborts the case with
+--- "attempt to index a nil value (local 'f')" and no mention of the path.
+--- `assert` makes the nil impossible downstream and names the file.
+---@param path string
+---@param contents? string defaults to empty, i.e. touch
+function H.write_file(path, contents)
+  local f = assert(io.open(path, "w"), "cannot create fixture: " .. path)
+  f:write(contents or "")
+  f:close()
+  return path
+end
+
 -- Check keymap exists (child must be running)
 function H.has_keymap(child, mode, lhs)
   return child.lua_get(string.format(
