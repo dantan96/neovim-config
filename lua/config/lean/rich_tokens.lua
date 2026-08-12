@@ -201,7 +201,15 @@ end
 ---@return LeanRichTokensReport
 function M.diagnose(client)
   local override = M.override()
-  local rich = client and M.legend_is_rich(client) or nil
+  -- NOT `client and M.legend_is_rich(client) or nil`: that idiom collapses a
+  -- legitimate `false` to nil, and false is the answer that matters here — it
+  -- is the stock legend, i.e. the only case the warning below fires on. It
+  -- silently disabled the whole forced-on warning until a stock-toolchain run
+  -- showed `legend_rich=nil` where it should have said `false`.
+  local rich = nil
+  if client then
+    rich = M.legend_is_rich(client)
+  end
   local warned, notified = false, false
 
   if override == true and rich == false then
@@ -288,6 +296,11 @@ function M.report(bufnr)
   end
   local client = clients[1]
   local legend = client and M.legend(client)
+  -- Same `x and f() or nil` trap as in diagnose(): keep false as false.
+  local rich = nil
+  if client then
+    rich = M.legend_is_rich(client)
+  end
   local root = client and (client.root_dir or client.config.root_dir)
     or vim.uv.cwd()
 
@@ -305,7 +318,7 @@ function M.report(bufnr)
       "leanRichTokens"
     ) == true or false,
     client = client and { id = client.id, root_dir = root } or nil,
-    legend_rich = client and M.legend_is_rich(client) or nil,
+    legend_rich = rich,
     n_types = legend and legend.tokenTypes and #legend.tokenTypes or nil,
     n_mods = legend and legend.tokenModifiers and #legend.tokenModifiers
       or nil,
@@ -353,18 +366,27 @@ function M.status_lines(bufnr)
   if not r.client then
     vim.list_extend(lines, {
       "  no leanls client attached — nothing has been negotiated yet.",
-      "  capability that WOULD be advertised: experimental.leanRichTokens = "
-        .. tostring(r.advertised),
+      "  capability that WOULD be sent: "
+        .. (
+          r.advertised and "experimental.leanRichTokens = true"
+          or "none (the key is omitted)"
+        ),
     })
   else
     vim.list_extend(lines, {
       ("  client id       : %d"):format(r.client.id),
-      "  capability sent : experimental.leanRichTokens = " .. tostring(r.sent),
+      -- "= false" would be a lie: the key is left out entirely, which is a
+      -- different thing on the wire from sending it with a false value.
+      "  capability sent : "
+        .. (
+          r.sent and "experimental.leanRichTokens = true"
+          or "none (experimental.leanRichTokens omitted)"
+        ),
       ("  legend size     : %d token types, %d modifiers"):format(
         r.n_types or 0,
         r.n_mods or 0
       ),
-      "  has `" .. M.MARKER .. "`  : " .. yn(r.marker),
+      ("  has `%s` : %s"):format(M.MARKER, yn(r.marker)),
     })
 
     -- Everything below is a DISAGREEMENT report. Each of these is a state a

@@ -430,6 +430,76 @@ T["lean"]["rich tokens: status describes the legend it actually has"] = function
   expect.equality(got.says_size, got.attached)
 end
 
+-- ── the warning, and the nil/false trap under it ───────────────────────
+-- diagnose() takes a client and decides whether to complain, so it can be
+-- exercised with a plain table carrying a legend — no server, no toolchain.
+--
+-- THIS CASE EXISTS BECAUSE OF A REAL BUG. `local rich = client and
+-- legend_is_rich(client) or nil` reads fine and is wrong: Lua's `and`/`or`
+-- collapses a legitimate `false` to nil, so a STOCK legend — the only input
+-- the warning fires on — came out as "no legend at all" and the forced-on
+-- warning could never trigger. Nothing failed; the warning was simply never
+-- raised. Caught by running against a stock toolchain and reading
+-- `legend_rich=nil` where it had to say `false`.
+local FAKE_CLIENT = [[(function(mods)
+  return {
+    id = 4242,
+    config = { capabilities = { experimental = { leanRichTokens = true } } },
+    server_capabilities = {
+      semanticTokensProvider = {
+        legend = { tokenTypes = { "keyword" }, tokenModifiers = mods },
+      },
+    },
+  }
+end)]]
+
+T["lean"]["rich tokens: a stock legend reads as false, not as absent"] = function()
+  local got = child.lua_get(([[(function()
+    local m = require("config.lean.rich_tokens")
+    local stock = %s({ "declaration", "deprecated" })
+    local rich  = %s({ "declaration", "propWorld" })
+    return {
+      stock = tostring(m.legend_is_rich(stock)),
+      rich = tostring(m.legend_is_rich(rich)),
+      none = tostring(m.legend_is_rich({ server_capabilities = {} })),
+    }
+  end)()]]):format(FAKE_CLIENT, FAKE_CLIENT))
+  -- Three distinct answers, and the middle one is the one that got lost.
+  expect.equality(got, { stock = "false", rich = "true", none = "nil" })
+end
+
+T["lean"]["rich tokens: forced on warns against a stock legend"] = function()
+  local got = child.lua_get(([[(function()
+    local m = require("config.lean.rich_tokens")
+    local out = {}
+    local stock = %s({ "declaration", "deprecated" })
+
+    vim.g.lean_rich_tokens = true
+    out.forced_on = vim.deepcopy(m.diagnose(stock))
+    -- Second look at the SAME client: still a mismatch, but do not re-notify.
+    out.again = vim.deepcopy(m.diagnose(stock))
+
+    -- Auto against the same stock legend is not a mismatch and must be silent.
+    vim.g.lean_rich_tokens = nil
+    out.auto = vim.deepcopy(m.diagnose(%s({ "declaration" })))
+
+    vim.g.lean_rich_tokens = nil
+    return out
+  end)()]]):format(FAKE_CLIENT, FAKE_CLIENT))
+
+  expect.equality(got.forced_on.mode, "standard")
+  expect.equality(got.forced_on.legend_rich, false)
+  expect.equality(got.forced_on.warned, true)
+  expect.equality(got.forced_on.notified, true)
+  -- The mismatch persists; the message does not repeat.
+  expect.equality(got.again.warned, true)
+  expect.equality(got.again.notified, false)
+  -- Auto detects standard and says nothing at all.
+  expect.equality(got.auto.mode, "standard")
+  expect.equality(got.auto.warned, false)
+  expect.equality(got.auto.notified, false)
+end
+
 -- Reading `elan show` rather than lean-toolchain: the file is only one of the
 -- four things elan consults. Skipped rather than failed where elan is absent,
 -- since this config is used on machines with no Lean at all.
