@@ -445,6 +445,139 @@ T["lean"]["token legend: every Lean token group resolves to real attributes"] = 
   expect.equality(unstyled, {})
 end
 
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ BEGIN: Lean colour design (palette synthesis + the inheritance trap) │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+-- Everything between this banner and the matching END banner was added by
+-- the colour-design pass and is self-contained.
+--
+-- Neither of the two legend cases above can see the bug this block exists
+-- for. "names a token the server emits" passes for a group with the WRONG
+-- colour, and "resolves to real attributes" passes for a group that
+-- inherited someone else's. The failure is specifically:
+--
+--   catppuccin defines the language-agnostic `@lsp.type.enum`; Neovim's
+--   fallback strips `.lean` from the right (M3); so an undefined
+--   `@lsp.type.enum.lean` silently becomes catppuccin's yellow, and every
+--   `Nat`, `List` and `True` changes colour the day the server learns to
+--   emit `enum`. That is what happened, and it is what D6 forbids.
+--
+-- Pinning the four names is the fix; this is the tripwire. Any future
+-- standard LSP token name the server starts emitting belongs in this list.
+T["lean"]["standard token names are pinned, not inherited from catppuccin"] = function()
+  local got = child.lua_get([[(function()
+    local out = {}
+    -- `function` is the reference: it is what after/syntax/lean.vim's
+    -- leanConstant rule resolves to, i.e. the colour globals had BEFORE the
+    -- server started tokenising them.
+    local ref = vim.api.nvim_get_hl(0, { name = "Function", link = false }).fg
+    for _, t in ipairs({ "enum", "property", "theorem", "opaque",
+                         "struct", "enumMember", "function", "class",
+                         "axiom", "recursor" }) do
+      local g = "@lsp.type." .. t .. ".lean"
+      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+      out[t] = (h.fg == ref) and "ref" or (h.fg and string.format("#%06x", h.fg) or "nil")
+    end
+    out._ref = ref and string.format("#%06x", ref) or "nil"
+    return out
+  end)()]])
+  -- Non-vacuity: if the colorscheme never applied, `ref` would be nil and
+  -- every comparison below would be nil == nil.
+  expect.no_equality(got._ref, "nil")
+  for _, t in ipairs({ "enum", "property", "theorem", "opaque",
+                       "struct", "enumMember", "function", "class",
+                       "axiom", "recursor" }) do
+    expect.equality({ t, got[t] }, { t, "ref" })
+  end
+end
+
+-- The same trap, stated as the general rule and swept over EVERY group
+-- catppuccin could leak from — types AND typemods, which is where the first
+-- version of this test was too narrow. `@lsp.typemod.function.defaultLibrary`
+-- is peach and sits at priority 127, above the type mark at 125, so it
+-- silently recoloured every imported `def` (`Nat.factorial`, `Nat.Prime`)
+-- while `@lsp.type.function.lean` looked correctly pinned.
+--
+-- Method: enumerate the language-agnostic `@lsp.*` groups that are actually
+-- defined (25 of them, all catppuccin's), keep the ones whose name Lean's
+-- legend can produce, and require each to be pinned in themes.lua — or
+-- named in EXEMPT with the reason it cannot arise.
+--
+-- HONEST LIMIT OF THIS TEST: an EXEMPT entry claims "the classifier never
+-- emits this token type", which was established by reading the tokens off a
+-- live server, and the test cannot re-establish it. What the test does catch
+-- is the case that actually happens — someone teaches the server a new
+-- standard name and does not pin a colour for it — because a name that is
+-- neither pinned nor exempt fails here.
+T["lean"]["no Lean token group inherits a colour from a language-agnostic group"] = function()
+  local types, mods = lean_legend()
+  -- Token types Lean's legend contains but the classifier has never been
+  -- observed to emit. Checked against a live patched server over
+  -- TokenProbe.lean and two MIL files; every one of these is a standard LSP
+  -- name kept in the enum for legend compatibility (NAMES.md).
+  local EXEMPT = {
+    ["@lsp.type.comment"] = "comments are the syntax layer's; no token is sent",
+    ["@lsp.type.decorator"] = "never emitted",
+    ["@lsp.type.event"] = "never emitted",
+    ["@lsp.type.interface"] = "never emitted; a Lean class is `class`",
+    ["@lsp.type.macro"] = "never emitted",
+    ["@lsp.type.method"] = "never emitted; everything is `function`",
+    ["@lsp.type.modifier"] = "never emitted",
+    ["@lsp.type.namespace"] = "module paths are leanModulePath, a syntax rule",
+    ["@lsp.type.number"] = "literals are leanNumber, a syntax rule",
+    ["@lsp.type.operator"] = "never emitted; notation atoms come as `keyword`",
+    ["@lsp.type.parameter"] = "never emitted; every local is `variable`",
+    ["@lsp.type.regexp"] = "never emitted",
+    ["@lsp.type.string"] = "string literals are the syntax layer's",
+  }
+  local unpinned = child.lua_get([[(function(types, mods, exempt)
+    local out = {}
+    for name, _ in pairs(vim.api.nvim_get_hl(0, {})) do
+      if name:match("^@lsp%.") and not name:match("%.lean$") then
+        local h = vim.api.nvim_get_hl(0, { name = name, link = false })
+        if not vim.tbl_isempty(h) and not exempt[name] then
+          -- Can Lean's legend produce this name at all?
+          local reachable = false
+          local t = name:match("^@lsp%.type%.(.+)$")
+          local m = name:match("^@lsp%.mod%.(.+)$")
+          local tmt, tmm = name:match("^@lsp%.typemod%.([^.]+)%.(.+)$")
+          if t then reachable = types[t] == true
+          elseif m then reachable = mods[m] == true
+          elseif tmt then reachable = types[tmt] == true and mods[tmm] == true end
+          if reachable then
+            -- Pinned means: WE defined the `.lean` group, so no fallback runs.
+            if vim.tbl_isempty(vim.api.nvim_get_hl(0, { name = name .. ".lean" })) then
+              table.insert(out, name)
+            end
+          end
+        end
+      end
+    end
+    table.sort(out)
+    return out
+  end)(...)]], { types, mods, EXEMPT })
+  -- Non-vacuity: the sweep must actually be seeing catppuccin's groups. If
+  -- the colorscheme never applied there would be nothing to leak from and
+  -- an empty result would prove nothing.
+  local agnostic_count = child.lua_get([[(function()
+    local n = 0
+    for name, _ in pairs(vim.api.nvim_get_hl(0, {})) do
+      if name:match("^@lsp%.") and not name:match("%.lean$") then
+        if not vim.tbl_isempty(vim.api.nvim_get_hl(0, { name = name, link = false })) then
+          n = n + 1
+        end
+      end
+    end
+    return n
+  end)()]])
+  expect.equality(agnostic_count >= 20, true)
+  expect.equality(unpinned, {})
+end
+
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ END: Lean colour design                                              │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+
 -- LspInlayHint is styled in the catppuccin overrides (so it survives a
 -- colorscheme reload, as with LineNrWrap). catppuccin's stock value is
 -- Comment's exact fg, which makes a hint read as a comment; ours must not be.
