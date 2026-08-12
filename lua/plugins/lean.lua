@@ -137,6 +137,16 @@ return {
       -- line below for the first of those reasons.
       require("config.lean.rich_tokens").setup()
 
+      -- :LeanSetupInfo — the pasteable half of VS Code's `Troubleshooting:
+      -- Show Setup Information` (parity #57). Global and registered here for
+      -- the same reason `:LeanRichTokens` is: "why is Lean not working here"
+      -- is asked before a .lean file has been opened. The load-bearing field
+      -- — which toolchain elan actually resolved — is `:LeanRichTokens
+      -- status`'s and is not duplicated; this adds OS/CPU/RAM, tool versions,
+      -- the project path and the installed-toolchain list as one Markdown
+      -- block on the clipboard.
+      require("config.lean.setup_info").setup()
+
       -- Occurrence highlighting, which the server has always been able to
       -- serve and nothing ever asked for. Set up here rather than in
       -- after/ftplugin/lean.lua because it is autocmds, and that file must
@@ -168,6 +178,19 @@ return {
     -- otherwise propagate out of the finder. Remove once upstream returns a
     -- table unconditionally.
     config = function()
+      -- ── Abbreviations outside Lean buffers ──────────────────────────────
+      -- Two things, both in lua/config/lean/abbreviations.lua and both
+      -- explained there: `\to` now expands in telescope prompts (parity #40,
+      -- verified in a pty-hosted TUI), and lean.nvim's `abbreviations.load()`
+      -- is patched so `:Telescope lean_abbreviations` (`\la`) stops throwing —
+      -- upstream resolves its JSON with `debug.getinfo(2)`, the CALLER's
+      -- frame, which is wrong for every caller outside `lua/lean/`.
+      --
+      -- Here rather than in `init`: both need lean.nvim itself, and this runs
+      -- exactly when it loads. Not in the ftplugin, which must define no
+      -- autocmds (tests/test_invariants.lua).
+      require("config.lean.abbreviations").setup()
+
       -- ── satellite.nvim: whole-file elaboration progress ─────────────────
       -- lean.nvim ships lua/lean/satellite.lua, a Satellite.Handler plotting
       -- lean.progress onto the whole-document scrollbar — the thing the sign

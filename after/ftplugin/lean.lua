@@ -122,6 +122,17 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>ll", desc = "Loogle (by type pattern)" },
     { mode = "n", keys = "<LocalLeader>lw", desc = "Workspace symbols (by name)" },
     { mode = "n", keys = "<LocalLeader>la", desc = "Unicode abbreviations" },
+    { mode = "n", keys = "<LocalLeader>y", desc = "Yank module name" },
+    { mode = "n", keys = "<LocalLeader>q", desc = "Messages in this file" },
+    { mode = "n", keys = "<LocalLeader>Q", desc = "Messages in all buffers" },
+    { mode = "n", keys = "<LocalLeader>z", desc = "Fill open goals with sorry" },
+    { mode = "n", keys = "<LocalLeader>R", desc = "Restart the Lean SERVER" },
+    { mode = "n", keys = "<LocalLeader>k", desc = "Incoming calls" },
+    { mode = "n", keys = "<LocalLeader>K", desc = "Outgoing calls" },
+    { mode = "n", keys = "<LocalLeader>e", desc = "+examine (text popups)" },
+    { mode = "n", keys = "<LocalLeader>eg", desc = "Goal, as a popup" },
+    { mode = "n", keys = "<LocalLeader>et", desc = "Term goal, as a popup" },
+    { mode = "n", keys = "<LocalLeader>em", desc = "Messages on this line" },
     -- The one <Leader> map this file owns. mini.clue CONCATENATES a buffer's
     -- clues onto the global list (clue.lua H.get_config), so this entry shows
     -- up under the global <Leader> trigger in Lean buffers and nowhere else.
@@ -202,6 +213,86 @@ map("<LocalLeader>b", book.open, "Open book page")
 vim.api.nvim_buf_create_user_command(0, "LeanBook", book.open, {
   desc = "Open the rendered book page for this Lean file",
 })
+
+-- ── \y · yank this file's module name ─────────────────────────────────────
+-- VS Code's `lean4.copyModuleName` (parity audit #10). `\y` rather than `\c`
+-- ("clear all pins", lean.nvim's) or `\m` (already the module-hierarchy
+-- group): this is a yank, and it is the only one in the Lean namespace.
+--
+-- Not `path − root`: see the header of config.lean.module_name for why a
+-- mathlib buffer reports the MIL project root and needs its own rule.
+local module_name = require("config.lean.module_name")
+map("<LocalLeader>y", module_name.copy, "Yank module name")
+vim.api.nvim_buf_create_user_command(0, "LeanCopyModuleName", module_name.copy, {
+  desc = "Copy this file's dotted Lean module name to the clipboard",
+})
+
+-- ── \q / \Q · the message census ──────────────────────────────────────────
+-- VS Code's "All Messages" (#1) and "Problems" (#37). The infoview shows the
+-- CURRENT LINE's diagnostics only, so "how many sorries and how many real
+-- errors are left in this exercise?" has, until now, been a scroll.
+--
+-- Two keys, not one, because they are two audit rows and the difference is
+-- invisible at the call site: `vim.diagnostic.setqflist` IGNORES a `bufnr`
+-- key. See the header of config.lean.messages.
+local messages = require("config.lean.messages")
+map("<LocalLeader>q", messages.file, "Messages in this file")
+map("<LocalLeader>Q", messages.workspace, "Messages in all buffers")
+vim.api.nvim_buf_create_user_command(0, "LeanMessages", messages.file, {
+  desc = "Every diagnostic in this file, in the location list",
+})
+vim.api.nvim_buf_create_user_command(0, "LeanAllMessages", messages.workspace, {
+  desc = "Every diagnostic in every buffer, in the quickfix list",
+})
+
+-- ── the last unexposed built-ins ──────────────────────────────────────────
+-- Parity audit #36, #38, #42, #43. Five capabilities that were installed,
+-- working, and reachable only by typing a command name in full — which the
+-- audit counts, correctly, as not reachable at all.
+--
+-- KEY CHOICES, FROM A LIVE DUMP AND NOT FROM THE TABLE ABOVE. `:nmap \` in a
+-- MIL buffer, unioned with the global map list, is the only honest source:
+-- the clue table is documentation. `\g`, `\S` and `\/` LOOK free in a Lean
+-- buffer and are not — they are lean.nvim's infoview maps
+-- (infoview.lua:240-330), and giving them a second meaning in the source
+-- window would be worse than using a duller letter. See lean-cheatsheet.md,
+-- "The `\` namespace".
+--
+-- `\z` for sorry-filling because `s` and `S` are both spoken for by
+-- suggestions, in both windows; a cold key also suits the only binding here
+-- that edits the buffer.
+map("<LocalLeader>z", "<Cmd>LeanSorryFill<CR>", "Fill open goals with sorry")
+
+-- `\R` next to `\r`, which restarts the FILE. This restarts the SERVER, and
+-- it is the one you need when the server itself wedges rather than the file
+-- (#38). Named explicitly rather than bare, which would bounce every other
+-- client attached to the buffer.
+--
+-- `:lsp restart`, NOT `:LspRestart`, WHICH DOES NOT EXIST HERE. The audit
+-- calls `:LspRestart` / `:LspStop` "Neovim built-ins"; they are
+-- nvim-lspconfig's, and on this Neovim lspconfig defines none of them —
+-- plugin/lspconfig.lua opens with `if vim.fn.exists(':lsp') == 2 then return
+-- end`, and 0.12 ships a built-in `:lsp` with enable/disable/restart/stop
+-- subcommands. Measured live: `exists(':LspRestart') == 0`,
+-- `exists(':lsp') == 2`, and `getcompletion("lsp restart ", "cmdline")`
+-- returns { "leanls" }. Written the audit's way, \R would have thrown E492
+-- on every press — the same shape as the \la bug.
+map("<LocalLeader>R", "<Cmd>lsp restart leanls<CR>", "Restart the Lean SERVER")
+
+-- Call hierarchy (#36). Ranked last in the roadmap and honestly so: MIL is not
+-- a codebase you navigate. Two keys because the pair is `\w`/`\W`-shaped and
+-- costs nothing beyond the letters.
+map("<LocalLeader>k", vim.lsp.buf.incoming_calls, "Incoming calls")
+map("<LocalLeader>K", vim.lsp.buf.outgoing_calls, "Outgoing calls")
+
+-- `\e` · +examine — the three text popups (#42). A GROUP, so three low-value
+-- commands cost one letter rather than three. `\e` itself is deliberately NOT
+-- mapped: mini.clue only auto-executes on an exactly-one-clue match
+-- (clue.lua:1507), so a mapped prefix stops firing altogether. Same shape as
+-- `\d`, `\l` and `\m`, and tests/test_lean.lua enforces it.
+map("<LocalLeader>eg", "<Cmd>LeanGoal<CR>", "Goal, as a popup")
+map("<LocalLeader>et", "<Cmd>LeanTermGoal<CR>", "Term goal, as a popup")
+map("<LocalLeader>em", "<Cmd>LeanLineDiagnostics<CR>", "Messages on this line")
 
 -- ── <leader>K · why is this token that colour? ────────────────────────────
 -- The one <Leader> map in this file, and deliberately so: `K` is already

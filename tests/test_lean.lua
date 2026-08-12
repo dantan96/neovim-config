@@ -26,6 +26,9 @@ local child = MiniTest.new_child_neovim()
 -- A second child for T["global option leaks"], which must snapshot the global
 -- options BEFORE any Lean buffer exists.
 local leak_child = MiniTest.new_child_neovim()
+-- A third, for T["snippets"], which must assert against a cold start rather
+-- than against whatever the shared child has already pulled in.
+local snippet_child = MiniTest.new_child_neovim()
 local tmp_dir
 
 T["lean"] = new_set({
@@ -1862,6 +1865,371 @@ T["book"]["declines quietly when a project has no html build"] = function()
   expect.equality(err:find("no rendered page") ~= nil, true)
 end
 
+-- ── \y · module name (parity audit #10) ────────────────────────────────
+-- Pure resolver, tested in the parent like config.lean.book above: no editor,
+-- no server, no filesystem. The cases are the ones MEASURED in a pty-hosted
+-- TUI against MIL, where `vim.lsp.get_clients{bufnr=0}[1].root_dir` came back
+-- as the MIL project root for a mathlib buffer as well as for a MIL one. That
+-- is what makes the naive `path − root` wrong, and it is the second case here.
+T["module name"] = new_set()
+
+T["module name"]["resolves project, package and toolchain files"] = function()
+  local mn = dofile(H.cfg .. "/lua/config/lean/module_name.lua")
+  local root = "/Users/dan/LeanCourse/MathematicsInLean"
+  local function of(path)
+    local name, err = mn.of(path, root)
+    return name or ("ERR: " .. tostring(err))
+  end
+
+  -- project source
+  expect.equality(
+    of(root .. "/MIL/C05_Elementary_Number_Theory/S02_Induction.lean"),
+    "MIL.C05_Elementary_Number_Theory.S02_Induction"
+  )
+  expect.equality(of(root .. "/MIL/Common.lean"), "MIL.Common")
+
+  -- A DEPENDENCY, with the SAME root_dir. Rule 1: the module namespace starts
+  -- at the Lake package, not at the workspace. Without it this answers
+  -- ".lake.packages.mathlib.Mathlib.Tactic.Ring".
+  expect.equality(
+    of(root .. "/.lake/packages/mathlib/Mathlib/Tactic/Ring.lean"),
+    "Mathlib.Tactic.Ring"
+  )
+  expect.equality(
+    of(root .. "/.lake/packages/batteries/Batteries/Data/List/Basic.lean"),
+    "Batteries.Data.List.Basic"
+  )
+  -- A dependency of a dependency: the INNERMOST .lake/packages wins.
+  expect.equality(
+    of(root .. "/.lake/packages/mathlib/.lake/packages/Qq/Qq/Macro.lean"),
+    "Qq.Macro"
+  )
+
+  -- Rule 2: `gd` into core Lean lands under a toolchain, outside every root.
+  expect.equality(
+    mn.of("/Users/dan/.elan/toolchains/lean4-rich/src/lean/Init/Prelude.lean", root),
+    "Init.Prelude"
+  )
+  expect.equality(
+    mn.of("/Users/dan/.elan/toolchains/lean4-rich/src/lean/Init/Prelude.lean", nil),
+    "Init.Prelude"
+  )
+end
+
+T["module name"]["declines rather than inventing a name"] = function()
+  local mn = dofile(H.cfg .. "/lua/config/lean/module_name.lua")
+  local root = "/proj"
+  local function err(path, r)
+    local name, e = mn.of(path, r)
+    return name == nil and e or ("UNEXPECTED: " .. name)
+  end
+  expect.equality(err("", root):find("no file name") ~= nil, true)
+  expect.equality(err("/proj/notes.md", root):find("not a .lean") ~= nil, true)
+  -- Outside the root, outside any package, outside any toolchain.
+  expect.equality(err("/elsewhere/Foo.lean", root):find("not inside") ~= nil, true)
+  -- No root known and no other rule matches: decline, do not fall back to the
+  -- absolute path (which would yield ".Users.dan.…").
+  expect.equality(err("/Users/dan/scratch/Foo.lean", nil):find("not inside") ~= nil, true)
+end
+
+-- ── :LeanSetupInfo (parity audit #57, #56) ─────────────────────────────
+-- The generator is pure — table in, Markdown out — so it is tested in the
+-- parent against a fixture, and the elan-shaped fixture below is the SHAPE
+-- MEASURED on this machine from a live `require('elan').state()`, directory
+-- override and all, not an invented one.
+T["setup info"] = new_set()
+
+local ELAN_STATE_FIXTURE = {
+  elan_version = { current = "4.2.3" },
+  toolchains = {
+    active_override = {
+      reason = { OverrideDB = "/Users/dan/LeanCourse/MathematicsInLean" },
+      unresolved = { Local = { name = "lean4-rich" } },
+    },
+    default = {
+      resolved = { cached = "leanprover/lean4:v4.33.0", live = { Ok = "leanprover/lean4:v4.33.0" } },
+      unresolved = { Remote = { origin = "leanprover/lean4", release = "stable" } },
+    },
+    installed = {
+      { path = "/Users/dan/.elan/toolchains/lean4-rich", resolved_name = "lean4-rich" },
+      { path = "/x", resolved_name = "leanprover/lean4:v4.30.0" },
+    },
+    resolved_active = { cached = "lean4-rich", live = { Ok = "lean4-rich" } },
+  },
+}
+
+T["setup info"]["reads the directory override out of elan.state()"] = function()
+  local si = dofile(H.cfg .. "/lua/config/lean/setup_info.lua")
+  local e = si.elan_fields(ELAN_STATE_FIXTURE)
+  -- The single most load-bearing fact on this machine, and the one the
+  -- roadmap worried elan.state() might report badly. It does not.
+  expect.equality(e.active, "lean4-rich")
+  expect.equality(e.override.name, "lean4-rich")
+  expect.equality(e.override.reason, "/Users/dan/LeanCourse/MathematicsInLean")
+  expect.equality(e.default, "leanprover/lean4:v4.33.0")
+  expect.equality(e.installed, { "lean4-rich", "leanprover/lean4:v4.30.0" })
+end
+
+T["setup info"]["survives elan being absent entirely"] = function()
+  local si = dofile(H.cfg .. "/lua/config/lean/setup_info.lua")
+  local e = si.elan_fields(nil)
+  expect.equality(e.active, nil)
+  expect.equality(e.override, nil)
+  expect.equality(e.installed, {})
+  -- ...and rendering must still produce a block rather than throwing.
+  local md = si.markdown({ elan = e })
+  expect.equality(md:find("### Lean setup information", 1, true), 1)
+  expect.equality(md:find("*(not found)*", 1, true) ~= nil, true)
+end
+
+T["setup info"]["renders every field it was given"] = function()
+  local si = dofile(H.cfg .. "/lua/config/lean/setup_info.lua")
+  local md = si.markdown({
+    os = "Darwin 25.5.0 (arm64)",
+    cpu = "Apple M3 Max x14",
+    ram = "36.0 GiB",
+    nvim = "0.12.0-dev",
+    project = "/Users/dan/LeanCourse/MathematicsInLean",
+    file = "/x/S01.lean",
+    tools = { curl = "curl 8.7.1", git = "git version 2.49", elan = "elan 4.2.3" },
+    elan = si.elan_fields(ELAN_STATE_FIXTURE),
+    rich_tokens = "rich",
+  })
+  for _, needle in ipairs({
+    "Darwin 25.5.0 (arm64)",
+    "Apple M3 Max x14",
+    "36.0 GiB",
+    "curl 8.7.1",
+    "`lean4-rich` (/Users/dan/LeanCourse/MathematicsInLean)",
+    "leanprover/lean4:v4.30.0",
+    "| Rich tokens | rich |",
+  }) do
+    expect.equality({ needle, md:find(needle, 1, true) ~= nil }, { needle, true })
+  end
+  -- lake and lean were not supplied: absent, not blank or "nil".
+  expect.equality(md:find("| lake | *(not found)* |", 1, true) ~= nil, true)
+  expect.equality(md:find("nil", 1, true), nil)
+end
+
+-- ── unicode input in telescope prompts, and the \la crash (#40, #44) ───
+-- lua/config/lean/abbreviations.lua. What needed a real editor — that
+-- `\alpha`+space in a prompt produces α, that the column arithmetic survives
+-- the prompt prefix, and that <Tab>/<CR> come back to telescope afterwards —
+-- was measured in a pty-hosted TUI against MIL and is recorded in that file's
+-- header and in the commit. What is checkable here is the wiring.
+
+T["lean"]["abbreviations: the telescope-prompt hook is registered"] = function()
+  local n = child.lua_get([[
+    #vim.api.nvim_get_autocmds({
+      group = "LeanAbbreviationsInPrompts",
+      event = "FileType",
+      pattern = "TelescopePrompt",
+    })
+  ]])
+  expect.equality(n, 1)
+end
+
+-- The hook's whole job. Buffer-SCOPED autocmds, which is what makes this work
+-- at all: `enable('TelescopePrompt')` would match a file pattern against a
+-- buffer telescope never names, register three autocmds that can never fire,
+-- and look installed.
+T["lean"]["abbreviations: init_prompt arms a buffer with all three events"] = function()
+  local events = child.lua_get([[(function()
+    local b = vim.api.nvim_create_buf(false, true)
+    local armed = require("config.lean.abbreviations").init_prompt(b)
+    local out = {}
+    for _, a in ipairs(vim.api.nvim_get_autocmds({ group = "LeanAbbreviations", buffer = b })) do
+      table.insert(out, a.event)
+    end
+    table.sort(out)
+    vim.api.nvim_buf_delete(b, { force = true })
+    return { armed = armed, events = out }
+  end)()]])
+  expect.equality(events.armed, true)
+  expect.equality(events.events, { "BufLeave", "InsertCharPre", "InsertLeave" })
+end
+
+-- Gating, so opening a telescope picker in a Lua buffer does not drag
+-- lean.nvim in through lazy's require hook. Checked in the PARENT, which has
+-- loaded no plugins at all — the honest "lean.nvim is absent" environment.
+T["lean"]["abbreviations: inert when lean.nvim has not loaded"] = function()
+  local a = dofile(H.cfg .. "/lua/config/lean/abbreviations.lua")
+  expect.equality(a.available(), false)
+  expect.equality(a.init_prompt(0), false)
+end
+
+-- ── the \la crash (parity audit #44, wrongly recorded as `parity`) ─────
+-- `abbreviations.load()` locates its JSON from `debug.getinfo(2, 'S')` — the
+-- CALLER's frame — so it works from `lua/lean/*` and throws from anywhere
+-- else, including lean.nvim's own telescope extension at
+-- lua/telescope/_extensions/lean_abbreviations.lua. `\la` therefore threw on
+-- every press while three tests for it passed.
+--
+-- This calls load() from outside `lua/lean/`, which is exactly the failing
+-- call site's situation, and requires a real table back.
+T["lean"]["abbreviations: load() works from outside lua/lean (the \\la crash)"] = function()
+  local report = child.lua_get([[(function()
+    local ok, res = pcall(require("lean.abbreviations").load)
+    if not ok then return { ok = false, n = 0, err = tostring(res):sub(1, 120) } end
+    local n = 0
+    for _ in pairs(res) do n = n + 1 end
+    return { ok = true, n = n, alpha = res["alpha"] }
+  end)()]])
+  expect.equality(report.ok, true)
+  -- Non-vacuity: an empty or stub table would satisfy "ok".
+  expect.equality(report.n > 1000, true)
+  expect.equality(report.alpha, "α")
+end
+
+-- ── lean.nvim's snippets reach the completion menu (parity audit #41) ──
+-- lean.nvim ships snippets/lean.json through its own package.json and
+-- `require('luasnip').get_snippets('lean')` returned 0 in a live MIL buffer.
+-- Its own child so the assertion is about a cold start, not about whatever
+-- the shared T["lean"] child has already loaded.
+T["snippets"] = new_set({
+  hooks = {
+    pre_once = function()
+      H.setup_child(snippet_child)
+      snippet_child.lua([[require("lazy").load({ plugins = { "LuaSnip" } })]])
+      snippet_child.lua([[vim.wait(2000, function()
+        return package.loaded["luasnip"] ~= nil
+      end)]])
+    end,
+    post_once = function() snippet_child.stop() end,
+  },
+})
+
+-- Note what is NOT done here: no .lean file is opened, so lean.nvim never
+-- loads. That is the strongest form of the claim — the fix resolves the
+-- snippet directory from lazy's SPEC rather than from the runtimepath, so it
+-- cannot depend on load ordering at all. `enew` + `set ft=lean` fires
+-- LuaSnip's FileType hook without matching lean.nvim's `BufReadPre *.lean`.
+T["snippets"]["lean.nvim's snippets are loaded"] = function()
+  local triggers = snippet_child.lua_get([[(function()
+    vim.cmd("enew")
+    vim.bo.filetype = "lean"
+    vim.wait(1000)
+    local out = {}
+    for _, s in ipairs(require("luasnip").get_snippets("lean") or {}) do
+      table.insert(out, tostring(s.trigger))
+    end
+    table.sort(out)
+    return out
+  end)()]])
+  -- Measured live in a MIL buffer: five triggers, not the four the audit and
+  -- the roadmap both say (`ns` is a second trigger for the namespace snippet).
+  expect.equality(triggers, { "calc", "example", "namespace", "ns", "section" })
+end
+
+-- The fix is a SECOND lazy_load call and not a `paths` argument on the
+-- existing one, because `paths` REPLACES the runtimepath scan
+-- (from_vscode.lua:455-474). This is the case that would catch someone
+-- "simplifying" the two calls into one and silently unloading
+-- friendly-snippets for every other language in the config.
+T["snippets"]["friendly-snippets still load for other filetypes"] = function()
+  local n = snippet_child.lua_get([[(function()
+    vim.cmd("enew")
+    vim.bo.filetype = "lua"
+    vim.wait(1000)
+    return #(require("luasnip").get_snippets("lua") or {})
+  end)()]])
+  expect.equality(n > 0, true)
+end
+
+-- ── \q / \Q · the message census (parity audit #1 and #37) ─────────────
+-- The interesting case is the ROADMAP'S TRAP, and it is the reason these two
+-- are separate keys: research/12-parity-roadmap.md §3 item 3 prescribes
+-- `vim.diagnostic.setqflist({ bufnr = 0 })` for the whole-FILE census, and
+-- `setqflist` has no `bufnr` option — `set_list()` leaves the buffer filter
+-- nil whenever it is not building a location list
+-- (runtime/lua/vim/diagnostic.lua:1004-1015). Written that way, #1 would have
+-- shipped as #37 and passed any single-buffer test.
+--
+-- Diagnostics and list windows work perfectly well headless, so this runs in
+-- the parent — no child, no Lean server, no plugins.
+T["messages"] = new_set()
+
+local function two_buffers_with_diagnostics()
+  local ns = vim.api.nvim_create_namespace("test_lean_messages")
+  local a = vim.api.nvim_create_buf(true, true)
+  local b = vim.api.nvim_create_buf(true, true)
+  vim.api.nvim_buf_set_lines(a, 0, -1, false, { "one", "two", "three" })
+  vim.api.nvim_buf_set_lines(b, 0, -1, false, { "one", "two" })
+  local S = vim.diagnostic.severity
+  vim.diagnostic.set(ns, a, {
+    { lnum = 0, col = 0, message = "A-err", severity = S.ERROR },
+    { lnum = 1, col = 0, message = "A-warn1", severity = S.WARN },
+    { lnum = 2, col = 0, message = "A-warn2", severity = S.WARN },
+  })
+  vim.diagnostic.set(ns, b, {
+    { lnum = 0, col = 0, message = "B-err", severity = S.ERROR },
+  })
+  MiniTest.finally(function()
+    vim.diagnostic.reset(ns)
+    -- `vim.cmd` is a callable TABLE, not a function; wrap it (see 4824293).
+    pcall(function() vim.cmd("lclose") end)
+    pcall(function() vim.cmd("cclose") end)
+    vim.fn.setqflist({})
+    vim.api.nvim_buf_delete(a, { force = true })
+    vim.api.nvim_buf_delete(b, { force = true })
+  end)
+  return a, b
+end
+
+T["messages"]["setqflist ignores bufnr — the trap that made these two keys"] = function()
+  local a = two_buffers_with_diagnostics()
+  vim.api.nvim_win_set_buf(0, a)
+  -- Exactly the call the roadmap prescribes.
+  vim.diagnostic.setqflist({ bufnr = a, open = false })
+  local msgs = {}
+  for _, item in ipairs(vim.fn.getqflist()) do
+    table.insert(msgs, item.text)
+  end
+  table.sort(msgs)
+  -- Non-vacuity: it gathered SOMETHING.
+  expect.equality(#msgs, 4)
+  -- ...and "something" includes the other buffer's diagnostic, which is the
+  -- whole point. If a future Neovim honours `bufnr`, this fails and
+  -- config.lean.messages can be simplified — that is a wanted failure.
+  expect.equality(vim.tbl_contains(msgs, "B-err"), true)
+end
+
+T["messages"]["file() is one buffer, workspace() is all of them"] = function()
+  local a = two_buffers_with_diagnostics()
+  local m = dofile(H.cfg .. "/lua/config/lean/messages.lua")
+  vim.api.nvim_win_set_buf(0, a)
+  local win = vim.api.nvim_get_current_win()
+
+  m.file()
+  local loc = {}
+  for _, item in ipairs(vim.fn.getloclist(win)) do
+    table.insert(loc, item.text)
+  end
+  table.sort(loc)
+  expect.equality(loc, { "A-err", "A-warn1", "A-warn2" })
+  -- The tally VS Code shows in the All Messages header.
+  expect.equality(vim.fn.getloclist(win, { title = 0 }).title, "Lean messages — 1 error, 2 warnings")
+  pcall(function() vim.cmd("lclose") end)
+
+  vim.api.nvim_win_set_buf(0, a)
+  m.workspace()
+  expect.equality(#vim.fn.getqflist(), 4)
+  pcall(function() vim.cmd("cclose") end)
+end
+
+T["messages"]["tally counts and pluralises"] = function()
+  local m = dofile(H.cfg .. "/lua/config/lean/messages.lua")
+  expect.equality(m.tally({ error = 0, warn = 0, info = 0, hint = 0, total = 0 }), "No messages")
+  expect.equality(
+    m.tally({ error = 1, warn = 0, info = 0, hint = 0, total = 1 }),
+    "1 error"
+  )
+  expect.equality(
+    m.tally({ error = 2, warn = 1, info = 0, hint = 3, total = 6 }),
+    "2 errors, 1 warning, 3 hints"
+  )
+end
+
 -- ── the coverage test_invariants.lua had to give up ────────────────────
 -- The PROBES list there deliberately has no probe.lean, because lean.nvim
 -- leaks the GLOBAL 'breakat' and the shared invariants child cannot survive it
@@ -1944,6 +2312,17 @@ local PARITY_MAPS = {
   { "\\ll", "Loogle (by type pattern)" },
   { "\\lw", "Workspace symbols (by name)" },
   { "\\la", "Unicode abbreviations" },
+  -- Second wave, 2026-08-13: research/12-parity-roadmap.md §3 items 2, 3, 6.
+  { "\\y", "Yank module name" },
+  { "\\q", "Messages in this file" },
+  { "\\Q", "Messages in all buffers" },
+  { "\\z", "Fill open goals with sorry" },
+  { "\\R", "Restart the Lean SERVER" },
+  { "\\k", "Incoming calls" },
+  { "\\K", "Outgoing calls" },
+  { "\\eg", "Goal, as a popup" },
+  { "\\et", "Term goal, as a popup" },
+  { "\\em", "Messages on this line" },
 }
 
 local parity_parametrize = {}
@@ -2059,6 +2438,78 @@ T["lean"]["no <LocalLeader> map is a prefix of another"] = function()
   -- And \s is still a working leaf, not a group prefix.
   expect.equality(report.accept_suggestion, "Accept the first infoview suggestion.")
 end
+
+-- EVERY `<Cmd>…<CR>` RHS MUST NAME A COMMAND THAT EXISTS.
+--
+-- The PARITY_MAPS cases above assert a map's `desc`, which is satisfied by a
+-- key that throws E492 the moment it is pressed. That is exactly how `\la`
+-- shipped broken, and `\R` nearly repeated it: the audit calls `:LspRestart`
+-- a Neovim built-in, but it is nvim-lspconfig's, and lspconfig defines none
+-- of the `:Lsp*` commands on a Neovim that ships `:lsp`
+-- (plugin/lspconfig.lua:6-8). Measured live: exists(":LspRestart") == 0.
+--
+-- Generic on purpose: it covers every present and future `<Cmd>` binding in
+-- the Lean namespace rather than the one that was caught.
+T["lean"]["every <Cmd> binding names a real command"] = function()
+  local report = child.lua_get([[(function()
+    local bad, checked = {}, {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+      local rhs = m.rhs or ""
+      local name = rhs:match("^<Cmd>(%a[%w_]*)") or rhs:match("^:(%a[%w_]*)")
+      if name and m.lhs:sub(1, 1) == "\\" then
+        table.insert(checked, m.lhs .. " -> :" .. name)
+        if vim.fn.exists(":" .. name) ~= 2 then
+          table.insert(bad, m.lhs .. " -> :" .. name .. " (exists=" .. vim.fn.exists(":" .. name) .. ")")
+        end
+      end
+    end
+    table.sort(bad); table.sort(checked)
+    return { bad = table.concat(bad, "; "), n = #checked, checked = checked }
+  end)()]])
+  -- Non-vacuity: the Lean namespace has several <Cmd> bindings, so a zero
+  -- here would mean the scan found nothing rather than nothing being wrong.
+  expect.equality({ n = report.n > 5, checked = report.checked }, { n = true, checked = report.checked })
+  expect.equality(report.bad, "")
+end
+
+-- Group prefixes are CLUE ENTRIES, NEVER MAPS. mini.clue auto-executes only
+-- when exactly one clue matches the query (clue.lua:1507), so mapping `\e`
+-- itself would not merely stall `\eg`/`\et`/`\em` — it would stop `\e` firing
+-- and need a trailing <CR>. The case above catches the reverse mistake (a
+-- live leaf gaining children); this one catches the prefix itself being
+-- bound, which that scan cannot see because a mapped `\e` with `\eg` under it
+-- IS reported by it — but only if someone reads the failure correctly. This
+-- states the rule directly.
+T["lean"]["group prefixes have clues and no mapping"] = new_set({
+  parametrize = { { "d", "+diff pins" }, { "l", "+lemma search" }, { "m", "+module hierarchy" }, { "e", "+examine (text popups)" } },
+}, {
+  test = function(letter, desc)
+    local report = child.lua_get(string.format(
+      [[(function()
+        local clue
+        for _, c in ipairs((vim.b.miniclue_config or {}).clues or {}) do
+          if c.keys == "<LocalLeader>%s" then clue = c.desc end
+        end
+        local mapped = false
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+          if m.lhs == "\\%s" then mapped = true end
+        end
+        local children = 0
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+          if #m.lhs > 2 and m.lhs:sub(1, 2) == "\\%s" then children = children + 1 end
+        end
+        return { clue = clue or "MISSING", mapped = mapped, children = children }
+      end)()]],
+      letter,
+      letter,
+      letter
+    ))
+    expect.equality(report.clue, desc)
+    expect.equality(report.mapped, false)
+    -- Non-vacuity: a prefix with no children would satisfy "not mapped".
+    expect.equality(report.children > 1, true)
+  end,
+})
 
 -- ── occurrence highlighting ────────────────────────────────────────────
 -- lua/config/lean/document_highlight.lua. The server has advertised
