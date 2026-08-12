@@ -57,7 +57,43 @@ return {
           default = true,
         })
       end
-      require("mini.operators").setup()
+      -- mini.operators, with `replace` moved off `gr`.
+      --
+      -- WHY: with the default prefix, operators.lua:726-734 runs
+      --   if prefix == 'gr' and has('nvim-0.11') then
+      --     remove_lsp_mapping('n', 'gra') ... 'gri' 'grn' 'grr' 'grt' 'grx'
+      -- i.e. it DELETES Neovim's built-in LSP maps outright — it does not
+      -- merely shadow them. Measured in a live Lean buffer before this change:
+      -- grn/gra/gri/grt were UNMAPPED and grr was "Replace line". Every other
+      -- filetype in this config lost the standard LSP vocabulary too; Lean was
+      -- just where it was noticed, because Lean's textDocument/declaration
+      -- returns the parser and elaborator of a symbol and has no substitute.
+      --
+      -- Changing the prefix is all that is needed: the deletion block is gated
+      -- on `prefix == 'gr'`, and Neovim creates grn/gra/grr/gri/grt in
+      -- runtime/lua/vim/_defaults.lua at startup, before any plugin loads. So
+      -- not deleting them leaves the built-ins in place, with no re-binding
+      -- here and none in the Lean ftplugin.
+      --
+      -- WHY `gR` AND NOT `<Leader>gr`, WHICH WAS THE FIRST CHOICE — two
+      -- measured blockers, both fatal:
+      --   1. gitsigns already maps <leader>gr (n and x) to "Reset hunk",
+      --      BUFFER-LOCALLY in every buffer it attaches to (plugins/gitsigns.lua:39,43).
+      --      Buffer-local maps beat global ones, so a global <leader>gr replace
+      --      operator would be dead in every file in a git repo — i.e. almost
+      --      everywhere.
+      --   2. The line variant is derived as prefix .. last-char-of-prefix
+      --      (operators.lua:743), so <Leader>gr implies <Leader>grr, and
+      --      tests/test_keymap_ownership.lua's stall invariant forbids exactly
+      --      that shape: a <leader>X map that is a strict prefix of a longer
+      --      <leader>X… map. Any two-key leader prefix for an operator hits
+      --      this, so it is not a matter of picking a different letter.
+      -- `gR` costs Neovim's built-in Virtual Replace mode, keeps all three
+      -- variants (gR operator, gRR line, gR visual), stays one shift-key from
+      -- the old muscle memory, and touches no leader namespace.
+      require("mini.operators").setup({
+        replace = { prefix = "gR" },
+      })
       require("mini.ai").setup({
         custom_textobjects = {
           -- Disable mini.ai's af/if (function call) in favor of

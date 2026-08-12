@@ -57,16 +57,32 @@ erroring — a short prefix mid-typing is normally just noise.
 | `K` | Interactive hover (lean.nvim overrides the default) |
 | `<C-]>` | Go to definition (via `tagfunc`); `<C-t>` to come back |
 | `gO` | Document symbols |
-| `\n` | Rename |
-| `\a` | Code action |
-| `\f` | References |
+| `grn` | Rename (also `\n`) |
+| `gra` | Code action (also `\a`) |
+| `grr` | References (also `\f`) |
+| `gri` | Implementation |
+| `grt` | Type definition — every constituent type constant of a compound type |
+| `\D` | **Declaration** — Lean also returns the *parser and elaborator* of the symbol, which `gd` does not |
 | `\b` | Open this file's book page in the browser (`:LeanBook`) |
 | `\h` | Toggle inlay hints for this buffer (on by default) |
 | `[d` `]d` | Previous / next diagnostic |
 
-`\n` `\a` `\f` are defined in this config, not by lean.nvim: mini.operators
-owns the `gr` prefix, which shadows Neovim's built-in `grn` / `gra` / `grr`
-LSP maps, leaving those actions otherwise unreachable.
+`grn` `gra` `grr` `gri` `grt` are Neovim's own LSP maps and work here like
+anywhere else. They used to be dead: mini.operators' replace operator owned the
+`gr` prefix and its setup **deletes** those five built-ins. The operator now
+lives at `gR` (`gRR` for a line, `gR` in visual mode), which is the only thing
+that moved. `\n` `\a` `\f` remain as aliases, so the whole Lean vocabulary is
+still reachable from `\`.
+
+Occurrence highlighting is automatic: rest the cursor on an identifier in
+normal mode and every *semantically* identical occurrence lights up — which `*`
+cannot do, because Lean shadows (`obtain ⟨x, hx⟩ := h` introduces an `x` that is
+not the outer `x`). Highlights clear on the next cursor move. Off inside the
+infoview.
+
+A 💡 in the sign column means a code action is available on that line — that is
+how `#guard_msgs` repair, missing-import suggestions and the Batteries
+instance/match/induction skeletons are delivered. Press `gra`.
 
 Lean's only inlay hints are **auto-bound implicits** — the ` {α}` the
 elaborator inserted where you wrote none. If one shows up on a name you meant

@@ -117,10 +117,20 @@ vim.b.miniclue_config = {
   },
 }
 
--- LSP actions. Neovim's built-in grn/gra/grr maps are shadowed globally by
--- mini.operators, which owns the `gr` prefix, so rename/code-action/references
--- are otherwise unreachable here. Bound buffer-locally rather than fixing the
--- global collision, which is not this filetype's call to make.
+-- LSP actions.
+--
+-- These were WORKAROUNDS: mini.operators owned the `gr` prefix and its setup
+-- deletes Neovim's built-in grn/gra/grr/gri/grt outright, so rename, code
+-- action and references were unreachable here. That is fixed at the source now
+-- — plugins/mini.lua moves the replace operator to `gR`, and the built-ins come
+-- back on their own — so `grn` / `gra` / `grr` / `gri` / `grt` work in a Lean
+-- buffer exactly as they do everywhere else.
+--
+-- KEPT ANYWAY, as aliases. They cost three lines, they are in the cheatsheet
+-- and in the `\` clue window, they are what is already in the fingers, and
+-- `\`-prefixed maps are where every other Lean action lives — so `\n` sits
+-- next to `\i`/`\r`/`\v` rather than in a separate vocabulary. Nothing depends
+-- on them being the ONLY route, which was the actual problem.
 local function map(lhs, rhs, desc)
   vim.keymap.set("n", lhs, rhs, { buffer = true, desc = desc })
 end

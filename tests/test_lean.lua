@@ -464,6 +464,59 @@ T["lean"]["cheatsheet file exists"] = function()
   expect.equality(vim.uv.fs_stat(path) ~= nil, true)
 end
 
+-- ── the `gr` prefix, reclaimed ─────────────────────────────────────────
+-- mini.operators' replace operator used to sit on `gr`, and its setup does not
+-- merely shadow the built-in LSP maps — operators.lua:726-734 DELETES `gra`,
+-- `gri`, `grn`, `grr`, `grt` and `grx` when the prefix is exactly "gr". The
+-- VS Code parity audit measured all five as UNMAPPED in a live Lean buffer.
+-- plugins/mini.lua moves the operator to `gR`, which is enough: Neovim creates
+-- these in runtime/lua/vim/_defaults.lua at startup, so not deleting them is
+-- the whole fix — nothing re-binds them here or in the ftplugin.
+--
+-- Non-vacuous by construction: every one of these read "UNMAPPED" before the
+-- prefix moved, and restoring `prefix = "gr"` turns all six cases below red.
+T["lean"]["built-in gr* LSP maps are alive in a Lean buffer"] = new_set({
+  parametrize = {
+    { "grn", "vim.lsp.buf.rename()" },
+    { "gra", "vim.lsp.buf.code_action()" },
+    { "grr", "vim.lsp.buf.references()" },
+    { "gri", "vim.lsp.buf.implementation()" },
+    { "grt", "vim.lsp.buf.type_definition()" },
+  },
+}, {
+  test = function(lhs, desc)
+    expect.equality(
+      child.lua_get(
+        string.format([[vim.fn.maparg(%q, "n", false, true).desc or "UNMAPPED"]], lhs)
+      ),
+      desc
+    )
+  end,
+})
+
+-- The other half: the operator really did move, all three variants came with
+-- it, and `gr` itself is free rather than still holding a stale mapping.
+T["lean"]["mini.operators' replace lives at gR, leaving gr free"] = function()
+  local maps = child.lua_get([[(function()
+    local function d(mode, lhs)
+      local m = vim.fn.maparg(lhs, mode, false, true)
+      return m.desc or m.rhs or "UNMAPPED"
+    end
+    return {
+      n_gr = d("n", "gr"),
+      n_gR = d("n", "gR"),
+      n_gRR = d("n", "gRR"),
+      x_gR = d("x", "gR"),
+    }
+  end)()]])
+  expect.equality(maps, {
+    n_gr = "UNMAPPED",
+    n_gR = "Replace",
+    n_gRR = "Replace line",
+    x_gR = "Replace selection",
+  })
+end
+
 -- ── after/syntax/lean.vim ──────────────────────────────────────────────
 -- Lemma references are the one part of a proof nothing highlights: leanls
 -- sends no semantic token for them and lean.nvim's syntax file has no rule
