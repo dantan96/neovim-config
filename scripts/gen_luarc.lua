@@ -38,28 +38,26 @@ end
 --- lua_ls silently skips library entries that do not exist
 --- (workspace.lua:241), so listing several runtime candidates costs nothing
 --- and removes the need for a per-machine edit.
+---
+--- Deliberately a FIXED list rather than this machine's resolved
+--- `$VIMRUNTIME`. The generated file has to be a pure function of in-repo
+--- data, or `tests/test_luarc.lua`'s byte-identity case fails on WorkBox --
+--- and on this machine the moment bob switches channel -- reporting a
+--- machine difference as if it were drift. The `runtime resolves` case in
+--- that file is the honest guard: it fails, with a meaning, when none of
+--- these exists.
 local function runtime_candidates()
-  local out = {
+  return {
     -- Set whenever lua_ls is a child of Neovim; resolved by lua_ls's
-    -- `${env:...}` placeholder (files.lua `resolvePathPlaceholders`).
+    -- `${env:...}` placeholder (files.lua `resolvePathPlaceholders`). This
+    -- is the entry that covers a bob channel nobody listed below.
     "${env:VIMRUNTIME}",
+    "~/.local/share/bob/nightly/share/nvim/runtime",
+    "~/.local/share/bob/stable/share/nvim/runtime",
+    "/usr/local/share/nvim/runtime",
+    "/opt/homebrew/share/nvim/runtime",
+    "/usr/share/nvim/runtime",
   }
-  local seen = { ["${env:VIMRUNTIME}"] = true }
-  local function push(p)
-    if p and p ~= "" and not seen[p] then
-      seen[p] = true
-      out[#out + 1] = p
-    end
-  end
-  push(tildify(vim.fs.normalize(vim.env.VIMRUNTIME or "")))
-  -- Sibling bob channels, then the usual system installs.
-  for _, chan in ipairs({ "nightly", "stable" }) do
-    push(("~/.local/share/bob/%s/share/nvim/runtime"):format(chan))
-  end
-  push("/usr/local/share/nvim/runtime")
-  push("/opt/homebrew/share/nvim/runtime")
-  push("/usr/share/nvim/runtime")
-  return out
 end
 
 --- Every plugin lazy.nvim has locked, as a library root. Roots, not their
