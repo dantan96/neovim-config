@@ -202,6 +202,34 @@ Greedy matching: `\bN` gives βN, not ℕ, because `\b` → β wins. Use `\N`.
 | `elan show` | Active toolchain |
 | `elan self update` | Update elan itself |
 
+### Rich semantic tokens
+
+Two Lean toolchains are installed. `lean4-rich` (a directory override on
+`~/LeanCourse/MathematicsInLean`) is a local build whose server sends a much
+finer token legend — token types for `theorem`, `axiom`, `opaque`, `recursor`
+and `tactic`, and 31 modifiers including the `propWorld`/`dataWorld`/
+`polyWorld` and `element`/`sort`/`former` axes. Stock releases send 24 types
+and 10 modifiers. `lean --version` cannot tell them apart; both report commit
+`d024af0996`.
+
+Nothing needs configuring: the editor reads the legend the server actually
+sent and decides. `:LeanRichTokens status` shows **both** halves — the
+toolchain elan resolved *and* what arrived on the wire — because those can
+disagree.
+
+| Command | Action |
+|---------|--------|
+| `:LeanRichTokens status` | Toolchain, legend, and the mode in effect |
+| `:LeanRichTokens off` | Force standard mode (`vim.g.lean_rich_tokens = false`) |
+| `:LeanRichTokens on` | Force rich mode; warns if the legend has no rich names |
+| `:LeanRichTokens toggle` | Flip whichever is in effect |
+| `:LeanRichTokens auto` | Back to detecting from the legend (the default) |
+
+Changing the **mode** restarts the language server. Changing the
+**toolchain** is a different thing — `elan override set <toolchain>`, or
+`ELAN_TOOLCHAIN=…` in the environment nvim was launched from — and no editor
+command does it.
+
 Graphics widgets need `resvg` for SVG (installed) and a Kitty-protocol
 terminal — Ghostty qualifies. *Unverified*: headless testing cannot render
 images.
