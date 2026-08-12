@@ -81,6 +81,9 @@ T["lean"]["configured via vim.g.lean_config, not setup()"] = function()
   expect.equality(child.lua_get("type(vim.g.lean_config)"), "table")
   expect.equality(child.lua_get("vim.g.lean_config.mappings"), true)
   expect.equality(child.lua_get("vim.g.lean_config.infoview.width"), 55)
+  -- Pinned, because lean.nvim's default "auto" picks by aspect ratio and
+  -- lands on a horizontal split in an ordinary ~100x50 window.
+  expect.equality(child.lua_get("vim.g.lean_config.infoview.orientation"), "vertical")
 end
 
 -- textwidth=100 alone hard-wraps Lean terms mid-expression, because the global

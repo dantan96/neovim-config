@@ -43,10 +43,18 @@ return {
 
         infoview = {
           autoopen = true,
+          -- Always a side pane. The default is "auto", which only goes
+          -- vertical when `columns > 2.5 * lines` (infoview.lua:442) — an
+          -- aspect-ratio guess that lands on horizontal in an ordinary
+          -- ~100x50 window and silently flips layout when the terminal is
+          -- resized or the window is split. Pin it.
+          orientation = "vertical",
           -- Goal states are wide (mathlib hypotheses run long), so give the
           -- infoview a fixed column count rather than a fraction of a window
           -- that may itself already be split.
           width = 55,
+          -- Only consulted for horizontal infoviews, which the pin above
+          -- rules out; kept so removing the pin restores sane behaviour.
           horizontal_position = "bottom",
           indicators = "auto",
         },
