@@ -108,12 +108,19 @@ syn keyword leanBinderKeyword fun let have show suffices match with do from
 " — verified on `theorem coext' (h : ∀ s, sᶜ ∈ f ↔ sᶜ ∈ g)`, which produces
 " tokens for `s`, `f` and `g` and nothing at the `∀`. lean.nvim lumps them
 " into `leanOp` with `+`, `*` and `=`; this rule is defined later and so wins.
-syn match leanBinderKeyword "[λ∀∃]"
+syn match leanBinderSymbol "[λ∀∃]"
 
 hi def link leanConstant        Function
-hi def link leanModuleKeyword   @lean.path.keyword
-hi def link leanBinderKeyword   @lean.binder.keyword
-hi def link leanPathQual        @lean.path.keyword
+" The keyword rules link to the ATTRIBUTE-FREE floor groups, not to the ones
+" namespace_hl.lua applies at 129. Neovim composes per attribute, so a bold set
+" here at priority 50 survives a semantic mark at 125 taking the foreground —
+" measured: `scoped` and a tactic-position `have` both rendered mauve-BOLD,
+" mauve correctly from @lsp.type.keyword.lean and bold leaking from this file.
+" `∀ ∃ λ` are exempt because the server emits no token for them at all.
+hi def link leanModuleKeyword   @lean.path.floor
+hi def link leanBinderKeyword   @lean.binder.floor
+hi def link leanBinderSymbol    @lean.binder.keyword
+hi def link leanPathQual        @lean.path.floor
 hi def link leanPathPrefix      @lean.path.prefix
 hi def link leanPathDot         @lean.path.dot
 hi def link leanPathFinal       @lean.path.final

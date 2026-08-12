@@ -162,12 +162,29 @@ M.KEYWORDS = {
 function M.groups()
   local p = M.palette
   return {
-    -- On a command line. Nothing else claims these columns.
+    -- Applied by THIS module at 129, to a token whose text is in M.KEYWORDS.
+    -- Bold is safe here: nothing sits above 129 to leak it under.
     ["@lean.path.keyword"] = { fg = p.brass, bold = true },
+    ["@lean.binder.keyword"] = { fg = p.olive, bold = true },
+
+    -- The COLD-START FLOOR, used by after/syntax/lean.vim for the same words.
+    -- Identical but for carrying NO attribute bits, and that is the whole
+    -- point. Neovim composes per attribute, so a syntax group at 50 that sets
+    -- `bold` keeps its bold even when a semantic mark at 125 takes the
+    -- foreground. Measured: `open scoped Classical` rendered `scoped` as
+    -- mauve-BOLD — mauve from `@lsp.type.keyword.lean`, which correctly owns
+    -- it, and bold leaking up from this layer. Same for `have` used as a
+    -- TACTIC, which the server types `tactic` rather than `keyword` so this
+    -- module deliberately leaves alone. Setting only `fg` means a token that
+    -- outranks us takes the whole appearance and we contribute nothing.
+    ["@lean.path.floor"] = { fg = p.brass },
+    ["@lean.binder.floor"] = { fg = p.olive },
+
+    -- Token-free by measurement, so their attributes cannot leak: the server
+    -- emits nothing at these columns at all.
     ["@lean.path.prefix"] = { fg = p.brass, underdotted = true, sp = p.brass },
     ["@lean.path.dot"] = { fg = p.slate },
     ["@lean.path.final"] = { fg = p.flamingo, bold = true },
-    ["@lean.binder.keyword"] = { fg = p.olive, bold = true },
     -- Inside a dotted reference, over highlights.lua's 128. No fg: the
     -- foreground underneath is the whole point of leaving it alone.
     ["@lean.ns.prefix"] = { underdotted = true, sp = p.brass },
@@ -285,9 +302,13 @@ end
 --- `default = true`, i.e. exactly `hi def link`, so an explicit
 --- `:hi link leanPathFinal Whatever` from the user still wins and survives.
 M.LINKS = {
-  leanModuleKeyword = "@lean.path.keyword",
-  leanBinderKeyword = "@lean.binder.keyword",
-  leanPathQual = "@lean.path.keyword",
+  -- The floor groups, NOT the 129 ones — see M.groups() for the measurement.
+  leanModuleKeyword = "@lean.path.floor",
+  leanBinderKeyword = "@lean.binder.floor",
+  leanPathQual = "@lean.path.floor",
+  -- ...but `∀ ∃ λ` carry no token ever, so nothing can outrank them and they
+  -- get the full treatment.
+  leanBinderSymbol = "@lean.binder.keyword",
   leanPathPrefix = "@lean.path.prefix",
   leanPathDot = "@lean.path.dot",
   leanPathFinal = "@lean.path.final",

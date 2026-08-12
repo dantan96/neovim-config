@@ -166,9 +166,12 @@ NS["`∀ ∃ λ` are binder keywords and not operators"] = function()
     end
     return out
   end)()]])
-  expect.equality(got["∀"], "leanBinderKeyword")
-  expect.equality(got["∃"], "leanBinderKeyword")
-  expect.equality(got["λ"], "leanBinderKeyword")
+  -- Their own group, linked straight to the bold @lean.binder.keyword rather
+  -- than to the attribute-free floor: the server emits no token for them, so
+  -- nothing can outrank them and nothing can leak. See the floor-group case.
+  expect.equality(got["∀"], "leanBinderSymbol")
+  expect.equality(got["∃"], "leanBinderSymbol")
+  expect.equality(got["λ"], "leanBinderSymbol")
 end
 
 -- ── the token handler: which tokens get split, and which are refused ───
@@ -280,14 +283,49 @@ NS["every group is a complete spec with a foreground, bar the one that must not 
   expect.equality(got["@lean.ns.prefix"], false)
   for _, name in ipairs({
     "@lean.path.keyword",
+    "@lean.path.floor",
     "@lean.path.prefix",
     "@lean.path.dot",
     "@lean.path.final",
     "@lean.binder.keyword",
+    "@lean.binder.floor",
     "@lean.ns.dot",
   }) do
     expect.equality(name .. "=" .. tostring(got[name]), name .. "=true")
   end
+end
+
+NS["the syntax-layer floor groups carry no attribute bits"] = function()
+  -- Neovim composes PER ATTRIBUTE, so a `bold` set by a syntax group at
+  -- priority 50 survives a semantic mark at 125 taking the foreground.
+  -- Measured on rendered cells: `open scoped Classical` drew `scoped` as
+  -- mauve-BOLD — mauve correctly from @lsp.type.keyword.lean, bold leaking up
+  -- from this config — and a tactic-position `have` did the same. A group
+  -- this layer links from a syn-keyword rule may therefore set `fg` and
+  -- nothing else, or it silently edits the appearance of tokens
+  -- highlights.lua owns.
+  local got = child.lua_get([[(function()
+    local m = require("config.lean.namespace_hl")
+    local out = {}
+    for syn, group in pairs(m.LINKS) do
+      local hl = vim.api.nvim_get_hl(0, { name = group })
+      local extra = {}
+      for k, v in pairs(hl) do
+        if k ~= "fg" and k ~= "cterm" and v then extra[#extra + 1] = k end
+      end
+      table.sort(extra)
+      out[syn] = group .. ":" .. table.concat(extra, ",")
+    end
+    return out
+  end)()]])
+  -- `∀ ∃ λ` are the exception and are allowed the full treatment: measured,
+  -- the server emits no token for them, so there is nothing to leak under.
+  expect.equality(got.leanBinderSymbol, "@lean.binder.keyword:bold")
+  expect.equality(got.leanModuleKeyword, "@lean.path.floor:")
+  expect.equality(got.leanBinderKeyword, "@lean.binder.floor:")
+  expect.equality(got.leanPathQual, "@lean.path.floor:")
+  -- The path components themselves keep theirs — also measured token-free.
+  expect.equality(got.leanPathFinal, "@lean.path.final:bold")
 end
 
 NS["the groups survive a colorscheme change"] = function()
