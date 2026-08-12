@@ -915,6 +915,12 @@ end
 -- three characters apart. That is the most confusable thing in real Lean
 -- and it is where the contrast is spent. Also pinned: a data local against
 -- a data SORT, the other binder-list confusion (`(a : G)` vs `{G : Type*}`).
+--
+-- THE EXACT HEXES ARE PINNED HERE ON PURPOSE. Everywhere else the palette
+-- is asserted structurally, so that a recolour is one edit; this case is the
+-- one Dan judged the whole design against, and if `h0`, `m` and `G` ever
+-- collapse onto one colour again it must fail loudly and by name rather
+-- than by three groups happening to be non-nil.
 T["lean"]["highlights: hypothesis, datum and type differ from each other"] = function()
   local got = hl([[
     M.setup()
@@ -929,8 +935,10 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
     return {
       names = { hyp = hyp, dat = dat, srt = srt, poly = poly },
       fgs   = { hyp = fg(hyp), dat = fg(dat), srt = fg(srt), poly = fg(poly) },
-      -- A cited lemma is the same cell as a hypothesis but is NOT local, so
-      -- it must share the hue and differ in the italic channel.
+      -- A cited lemma is the same CELL as a hypothesis. It used to share the
+      -- hue and differ only in slant; the rebuild splits the hue too,
+      -- because those two together are most of what is on a screen of
+      -- Mathlib and one blue for both is what read as monochrome.
       lemma = (function()
         local g = M.group("theorem", { propWorld = true, element = true })
         local h = vim.api.nvim_get_hl(0, { name = g, link = false })
@@ -943,16 +951,22 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
   for _, k in ipairs({ "hyp", "dat", "srt", "poly" }) do
     expect.no_equality(got.fgs[k], "nil")
   end
-  -- Different hue: proof vs datum. This is the design.
+  -- THE THREE IN `two_le`'s BINDER LIST, by name and by hex.
+  expect.equality(got.fgs.hyp, "#ff1493") -- h0, h1 — DeepPink
+  expect.equality(got.fgs.dat, "#a6e3a1") -- m     — green
+  expect.equality(got.fgs.srt, "#89dceb") -- G, α  — sky
+  -- ...and pairwise distinct, stated separately so a future recolour that
+  -- moves two of them onto one hue fails here and not only on the hexes.
   expect.no_equality(got.fgs.hyp, got.fgs.dat)
-  -- Different hue: either of those vs sort-polymorphic.
+  expect.no_equality(got.fgs.hyp, got.fgs.srt)
+  expect.no_equality(got.fgs.dat, got.fgs.srt)
+  -- Different hue again: any of those vs sort-polymorphic.
   expect.no_equality(got.fgs.poly, got.fgs.hyp)
   expect.no_equality(got.fgs.poly, got.fgs.dat)
-  -- Different shade within one hue: a datum vs the type it inhabits.
-  expect.no_equality(got.fgs.srt, got.fgs.dat)
-  -- Same hue, different slant: a hypothesis and a cited lemma are both
-  -- proofs, and locality is carried by italic, not by colour.
-  expect.equality(got.lemma.fg, got.fgs.hyp)
+  expect.no_equality(got.fgs.poly, got.fgs.srt)
+  -- A hypothesis and a cited lemma: same cell, now DIFFERENT HUE, and the
+  -- italic still carries locality on top of it.
+  expect.no_equality(got.lemma.fg, got.fgs.hyp)
   expect.equality(got.hyp_italic, true)
   expect.equality(got.lemma.italic, false)
 end
@@ -979,6 +993,55 @@ T["lean"]["highlights: at most one underline style per group"] = function()
     return out
   ]])
   expect.equality(bad, {})
+end
+
+-- THE `sp` INVARIANT, stated precisely and swept. A coloured underline whose
+-- colour is the foreground it sits under carries no signal at all — and it
+-- fails silently, because the group is defined, the style bit is set and
+-- `nvim_get_hl` returns exactly what was asked for.
+--
+-- The old rule was a blanket ban on yellow and red FOREGROUNDS, which cost a
+-- palette whose whole complaint was that it had too few colours two entire
+-- hues. `#f38ba8` is deliberately both the alarm `sp` and `kind_class`, and
+-- `#f9e2af` is both a cited lemma and the colour the simp underline used to
+-- be. Neither can collide on one token. This sweep is what makes reusing an
+-- `sp` hex a decision rather than a gamble: it covers every combination the
+-- flag table can produce, not the two anybody thought of.
+T["lean"]["highlights: no group's underline colour is its own foreground"] = function()
+  local bad = hl([[
+    M.setup()
+    M.warm()
+    -- Every flag that sets an `sp`, on every cell it can reach, including
+    -- the combinations: a token can be both an axiom and a simp lemma.
+    for _, w in ipairs({ "propWorld", "dataWorld", "polyWorld" }) do
+      for _, l in ipairs({ "element", "sort", "former" }) do
+        for _, extra in ipairs({ {}, { simp = true }, { autoImplicit = true },
+                                 { simp = true, autoImplicit = true },
+                                 { ["local"] = true } }) do
+          for _, ty in ipairs({ "variable", "theorem", "function", "axiom", "class" }) do
+            local mods = { [w] = true, [l] = true }
+            for k, v in pairs(extra) do mods[k] = v end
+            M.group(ty, mods)
+          end
+        end
+      end
+    end
+    local out, with_sp = {}, 0
+    for name, spec in pairs(M._specs()) do
+      if spec.sp then with_sp = with_sp + 1 end
+      if spec.fg and spec.sp and spec.fg == spec.sp then
+        table.insert(out, name .. " fg=sp=" .. spec.fg)
+      end
+    end
+    table.sort(out)
+    return { bad = out, n = vim.tbl_count(M._specs()), with_sp = with_sp }
+  ]])
+  expect.equality(bad.bad, {})
+  -- Non-vacuity, both halves: the sweep really built a large set of groups,
+  -- and some of them really do carry an `sp` — otherwise the condition
+  -- being asserted is unreachable and this passes on an empty set.
+  expect.equality(bad.n > 40, true)
+  expect.equality(bad.with_sp > 0, true)
 end
 
 -- Memoisation is the entire performance story (D12: ~30 distinct pairs in a
@@ -1053,8 +1116,11 @@ T["lean"]["highlights: synthesised groups survive a colorscheme reload"] = funct
 end
 
 -- A typo'd palette key would surface as one uncoloured token type in one
--- rare cell, months later. Every entry — including the three generated
--- "dusty" shades — must be a real hex colour.
+-- rare cell, months later. Every entry must be a real hex colour, and every
+-- cell of the grid must HAVE an entry — there is no computed shade behind
+-- them any more and no blend to fall back on, so a missing key is a group
+-- painted with its world's anchor and nobody would see the difference until
+-- two cells rendered alike.
 T["lean"]["highlights: the palette resolves to real hex colours"] = function()
   local got = hl([[
     local bad, n = {}, 0
@@ -1064,16 +1130,36 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
         table.insert(bad, name .. "=" .. tostring(hex))
       end
     end
-    table.sort(bad)
-    return { bad = bad, n = n,
-             -- the generated shades must differ from their anchors
-             stepped = M.palette.prop ~= M.palette.prop_dust
-                   and M.palette.data ~= M.palette.data_dust
-                   and M.palette.poly ~= M.palette.poly_dust }
+    -- Every cell, both localities, plus the three kind overrides.
+    local missing, distinct = {}, {}
+    for _, w in ipairs({ "prop", "data", "poly" }) do
+      if not M.palette[w] then table.insert(missing, w) end
+      for _, l in ipairs({ "element", "sort", "former" }) do
+        for _, suffix in ipairs({ "", "_local" }) do
+          local k = w .. "_" .. l .. suffix
+          if not M.palette[k] then table.insert(missing, k) end
+        end
+      end
+    end
+    for _, k in ipairs({ "kind_constructor", "kind_projection", "kind_class" }) do
+      if not M.palette[k] then table.insert(missing, k) end
+    end
+    for k, v in pairs(M.palette) do
+      if k ~= "alarm" and k ~= "simp_bg" then distinct[v] = true end
+    end
+    table.sort(bad); table.sort(missing)
+    return { bad = bad, n = n, missing = missing, ndistinct = vim.tbl_count(distinct) }
   ]])
   expect.equality(got.bad, {})
-  expect.equality(got.n >= 8, true)
-  expect.equality(got.stepped, true)
+  expect.equality(got.missing, {})
+  expect.equality(got.n >= 24, true)
+  -- THE HEADLINE NUMBER. The rejected palette was three hues at two computed
+  -- brightnesses; the complaint was "SO MUCH FUCKING PURPLE ... Too much
+  -- blue". 24 keys deliberately hold fewer than 24 values (a `.local`
+  -- variant repeats its partner wherever the two are not confusable), but a
+  -- table that collapsed back toward a handful would be the rejected
+  -- palette wearing more keys, and nothing else in the suite would notice.
+  expect.equality(got.ndistinct, 14)
 end
 
 -- ╭──────────────────────────────────────────────────────────────────────╮

@@ -38,6 +38,18 @@ return {
       },
       highlight_overrides = {
         mocha = function(C)
+          -- The fall-through pins below must not hold hand-copied hexes.
+          -- They did, briefly, and four of the seven were already stale
+          -- against the palette they were copied from — a duplicate value
+          -- with a comment naming its source is exactly the B8 shape: wrong
+          -- at runtime, invisible on review, and passing every test that
+          -- asserts on the effective colour. Read them from the one table
+          -- that owns them instead. `defaults()` and not `M.opts`: this runs
+          -- before setup({ load_saved = true }) further down, so the user's
+          -- saved inputs are not loaded yet and `M.opts` would be the
+          -- defaults anyway — said explicitly so it is not mistaken for a
+          -- live binding.
+          local HUES = require("config.lean.highlights").defaults().hues
           return {
             TabLineSel = { bg = C.pink },
             -- Gutter numbers on soft-wrap continuation rows (see the vnum
@@ -147,12 +159,12 @@ return {
             -- deliberate colour rather than an absence. So each one now takes
             -- the colour its own kind takes in the grid, and a miss degrades
             -- to a near neighbour instead of to an unrelated hue.
-            ["@lsp.type.class.lean"] = { fg = "#FF5FFF", bold = true }, -- kind_class
-            ["@lsp.type.struct.lean"] = { fg = "#fab387" }, -- data_sort
-            ["@lsp.type.enumMember.lean"] = { fg = "#a6e3a1" }, -- kind_constructor
-            -- A plain `def` is most often data-valued, so flamingo rather
-            -- than the blue it used to inherit from `Function`.
-            ["@lsp.type.function.lean"] = { fg = "#f2cdcd" }, -- data_element
+            ["@lsp.type.class.lean"] = { fg = HUES.kind_class, bold = true },
+            ["@lsp.type.struct.lean"] = { fg = HUES.data_sort },
+            ["@lsp.type.enumMember.lean"] = { fg = HUES.kind_constructor },
+            -- A plain `def` is most often data-valued, so the datum colour
+            -- rather than the blue it used to inherit from `Function`.
+            ["@lsp.type.function.lean"] = { fg = HUES.data_element },
             -- `property`, `enum` and `theorem` are pinned further down, in
             -- the block that keeps catppuccin from owning standard names.
             -- They are recoloured there, not here — a second entry with the
@@ -236,9 +248,9 @@ return {
             -- or exempted by name with a reason.
             -- These three take their widened-grid colour, for the
             -- fall-through reason given above the `class`/`struct` block.
-            ["@lsp.type.enum.lean"] = { fg = "#fab387" }, -- inductives: Nat, List, True — data_sort
-            ["@lsp.type.property.lean"] = { fg = "#908070" }, -- structure projections — kind_projection
-            ["@lsp.type.theorem.lean"] = { fg = "#89b4fa" }, -- prop_element; pinned, not inherited
+            ["@lsp.type.enum.lean"] = { fg = HUES.data_sort }, -- inductives: Nat, List, True
+            ["@lsp.type.property.lean"] = { fg = HUES.kind_projection }, -- structure projections
+            ["@lsp.type.theorem.lean"] = { fg = HUES.prop_element }, -- a cited lemma
             ["@lsp.type.opaque.lean"] = { link = "Function" }, -- ditto
             ["@lsp.typemod.function.defaultLibrary.lean"] = { link = "Function" }, -- imported defs
             ["@lsp.type.keyword.lean"] = { link = "Keyword" }, -- what tactic links to

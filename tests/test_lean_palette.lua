@@ -53,12 +53,10 @@ local function pal(body)
   end)()]==]):format(body))
 end
 
-local function fg(name)
-  return ([[(function()
-    local h = vim.api.nvim_get_hl(0, { name = %q, link = false })
-    return h.fg and string.format("#%%06x", h.fg) or "nil"
-  end)()]]):format(name)
-end
+-- (There was a `fg(name)` helper here. It was superseded — fifteen cases
+-- inline the same `nvim_get_hl(..., { link = false })` read, and every
+-- assertion it would have served is present — so it was a dead local, not a
+-- dropped assertion. Checked before deleting.)
 
 -- ── the input model ────────────────────────────────────────────────────
 
@@ -66,7 +64,11 @@ T["palette"]["defaults are complete and every colour is real"] = function()
   local got = pal([==[
     local d = HL.defaults()
     local bad = {}
-    for _, k in ipairs({ "simp_sp", "alarm", "recede" }) do
+    -- `alarm` is the axiom/auto underline `sp`; `simp_bg` is the @[simp]
+    -- background tint, which is a real channel and must round-trip like any
+    -- other colour. `simp_sp`, `recede` and `dust` used to be here and are
+    -- retired — see "a retired input in a saved file is ignored" below.
+    for _, k in ipairs({ "alarm", "simp_bg" }) do
       if not tostring(d[k]):match("^#%x%x%x%x%x%x$") then bad[#bad+1] = k end
     end
     -- The SHAPE, not a fixed triple: `hues` is arbitrary-keyed so the
@@ -77,14 +79,75 @@ T["palette"]["defaults are complete and every colour is real"] = function()
       nhues = nhues + 1
       if not tostring(v):match("^#%x%x%x%x%x%x$") then bad[#bad+1] = "hues."..tostring(k) end
     end
-    return { bad = bad, nhues = nhues, dust = d.dust, channels = d.channels }
+    -- B8, without needing lua_ls on the PATH: a duplicate key in a Lua table
+    -- literal is silently last-wins, so the source can list more `hues`
+    -- entries than the table ends up holding, and every colour assertion
+    -- still passes because it asserts on the winner. Count both sides.
+    local src = 0
+    local path = vim.api.nvim_get_runtime_file("lua/config/lean/highlights.lua", false)[1]
+    local inside = false
+    for line in io.lines(path) do
+      if line:match("^%s*hues = {") then inside = true
+      elseif inside and line:match("^%s*},%s*$") then inside = false
+      elseif inside and line:match('^%s*[%a_][%w_]* = "#%x%x%x%x%x%x"') then src = src + 1 end
+    end
+    return { bad = bad, nhues = nhues, nsrc = src, channels = d.channels,
+             -- presence as a boolean: a nil field vanishes on the way back
+             has_simp_underline = d.channels.simp_underline ~= nil }
   ]==])
   expect.equality(got.bad, {})
   expect.equality(got.nhues > 0, true)
-  expect.equality(type(got.dust), "number")
+  expect.equality(got.nsrc, got.nhues) -- no silently shadowed duplicate
   expect.equality(got.channels.former_bold, true)
   expect.equality(got.channels.local_italic, true)
-  expect.equality(got.channels.simp_underline, "underdotted")
+  expect.equality(got.channels.simp_marker, true)
+  expect.equality(got.has_simp_underline, false) -- renamed, not kept alongside
+end
+
+-- `nvim_get_hl` ROUND-TRIPS LOWERCASE. So a palette string held as
+-- `#FF1493` compares UNEQUAL to the `#ff1493` that comes back off the
+-- rendered group, while looking identical in every diff and every log line.
+-- Four uppercase literals in DEFAULTS cost three test failures exactly that
+-- way. Two separate claims, because they fail separately:
+--   1. nothing SHIPPED is uppercase, so a palette string can be compared to
+--      a rendered one directly;
+--   2. an uppercase hex a USER types is still accepted — `%x` matches A-F —
+--      and is normalised, so it too compares equal to what renders.
+T["palette"]["a hex given in uppercase compares equal to what renders"] = function()
+  local got = pal([==[
+    HL.setup()
+    local function fg(n)
+      local h = vim.api.nvim_get_hl(0, { name = n, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    local shouty = {}
+    for k, v in pairs(HL.defaults().hues) do
+      if v ~= v:lower() then shouty[#shouty+1] = k .. "=" .. v end
+    end
+    table.sort(shouty)
+    -- A shipped value, compared to the cell it paints, with NO case coercion
+    -- on either side. This is the comparison that broke.
+    local hyp = HL.group("variable", { propWorld = true, element = true, ["local"] = true })
+    local shipped_matches = HL.defaults().hues.prop_element_local == fg(hyp)
+
+    -- A user typing SHOUTED hex into :LeanPalette must still work...
+    local inputs = vim.deepcopy(HL.opts)
+    inputs.hues.data_element = "#00FF00"
+    local clean, bad = HL.validate(inputs)
+    HL.apply(clean)
+    return {
+      shouty = shouty,
+      shipped_matches = shipped_matches,
+      nbad = #bad,                          -- accepted, not rejected
+      stored = HL.opts.hues.data_element,   -- ...and normalised
+      rendered = fg("@lean.data.element"),
+    }
+  ]==])
+  expect.equality(got.shouty, {}) -- 1 · nothing shipped shouts
+  expect.equality(got.shipped_matches, true)
+  expect.equality(got.nbad, 0) -- 2 · uppercase input is accepted
+  expect.equality(got.stored, "#00ff00") -- and stored lowercased
+  expect.equality(got.rendered, got.stored) -- so it compares equal to the cell
 end
 
 -- THE WIDENING CONTRACT. `hues` is not a fixed triple: the palette is
@@ -113,9 +176,8 @@ T["palette"]["an unknown hue key survives, and junk still does not"] = function(
       -- a shipped key absent from the input keeps its default
       data_present = inputs.hues.data ~= nil,
       nbad = #bad,
-      -- and the novel hue reaches the derived palette, dusty partner included
+      -- and the novel hue reaches the palette
       pal = HL.palette.propFormer,
-      pal_dust = HL.palette.propFormer_dust,
     }
   ]==])
   expect.equality(got.prop, "#111111")
@@ -124,62 +186,192 @@ T["palette"]["an unknown hue key survives, and junk still does not"] = function(
   expect.equality(got.junkval_present, false) -- rejected: not a hex
   expect.equality(got.data_present, true) -- shipped default retained
   expect.equality(got.nbad, 2)
-  -- The generator counts nothing: a novel hue gets its computed shade too.
+  -- The generator counts nothing: a novel hue reaches the palette verbatim.
   expect.equality(got.pal, "#222222")
-  expect.equality(got.pal_dust ~= nil and got.pal_dust ~= "#222222", true)
 end
 
--- The point of a generated palette: one input moves a whole column and
--- leaves the others exactly where they were.
-T["palette"]["changing a world hue moves that world and no other"] = function()
+-- ONE INPUT OWNS ONE CELL, and that is a change from the generated palette:
+-- `hues.prop` used to move the whole Prop column because sort and former
+-- were computed from it. Now every cell is hand-picked, so `prop_element`
+-- moves `@lean.prop.element` and NOTHING else — not its own `.local`
+-- sibling, which has its own key, and not the rest of the world.
+--
+-- The property that survives is the one worth keeping: a change reaches
+-- everything it owns and nothing it does not. Both halves are asserted,
+-- because the interesting failure is either one alone.
+T["palette"]["changing a cell hue moves that cell and no other"] = function()
   local got = pal([==[
     HL.setup()
-    local before = {}
-    for _, g in ipairs({ "@lean.prop.element", "@lean.prop.sort", "@lean.prop.former",
-                         "@lean.data.element", "@lean.poly.element" }) do
-      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
-      before[g] = string.format("#%06x", h.fg)
+    HL.warm()  -- so the lazily-built .local variants exist to be watched
+    local watched = { "@lean.prop.element", "@lean.prop.element.local",
+                      "@lean.prop.sort", "@lean.prop.former",
+                      "@lean.data.element", "@lean.data.element.local",
+                      "@lean.poly.element" }
+    local function snap()
+      local out = {}
+      for _, g in ipairs(watched) do
+        local h = vim.api.nvim_get_hl(0, { name = g, link = false })
+        out[g] = h.fg and string.format("#%06x", h.fg) or "nil"
+      end
+      return out
     end
+    local before = snap()
     local inputs = vim.deepcopy(HL.opts)
     inputs.hues.prop_element = "#00ff00"
     HL.apply(inputs)
-    local after = {}
-    for g in pairs(before) do
-      local h = vim.api.nvim_get_hl(0, { name = g, link = false })
-      after[g] = string.format("#%06x", h.fg)
+    local one = snap()
+    -- ...and now the whole Prop world at once, which is what the picker's
+    -- family of rows adds up to.
+    inputs = vim.deepcopy(HL.opts)
+    for k in pairs(inputs.hues) do
+      if k:match("^prop") then inputs.hues[k] = "#0000ff" end
     end
-    return { before = before, after = after }
+    HL.apply(inputs)
+    return { before = before, one = one, all = snap() }
   ]==])
-  -- The whole prop column moved...
-  expect.equality(got.after["@lean.prop.element"], "#00ff00")
-  expect.no_equality(got.after["@lean.prop.sort"], got.before["@lean.prop.sort"])
-  expect.no_equality(got.after["@lean.prop.former"], got.before["@lean.prop.former"])
-  -- ...and nothing else did.
-  expect.equality(got.after["@lean.data.element"], got.before["@lean.data.element"])
-  expect.equality(got.after["@lean.poly.element"], got.before["@lean.poly.element"])
+  -- One cell key moved exactly one cell...
+  expect.equality(got.one["@lean.prop.element"], "#00ff00")
+  expect.equality(got.one["@lean.prop.element.local"], got.before["@lean.prop.element.local"])
+  expect.equality(got.one["@lean.prop.sort"], got.before["@lean.prop.sort"])
+  expect.equality(got.one["@lean.prop.former"], got.before["@lean.prop.former"])
+  expect.equality(got.one["@lean.data.element"], got.before["@lean.data.element"])
+  expect.equality(got.one["@lean.poly.element"], got.before["@lean.poly.element"])
+  -- Non-vacuity for the "and no other" half: the untouched groups are real
+  -- colours, not two `nil`s comparing equal.
+  expect.no_equality(got.before["@lean.prop.element.local"], "nil")
+  expect.no_equality(got.before["@lean.poly.element"], "nil")
+  -- ...and the whole family moved together when the whole family was set.
+  for _, g in ipairs({ "@lean.prop.element", "@lean.prop.element.local",
+                       "@lean.prop.sort", "@lean.prop.former" }) do
+    expect.equality(got.all[g], "#0000ff")
+  end
+  expect.equality(got.all["@lean.data.element"], got.before["@lean.data.element"])
+  expect.equality(got.all["@lean.poly.element"], got.before["@lean.poly.element"])
 end
 
--- The blend factor is the whole reason the dusty shades are generated: at 0
--- they collapse onto their anchor, at 1 they land on the recede target, and
--- all three move together by construction.
-T["palette"]["the blend factor drives every dusty shade identically"] = function()
+-- DELETED: "the blend factor drives every dusty shade identically". The
+-- blend is gone — Dan, "FUCK any blending. It's HORSESHIT." — along with
+-- `dust`, `recede` and every `*_dust` palette entry. The case tested the
+-- deleted mechanism exactly and had nothing to be repointed at.
+
+-- A retired input must not turn a saved palette into a damaged one. Dan's
+-- live `lean-palette.json` was written by the version that had `dust`,
+-- `recede` and `simp_sp`, and `M.load()` now NOTIFIES on complaints — so an
+-- ignorable key that produced one would put a warning on his screen at every
+-- start and teach him that the warning means nothing.
+T["palette"]["a retired input in a saved file is ignored, not complained about"] = function()
   local got = pal([==[
-    HL.setup()
-    local function shades()
-      return { HL.palette.prop_dust, HL.palette.data_dust, HL.palette.poly_dust }
-    end
-    local inputs = vim.deepcopy(HL.opts)
-    inputs.dust = 0
-    HL.apply(inputs)
-    local at0 = shades()
-    inputs = vim.deepcopy(HL.opts); inputs.dust = 1
-    HL.apply(inputs)
-    local at1 = shades()
-    return { at0 = at0, at1 = at1, anchors = { HL.palette.prop, HL.palette.data, HL.palette.poly },
-             recede = HL.palette.recede }
+    HL.state_path = vim.fn.tempname()
+    local fh = io.open(HL.state_path, "w")
+    fh:write('{"inputs":{"dust":0.42,"recede":"#7f849c","simp_sp":"#f9e2af",' ..
+             '"hues":{"data_element":"#00ff00"}},"overrides":{}}')
+    fh:close()
+    local state, bad = HL.load()
+    return {
+      nbad = #bad,
+      kept = state.inputs.hues.data_element,   -- the rest of the file survived
+      dust = state.inputs.dust,                -- and the retired keys did not
+      recede = state.inputs.recede,
+      simp_sp = state.inputs.simp_sp,
+      -- presence as booleans: a nil field vanishes on the way back.
+      has_dust = state.inputs.dust ~= nil,
+      has_recede = state.inputs.recede ~= nil,
+      has_simp_sp = state.inputs.simp_sp ~= nil,
+    }
   ]==])
-  expect.equality(got.at0, got.anchors)
-  expect.equality(got.at1, { got.recede, got.recede, got.recede })
+  expect.equality(got.nbad, 0) -- ignored, not complained about
+  expect.equality(got.kept, "#00ff00") -- and the file was not discarded
+  expect.equality(got.has_dust, false)
+  expect.equality(got.has_recede, false)
+  expect.equality(got.has_simp_sp, false)
+end
+
+-- The one retired key that is MIGRATED rather than dropped.
+-- `channels.simp_underline` was an enum over underline styles; the channel
+-- became a background tint and the key became `simp_marker`, a boolean. A
+-- key whose name lies about what it does is worse than a rename, so the
+-- rename happened — and a saved palette written before it must still say
+-- what it meant, in both directions.
+T["palette"]["the retired simp_underline key migrates to simp_marker"] = function()
+  local got = pal([==[
+    local function load_channels(body)
+      HL.state_path = vim.fn.tempname()
+      local fh = io.open(HL.state_path, "w"); fh:write(body); fh:close()
+      local state, bad = HL.load()
+      return { marker = state.inputs.channels.simp_marker, nbad = #bad }
+    end
+    local on  = load_channels('{"inputs":{"channels":{"simp_underline":"underdotted"}}}')
+    local off = load_channels('{"inputs":{"channels":{"simp_underline":"none"}}}')
+    -- the NEW key wins outright when both are present
+    local both = load_channels('{"inputs":{"channels":' ..
+                               '{"simp_underline":"underdotted","simp_marker":false}}}')
+    -- and the migrated value really reaches the paint
+    HL.state_path = vim.fn.tempname()
+    local fh = io.open(HL.state_path, "w")
+    fh:write('{"inputs":{"channels":{"simp_underline":"none"}}}'); fh:close()
+    HL.setup({ load_saved = true })
+    local g = HL.group("theorem", { propWorld = true, element = true, simp = true })
+    return { on = on, off = off, both = both,
+             -- the channel is off, so the suffix must be gone from the NAME
+             -- as well as the paint
+             group_when_off = g,
+             bg_when_off = HL._specs()[g].bg or "nil" }
+  ]==])
+  expect.equality(got.on.marker, true) -- a style meant "on"
+  expect.equality(got.off.marker, false) -- "none" meant "off"
+  expect.equality(got.both.marker, false) -- the new key wins
+  expect.equality(got.on.nbad, 0) -- and none of it is a complaint
+  expect.equality(got.off.nbad, 0)
+  expect.equality(got.group_when_off, "@lean.prop.element")
+  expect.equality(got.bg_when_off, "nil")
+end
+
+-- `M.load` is TOTAL by design — it runs inside catppuccin's `config`
+-- function, where throwing costs the whole colorscheme — so a hand-edited or
+-- half-corrupt `lean-palette.json` was repaired in silence and the user
+-- simply got some of the colours he had chosen. For a file whose entire
+-- purpose is to hold deliberate choices that is the wrong trade. Both
+-- directions are asserted: it speaks up when something was dropped, and it
+-- stays quiet when nothing was.
+T["palette"]["a partly unreadable saved palette is reported, not silently repaired"] = function()
+  local got = pal([==[
+    local function run(body)
+      HL.state_path = vim.fn.tempname()
+      local fh = io.open(HL.state_path, "w"); fh:write(body); fh:close()
+      local seen = {}
+      local real = vim.notify
+      vim.notify = function(msg, lvl) seen[#seen+1] = { msg = tostring(msg), lvl = lvl } end
+      HL.setup({ load_saved = true })
+      vim.wait(500, function() return #seen > 0 end)   -- the notify is scheduled
+      vim.notify = real
+      -- `kept` has to be read HERE: each run replaces HL.opts wholesale, so
+      -- reading it after the last run reports the last file's inputs.
+      return { seen = seen, kept = HL.opts.hues.data_element }
+    end
+    local noisy = run('{"inputs":{"hues":{"prop_element":"chartreuse",' ..
+                      '"data_element":"#00ff00"}},"overrides":{}}')
+    local clean = run('{"inputs":{"hues":{"data_element":"#00ff00"}},"overrides":{}}')
+    -- retired keys are ignorable, not complaints: this file must be silent
+    local old = run('{"inputs":{"dust":0.42,"recede":"#7f849c","simp_sp":"#f9e2af"},' ..
+                    '"overrides":{}}')
+    return {
+      n_noisy = #noisy.seen,
+      msg = noisy.seen[1] and noisy.seen[1].msg or "",
+      lvl = noisy.seen[1] and noisy.seen[1].lvl or -1,
+      warn = vim.log.levels.WARN,
+      n_clean = #clean.seen,
+      n_old = #old.seen,
+      -- and the GOOD half of the noisy file was still applied
+      kept = noisy.kept,
+    }
+  ]==])
+  expect.equality(got.n_noisy, 1)
+  expect.equality(got.lvl, got.warn)
+  expect.equality(got.msg:find("prop_element", 1, true) ~= nil, true) -- names the key
+  expect.equality(got.msg:find("chartreuse", 1, true) ~= nil, true) -- and the value
+  expect.equality(got.n_clean, 0) -- non-vacuity: not notifying unconditionally
+  expect.equality(got.n_old, 0) -- a retired key is not a complaint
+  expect.equality(got.kept, "#00ff00") -- the rest of the file still applied
 end
 
 -- A channel switched off must vanish from the NAME too, not merely stop
@@ -203,20 +395,53 @@ T["palette"]["switching a channel off drops its suffix and its attribute"] = fun
   expect.equality(got.off_italic, false)
 end
 
-T["palette"]["the underline style for an attribute is an input"] = function()
+-- TWO CHANNELS, and they moved apart in the rebuild. `simp` is now a
+-- BACKGROUND TINT, so its input is `simp_bg` and it stacks with whatever
+-- else the token carries. `axiom` and `auto` still compete for the single
+-- underline slot (B4), and their style is still an enum input.
+--
+-- Asserting simp's underline flags are absent is the load-bearing half: if
+-- simp ever reclaims the slot, an axiom that is also a simp lemma loses its
+-- double underline and nothing else would notice.
+T["palette"]["simp is a background, and the underline styles are inputs"] = function()
   local got = pal([==[
     HL.setup()
     local inputs = vim.deepcopy(HL.opts)
-    inputs.channels.simp_underline = "undercurl"
+    inputs.simp_bg = "#123456"
+    inputs.channels.axiom_underline = "undercurl"
     HL.apply(inputs)
-    local g = HL.group("theorem", { propWorld = true, element = true, simp = true })
-    local s = HL._specs()[g]
-    return { g = g, undercurl = s.undercurl or false, underdotted = s.underdotted or false,
-             sp = s.sp }
+    local function look(ty, mods)
+      local g = HL.group(ty, mods)
+      local s = HL._specs()[g]
+      local n = 0
+      for _, k in ipairs({ "underline", "undercurl", "underdouble",
+                           "underdotted", "underdashed" }) do
+        if s[k] then n = n + 1 end
+      end
+      return { g = g, bg = s.bg or "nil", sp = s.sp or "nil", nunder = n,
+               undercurl = s.undercurl or false, underdouble = s.underdouble or false,
+               underdashed = s.underdashed or false }
+    end
+    return {
+      simp  = look("theorem", { propWorld = true, element = true, simp = true }),
+      plain = look("theorem", { propWorld = true, element = true }),
+      axiom = look("axiom",   { propWorld = true, element = true }),
+      auto  = look("variable", { dataWorld = true, sort = true, autoImplicit = true }),
+    }
   ]==])
-  expect.equality(got.undercurl, true)
-  expect.equality(got.underdotted, false)
-  expect.no_equality(got.sp, vim.NIL)
+  -- simp: a background, driven by its own input, and NOT an underline.
+  expect.equality(got.simp.bg, "#123456")
+  expect.equality(got.simp.nunder, 0)
+  expect.equality(got.simp.sp, "nil")
+  expect.equality(got.plain.bg, "nil") -- non-vacuity: the bg came from simp
+  -- axiom: still the single underline slot, still an enum input.
+  expect.equality(got.axiom.undercurl, true) -- followed the input...
+  expect.equality(got.axiom.underdouble, false) -- ...off the shipped default
+  expect.equality(got.axiom.nunder, 1) -- B4: exactly one
+  expect.no_equality(got.axiom.sp, "nil")
+  -- auto: the other claimant on the slot, left at its shipped style.
+  expect.equality(got.auto.underdashed, true)
+  expect.equality(got.auto.nunder, 1)
 end
 
 -- THE RE-APPLY TRAP, stated as a test. Flag-suffixed groups are built
@@ -230,9 +455,12 @@ T["palette"]["apply regenerates the lazily-built variants, not just the grid"] =
     HL.setup()
     local g = HL.group("variable", { propWorld = true, element = true, ["local"] = true })
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.prop_element = "#123456"  -- the CELL key, not the family anchor: a hand-picked
-    -- cell shadows its anchor, so setting `hues.prop` alone would
-    -- (correctly) move nothing. See the fallback case below.
+    -- The key of the VARIANT, not of its parent cell. `local` picks a
+    -- different hue now, so `prop_element` would (correctly) leave
+    -- `@lean.prop.element.local` exactly where it was and this case would
+    -- pass for the wrong reason — the group would be undefined AND the
+    -- wrong colour, and only the second half would be checked.
+    inputs.hues.prop_element_local = "#123456"
     HL.apply(inputs)
     local h = vim.api.nvim_get_hl(0, { name = g, link = false })
     return {
@@ -294,9 +522,9 @@ T["palette"]["an override survives a later generator change"] = function()
     local g, sib = "@lean.prop.element", "@lean.prop.sort"
     HL.set_override(g, { fg = "#ff00ff" })
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.prop_element = "#00ff00"  -- the CELL key, not the family anchor: a hand-picked
-    -- cell shadows its anchor, so setting `hues.prop` alone would
-    -- (correctly) move nothing. See the fallback case below.
+    -- The CELL key. `hues.prop` is only the family anchor `@lean.prop`; it
+    -- feeds no cell, so setting it alone would (correctly) move nothing.
+    inputs.hues.prop_element = "#00ff00"
     HL.apply(inputs)
     local a = vim.api.nvim_get_hl(0, { name = g, link = false })
     local b = vim.api.nvim_get_hl(0, { name = sib, link = false })
@@ -512,7 +740,7 @@ T["palette"]["both layers survive a save and load"] = function()
     HL.setup()
     local inputs = vim.deepcopy(HL.opts)
     inputs.hues.poly = "#010203"
-    inputs.dust = 0.7
+    inputs.simp_bg = "#070809"
     inputs.channels.axiom_underline = "none"
     HL.apply(inputs)
     HL.set_override("@lsp.type.leanSorryLike.lean", { fg = "#040506", bold = true })
@@ -520,13 +748,17 @@ T["palette"]["both layers survive a save and load"] = function()
     local state = HL.load()
     return {
       poly = state.inputs.hues.poly,
-      dust = state.inputs.dust,
+      simp_bg = state.inputs.simp_bg,
       axiom = state.inputs.channels.axiom_underline,
       ov = state.overrides["@lsp.type.leanSorryLike.lean"],
     }
   ]==])
   expect.equality(got.poly, "#010203")
-  expect.equality(got.dust, 0.7)
+  -- `simp_bg` is the @[simp] background tint. It was NOT in validate's
+  -- colour list when the channel was introduced, so it silently could not
+  -- be saved — the headline new channel was the one input that did not
+  -- round-trip.
+  expect.equality(got.simp_bg, "#070809")
   expect.equality(got.axiom, "none")
   expect.equality(got.ov, { fg = "#040506", bold = true })
 end
@@ -542,9 +774,9 @@ T["palette"]["a damaged state file yields the defaults instead of throwing"] = f
       truncated = '{"inputs": {"hues"',
       wrong_type = '[1, 2, 3]',
       nonsense = 'not json at all',
-      bad_values = '{"inputs":{"hues":{"prop":"green","data":"#f2cdcd"},"dust":"lots"},' ..
+      bad_values = '{"inputs":{"hues":{"prop":"green","data":"#f2cdcd"},"alarm":"lots"},' ..
                    '"overrides":{"@lean.prop":{"fg":"nope","bold":"yes"}}}',
-      out_of_range = '{"inputs":{"dust": 9000}}',
+      bad_channel = '{"inputs":{"channels":{"axiom_underline":"squiggly"}}}',
     }
     for name, body in pairs(cases) do
       HL.state_path = vim.fn.tempname()
@@ -553,22 +785,27 @@ T["palette"]["a damaged state file yields the defaults instead of throwing"] = f
       out[name] = {
         ok = ok,
         prop = ok and state.inputs.hues.prop or "THREW",
-        dust = ok and state.inputs.dust or -1,
+        alarm = ok and state.inputs.alarm or "THREW",
+        axiom = ok and state.inputs.channels.axiom_underline or "THREW",
+        data = ok and state.inputs.hues.data or "THREW",
         overrides = ok and vim.tbl_count(state.overrides) or -1,
       }
     end
-    return { out = out, default_prop = d.hues.prop, default_dust = d.dust }
+    return { out = out, default_prop = d.hues.prop, default_alarm = d.alarm,
+             default_axiom = d.channels.axiom_underline }
   ]==])
-  for _, name in ipairs({ "truncated", "wrong_type", "nonsense", "out_of_range" }) do
+  for _, name in ipairs({ "truncated", "wrong_type", "nonsense", "bad_channel" }) do
     expect.equality(got.out[name].ok, true)
     expect.equality(got.out[name].prop, got.default_prop)
   end
   -- A file with SOME good values keeps them and drops only the bad ones.
   expect.equality(got.out.bad_values.prop, got.default_prop) -- "green" rejected
-  expect.equality(got.out.bad_values.dust, got.default_dust) -- "lots" rejected
+  expect.equality(got.out.bad_values.data, "#f2cdcd") -- ...but this one kept
+  expect.equality(got.out.bad_values.alarm, got.default_alarm) -- "lots" rejected
   expect.equality(got.out.bad_values.overrides, 0) -- both attrs were junk
-  -- Clamped rather than rejected: a slider overshoot should not discard the file.
-  expect.equality(got.out.out_of_range.dust, 1)
+  -- An unknown underline style is refused rather than reaching nvim_set_hl,
+  -- which throws on a bad key — inside catppuccin's `config` function.
+  expect.equality(got.out.bad_channel.axiom, got.default_axiom)
 end
 
 -- stdpath("config") is a git repo AND a chezmoi external here. Writing a
@@ -664,9 +901,14 @@ T["palette"]["changing one input repaints only the tokens it owns"] = function()
     end
     local before = snapshot()
     local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.data_element = "#00ff00"  -- the CELL key, not the family anchor: a hand-picked
-    -- cell shadows its anchor, so setting `hues.prop` alone would
-    -- (correctly) move nothing. See the fallback case below.
+    -- The whole DATA world, cell by cell. One cell key is not enough here:
+    -- `local` picks its own hue now, so `data_element` alone reaches only
+    -- the specimen's global data tokens, and whether the specimen has any
+    -- is an accident of which lines it quotes. Moving the world is the
+    -- claim the picker actually makes anyway.
+    for k in pairs(inputs.hues) do
+      if k:match("^data") then inputs.hues[k] = "#00ff00" end
+    end
     HL.apply(inputs)
     local after = snapshot()
     local moved, stayed_prop = {}, 0
@@ -731,30 +973,17 @@ T["palette"]["the picker registers its command"] = function()
   expect.equality(H.cmd_exists(child, "LeanPalette"), true)
 end
 
--- Every cell colour is hand-picked, which SHADOWS the family anchor. The
--- anchor is not dead: it is the base for the fallback that serves any cell
--- whose own colour has been cleared. Without this case that fallback is
--- unreachable code no test would notice rotting.
-T["palette"]["a cleared cell falls back to its family anchor"] = function()
-  local got = pal([==[
-    HL.setup()
-    local inputs = vim.deepcopy(HL.opts)
-    inputs.hues.data_sort = nil
-    inputs.hues.data_sort_local = nil
-    inputs.hues.data = "#00ff00"
-    HL.apply(inputs)
-    local function f(n)
-      local h = vim.api.nvim_get_hl(0, { name = n, link = false })
-      return h.fg and string.format("#%06x", h.fg) or "nil"
-    end
-    return { picked = f("@lean.data.element"), fell_back = f("@lean.data.sort") }
-  ]==])
-  -- the still-picked sibling is untouched by the anchor move
-  expect.equality(got.picked, "#fab387")
-  -- and the cleared cell is now driven by the anchor rather than by its
-  -- deleted pick
-  expect.no_equality(got.fell_back, "#eba0ac")
-  expect.no_equality(got.fell_back, "nil")
-end
+-- DELETED: "a cleared cell falls back to its family anchor". It documented
+-- the blend fallback, which is gone. It was ALSO testing something that
+-- could not happen: it cleared a hue by assigning nil to a deepcopy of
+-- `HL.opts` and calling `apply`, but `M.validate` refills every missing key
+-- out of `DEFAULTS` — the case only reached the fallback because `apply`
+-- was handed the raw table. Through any real path (a saved file, the
+-- picker) the cell can never be empty. Both halves are in GOTCHAS.
+--
+-- What the anchors still do is covered elsewhere: `@lean.prop` / `.data` /
+-- `.poly` are named groups, required to exist by "the world x level grid is
+-- complete" and required to carry an `fg` by "every generated group carries
+-- its own fg after a re-apply", both in tests/test_lean.lua.
 
 return T

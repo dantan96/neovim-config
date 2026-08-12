@@ -4,15 +4,16 @@
 -- ─────────────────────────────────────────────────────────────────────────
 -- WHAT IT EDITS, AND WHY THERE ARE TWO MODES
 -- ─────────────────────────────────────────────────────────────────────────
--- lua/config/lean/highlights.lua does not store forty colours; it GENERATES
--- them from eleven inputs. Hue comes from the world, brightness from the
--- level, and the sort/former shades are computed by blending toward a
--- recede target so that every hue steps back by exactly the same amount.
+-- lua/config/lean/highlights.lua does not store forty colours; it ASSEMBLES
+-- them from a smaller set of inputs — one hand-picked hue per world × level
+-- × locality cell, three attribute colours, and a switch per channel.
+-- (It used to compute the sort and former shades by blending toward a
+-- recede target. That is deleted: Dan, "FUCK any blending. It's HORSESHIT.")
 --
---   GENERATOR mode edits those eleven inputs and regenerates. It is the
---   default because it is the mode in which the palette stays coherent: one
---   keystroke moves all three dusty shades together, and a fourth world
---   would need no new colour at all.
+--   GENERATOR mode edits those inputs and regenerates. It is the default
+--   because it is the mode in which one keystroke reaches every variant of
+--   a colour at once — the plain group, its `.local`, and every lazily
+--   built flag-suffixed group — instead of only the one on screen.
 --
 --   GROUPS mode sets any single group to any colour and any attributes,
 --   directly, over the top of whatever the generator produced — including
@@ -313,9 +314,34 @@ end
 --- table has never heard of must still get a row. Unknown keys simply have
 --- no description yet.
 local HUE_GLOSS = {
-  prop = "proofs, propositions, predicates",
-  data = "values, types, constructors",
-  poly = "sort-polymorphic: could be either",
+  prop = "the Prop world — anchor for @lean.prop only",
+  data = "the data world — anchor for @lean.data only",
+  poly = "sort-polymorphic — anchor for @lean.poly only",
+
+  prop_element_local = "A HYPOTHESIS — h0, h1",
+  prop_element = "a cited lemma — mul_assoc",
+  prop_sort_local = "a local p : Prop",
+  prop_sort = "A PROPOSITION — 2 ≤ m, True",
+  prop_former_local = "a local predicate p : α → Prop",
+  prop_former = "A PREDICATE — Even, Prime, Set",
+
+  data_element_local = "A DATUM YOU BOUND — m, n",
+  data_element = "a global datum — Nat.factorial",
+  data_sort_local = "A TYPE VARIABLE — α, G",
+  data_sort = "a concrete type — ℕ, Filter α",
+  data_former_local = "a local type family",
+  data_former = "a type constructor — List, Prod",
+
+  poly_element_local = "a local term in Sort u",
+  poly_element = "a term in Sort u",
+  poly_sort_local = "a local α : Sort u",
+  poly_sort = "a sort-polymorphic type",
+  poly_former_local = "a local sort-polymorphic former",
+  poly_former = "a sort-polymorphic former — the rare cell",
+
+  kind_constructor = "a constructor — how you BUILD data",
+  kind_projection = "a structure projection",
+  kind_class = "a class — Group, Monoid, Ring",
 }
 
 local function generator_rows()
@@ -328,28 +354,13 @@ local function generator_rows()
     rows[#rows + 1] = colour_row(n, { "hues", n }, HUE_GLOSS[n] or "")
   end
   local rest = {
-    head("THE RECEDE STEP · sort and former step back by this much"),
-    colour_row("recede", { "recede" }, "what the dusty shades blend toward"),
-    {
-      kind = "number",
-      label = "blend",
-      gloss = "0 = none, 1 = fully receded",
-      step = 0.02,
-      big = 0.1,
-      get = function()
-        return o().dust
-      end,
-      set = function(v)
-        set_path({ "dust" }, v)
-      end,
-    },
-    head("ATTRIBUTE COLOURS · the underline colours"),
-    colour_row("simp", { "simp_sp" }, "'the automation knows about this'"),
+    head("ATTRIBUTE COLOURS · what the flags paint with"),
+    colour_row("simp bg", { "simp_bg" }, "'the automation knows about this'"),
     colour_row("alarm", { "alarm" }, "axioms and auto-bound implicits"),
     head("CHANNELS · one question each, so they decode independently"),
     bool_row("former → bold", { "channels", "former_bold" }, "the head of a type expression"),
     bool_row("local → italic", { "channels", "local_italic" }, "bound here, not imported"),
-    enum_row("simp → ", { "channels", "simp_underline" }, HL.underline_styles, "carries @[simp]"),
+    bool_row("simp → bg tint", { "channels", "simp_marker" }, "carries @[simp]"),
     enum_row("axiom → ", { "channels", "axiom_underline" }, HL.underline_styles, "rests on nothing"),
     enum_row("auto → ", { "channels", "auto_underline" }, HL.underline_styles, "the elaborator bound it"),
     bool_row("auto → alarm fg", { "channels", "auto_recolour" }, "loud on purpose"),

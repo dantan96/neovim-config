@@ -76,31 +76,36 @@
 -- paths (not semantic tokens at all). Neither is a palette problem.
 --
 -- ─────────────────────────────────────────────────────────────────────────
--- THE INPUT MODEL — what is chosen, and what is COMPUTED from it
+-- THE INPUT MODEL — what is chosen, and what is ASSEMBLED from it
 -- ─────────────────────────────────────────────────────────────────────────
--- Everything above describes a palette of forty-odd groups, but there are
--- only ELEVEN numbers and switches behind it. That distinction is the whole
--- reason `:LeanPalette` (lua/config/lean/palette_picker.lua) can exist
--- without turning this file into a colour dump:
+-- Everything above describes a palette of forty-odd groups. Nothing in it is
+-- computed from anything else any more; what is left is a set of INPUTS and
+-- a set of rules for combining them into complete specifications:
 --
---   THE INPUTS                              THE DERIVED
---   hues.prop / .data / .poly               prop_dust / data_dust / poly_dust
---   recede  (blend target)                    = blend(hue, recede, dust)
---   dust    (blend factor 0..1)             every @lean.<world>.<level>
---   simp_sp / alarm  (attribute colours)    every flag-suffixed variant
---   channels.former_bold                    ...forty-odd complete specs
+--   THE INPUTS                              WHAT THEY ASSEMBLE INTO
+--   hues.<world>_<level>[_local]            every @lean.<world>.<level>
+--   hues.kind_<constructor|projection|      ...and its `.local` variant
+--     class>                                the three kind-override groups
+--   hues.<world>                            @lean.prop / .data / .poly
+--   alarm    (axiom + auto sp and fg)       every flag-suffixed variant
+--   simp_bg  (the @[simp] tint)             ...forty-odd complete specs
+--   channels.former_bold
 --   channels.local_italic
---   channels.simp_underline  (style or "none")
+--   channels.simp_marker     (boolean; the effect is a BACKGROUND)
 --   channels.axiom_underline
 --   channels.auto_underline
 --   channels.auto_recolour
 --
--- A picker that wrote literal hex per group and nothing else would destroy
--- this: the "dusty" step exists so that every hue recedes by EXACTLY the
--- same amount and a fourth world is one line, and hand-written shades
--- cannot preserve that invariant under editing. So the picker's DEFAULT
--- mode edits `M.opts` and calls `M.apply()`, and this file regenerates.
--- See `M.defaults()` below.
+-- The picker's DEFAULT mode edits `M.opts` and calls `M.apply()`, and this
+-- file regenerates every group from it — so a hue reaches every variant of
+-- itself, including the lazily-built flag-suffixed ones, in one keystroke.
+-- Its GROUPS mode writes a literal spec per group over the top. See
+-- `M.defaults()` below.
+--
+-- RETIRED, and listed here because a saved `lean-palette.json` still
+-- carries them: `dust`, `recede` (the blend step) and `simp_sp` (the simp
+-- underline's colour, now a background). `M.validate` ignores all three
+-- rather than complaining — see `RETIRED` below.
 --
 -- ─────────────────────────────────────────────────────────────────────────
 -- TWO LAYERS — the generator, and the last word over it
@@ -152,26 +157,20 @@
 
 local M = {}
 
--- ── colour arithmetic ──────────────────────────────────────────────────
--- The "dusty" step is GENERATED rather than hand-picked, so every hue
--- recedes by exactly the same amount and adding a fourth world later is one
--- line. Blending toward `overlay1` both desaturates and darkens, which is
--- what "this is ambient type context, not the term you are manipulating"
--- should look like.
-
-local function blend(a, b, t)
-  local function ch(hex, i)
-    return tonumber(hex:sub(i, i + 1), 16)
-  end
-  local out = "#"
-  for _, i in ipairs({ 2, 4, 6 }) do
-    local v = math.floor(ch(a, i) + (ch(b, i) - ch(a, i)) * t + 0.5)
-    out = out .. string.format("%02x", math.max(0, math.min(255, v)))
-  end
-  return out
-end
-
-M.blend = blend
+-- ── NO COLOUR ARITHMETIC ───────────────────────────────────────────────
+-- There was a `blend()` here, and a "dusty" step that computed the sort and
+-- former shades by mixing each hue toward `overlay1` so that every world
+-- receded by exactly the same amount. It is gone, and it is not coming
+-- back. Dan: "FUCK any blending. It's HORSESHIT."
+--
+-- It was also, by the time it was deleted, UNREACHABLE. `M.validate`
+-- refills any key missing from a loaded file out of `DEFAULTS`, so no cell
+-- can actually be cleared through `apply` — the branch that used the blend
+-- was dead code defending a position that had already been rejected. Both
+-- facts are worth keeping: the taste ruling on its own would have left the
+-- question of whether something real was lost.
+--
+-- Every colour in this file is now a literal that somebody chose.
 
 -- ── the inputs ─────────────────────────────────────────────────────────
 -- The complete set of things a human chooses. Everything else in this file
@@ -196,29 +195,52 @@ M.underline_styles = {
 --- it too, to clear a generated underline that a hand-set one replaces.
 local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted", "underdashed" }
 
--- ── the twelve colours ─────────────────────────────────────────────────
+-- ── the hand-picked colours ────────────────────────────────────────────
 -- Design and reasoning: docs/lean-highlighting/palette-widening-design.md in
 -- ~/ClaudeProjects/leanSetup. Three hues at two computed brightnesses became
--- twelve hand-picked colours, because "generated" was doing the work that
--- choosing should have done.
+-- a colour per cell, because "generated" was doing the work that choosing
+-- should have done.
 --
--- TWO HEXES ARE RESERVED OUT OF THIS TABLE and must stay reserved:
--- `#f9e2af` (the simp underline) and `#f38ba8` (the axiom/auto alarm). They
--- are `sp` colours carrying meaning, so a yellow foreground under a yellow
--- dotted underline loses its signal silently. That is why there is no yellow
--- and no red here, despite the spthy palette this is modelled on using both —
--- spthy's underlines inherit their foreground; ours do not.
+-- COUNT, because the whole complaint was that too few colours appear:
+-- 24 keys holding 14 DISTINCT hexes. The collisions are deliberate — the
+-- `_local` variants of `poly` and of `prop_former` repeat their plain
+-- partner, because locality is worth a hue split only where the two are
+-- confusable and abundant, which is `prop.element` and `data.element`.
+-- Twelve of the fourteen come straight from this machine's spthy scheme
+-- (lua/config/spthy-colorscheme.lua); six of those are outside catppuccin.
+--
+-- THE INVARIANT ABOUT `sp`, stated precisely, because the loose version was
+-- costing colours it had no right to:
+--
+--     A GROUP'S `fg` MUST NEVER EQUAL ITS OWN `sp`.
+--
+-- A coloured underline whose colour is the foreground it sits under carries
+-- no signal. The old rule was a blanket ban on yellow and red foregrounds —
+-- a coarse proxy that removed two whole hues from a palette whose entire
+-- complaint was that it had too few. `#f38ba8` is now BOTH the alarm `sp`
+-- and `kind_class`, and that is fine: a class is `data.sort`/`data.former`
+-- and the alarm belongs to token type `axiom` and to `autoImplicit`, so the
+-- two cannot land on one token. `#f9e2af` came back the same way — moving
+-- `simp` from an underline to a background freed it, and it is now
+-- `prop_element`, a cited lemma, the commonest coloured thing in a proof.
+--
+-- The precise rule is ENFORCED, not merely written down: tests/test_lean.lua
+-- sweeps every generated group and fails on `spec.fg == spec.sp`. That is
+-- what makes it safe to reuse an `sp` hex deliberately.
 --
 -- The `prop` / `data` / `poly` entries are the FAMILY ANCHORS. They name
--- `@lean.<world>`, and they are the base for the blend fallback that serves
--- any cell nobody hand-picked. They are not redundant with `prop_element`
--- and friends; deleting a cell key falls back to them.
+-- `@lean.<world>`, which is a real group `:highlight @lean.` shows. They no
+-- longer feed anything else: with the blend gone, a cell that lost its own
+-- colour does not degrade to its anchor, it just cannot happen (validate
+-- refills it). Keep them defined — `define_grid` paints them, and a group
+-- with no `fg` renders colourless (B1).
 
 local DEFAULTS = {
   hues = {
-    -- Family anchors. Only reachable now as the fallback for a cell whose
-    -- own colour has been cleared; every cell below is hand-picked.
-    prop = "#FF1493",
+    -- Family anchors. `@lean.prop` / `.data` / `.poly`, so the worlds are
+    -- nameable in `:highlight`; every cell below is hand-picked and none of
+    -- them is derived from these.
+    prop = "#ff1493",
     data = "#a6e3a1",
     poly = "#94e2d5",
 
@@ -229,12 +251,12 @@ local DEFAULTS = {
     -- what made the old palette read as monochrome.
 
     -- Prop world. A proof, a proposition, a predicate.
-    prop_element_local = "#FF1493", -- DeepPink  — A HYPOTHESIS. `h0`, `h1`
+    prop_element_local = "#ff1493", -- DeepPink  — A HYPOTHESIS. `h0`, `h1`
     prop_element = "#f9e2af", -- yellow    — A CITED LEMMA. `mul_assoc`
     prop_sort_local = "#f5c2e7", -- pink      — a local `p : Prop`
-    prop_sort = "#FFC0CB", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
-    prop_former_local = "#FF5FFF", -- magenta   — a local predicate `p : α → Prop`
-    prop_former = "#FF5FFF", -- magenta   — A PREDICATE. `Even`, `Prime`, `Set`
+    prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
+    prop_former_local = "#ff5fff", -- magenta   — a local predicate `p : α → Prop`
+    prop_former = "#ff5fff", -- magenta   — A PREDICATE. `Even`, `Prime`, `Set`
 
     -- Data world.
     data_element_local = "#a6e3a1", -- green     — A DATUM YOU BOUND. `m`, `n`
@@ -242,7 +264,7 @@ local DEFAULTS = {
     data_sort_local = "#89dceb", -- sky       — A TYPE VARIABLE. `α`, `G`
     data_sort = "#eba0ac", -- maroon    — A CONCRETE TYPE. `ℕ`, `Filter α`
     data_former_local = "#eba0ac", -- maroon    — a local type family
-    data_former = "#8B4513", -- SaddleBrown — A TYPE CONSTRUCTOR. `List`, `Prod`
+    data_former = "#8b4513", -- SaddleBrown — A TYPE CONSTRUCTOR. `List`, `Prod`
 
     -- Poly world — genuinely undetermined `Sort u`. A deliberately tight
     -- family, because these are rare and should read as one thing.
@@ -256,7 +278,7 @@ local DEFAULTS = {
     -- Kind overrides, scoped in KIND_HUE below. NOT a general kind axis:
     -- keying hue on kind would collapse `m`/`h0`/`h1` in `two_le`, which
     -- are all `kind = variable` and differ only by world.
-    kind_constructor = "#FFC0CB", -- pinkPlain   — `enumMember`: how you BUILD data
+    kind_constructor = "#ffc0cb", -- pinkPlain   — `enumMember`: how you BUILD data
     kind_projection = "#908070", -- dark gold   — `property`: structural plumbing
     kind_class = "#f38ba8", -- red         — `class`: Mathlib's scaffolding
   },
@@ -265,14 +287,17 @@ local DEFAULTS = {
   -- foreground (a cited lemma), and the single underline slot (B4) was
   -- three meanings deep. Backgrounds were previously reserved by argument;
   -- Dan withdrew that reservation.
-  simp_sp = "#f9e2af", -- kept so an existing saved palette still validates
   alarm = "#f38ba8", -- red      — axioms and auto-bound implicits
-  recede = "#7f849c", -- catppuccin mocha overlay1: the "recede" target
-  dust = 0.42, -- one step back; measured by looking, not derived
   channels = {
     former_bold = true, -- former = the head of a type expression
     local_italic = true, -- bound here, not imported
-    simp_underline = "underdotted",
+    -- RENAMED from `simp_underline`, which was an enum over underline
+    -- STYLES naming a channel whose effect is now a BACKGROUND (`simp_bg`).
+    -- A key whose name lies is worse than a migration: `M.validate` reads
+    -- the old key when this one is absent, maps any style other than "none"
+    -- to `true`, and drops it — so an already-saved palette keeps working
+    -- and nobody inherits the lie.
+    simp_marker = true,
     axiom_underline = "underdouble",
     auto_underline = "underdashed",
     auto_recolour = true, -- auto-implicits also take the alarm fg
@@ -291,9 +316,42 @@ end
 -- unthemed. So every field is checked and anything unrecognised falls back
 -- to the shipped value rather than propagating.
 
-local function is_hex(s)
-  return type(s) == "string" and s:match("^#%x%x%x%x%x%x$") ~= nil
+--- `#RRGGBB`, in EITHER case on the way in and always lowercase on the way
+--- out. `%x` matches `A-F` as well as `a-f`, so a user who types `#FF00FF`
+--- into `:LeanPalette` is accepted rather than told off — but the value is
+--- lowercased before it is stored.
+---
+--- That lowercasing is not tidiness. `nvim_get_hl` round-trips a colour as
+--- lowercase, so a palette string held as `#FF1493` compares UNEQUAL to the
+--- `#ff1493` that comes back off the rendered group while looking identical
+--- in every diff and every log line. Four uppercase literals in `DEFAULTS`
+--- cost three test failures exactly this way.
+--- @param s any
+--- @return string|nil hex lowercased, or nil if it is not a colour at all
+local function norm_hex(s)
+  if type(s) ~= "string" then
+    return nil
+  end
+  return s:match("^#%x%x%x%x%x%x$") and s:lower() or nil
 end
+
+local function is_hex(s)
+  return norm_hex(s) ~= nil
+end
+
+--- Inputs earlier versions had and this one does not. `dust` and `recede`
+--- drove the deleted blend step; `simp_sp` coloured the deleted simp
+--- underline, which is now a background (`simp_bg`). Dan's saved
+--- `lean-palette.json` contains all three.
+---
+--- Retired keys are IGNORED, never complained about. `M.setup` notifies on
+--- complaints now, and a key that is merely old would put a warning on the
+--- screen at every start — which teaches the user that the warning means
+--- nothing, and then the one that matters is invisible too.
+---
+--- `channels.simp_underline` is retired as well but is MIGRATED rather than
+--- dropped; see the note in `M.validate`.
+local RETIRED = { "dust", "recede", "simp_sp" }
 
 local function is_style(s)
   for _, v in ipairs(M.underline_styles) do
@@ -328,33 +386,36 @@ function M.validate(raw)
       if type(k) ~= "string" or not k:match("^[%a][%w_]*$") then
         bad[#bad + 1] = "hues key " .. vim.inspect(k)
       elseif is_hex(v) then
-        out.hues[k] = v
+        out.hues[k] = norm_hex(v)
       else
         bad[#bad + 1] = "hues." .. tostring(k) .. " = " .. vim.inspect(v)
       end
     end
   end
-  for _, k in ipairs({ "simp_sp", "alarm", "recede" }) do
+  for _, k in ipairs({ "alarm", "simp_bg" }) do
     local v = raw[k]
     if v ~= nil then
       if is_hex(v) then
-        out[k] = v
+        out[k] = norm_hex(v)
       else
         bad[#bad + 1] = k .. " = " .. vim.inspect(v)
       end
     end
   end
-  if raw.dust ~= nil then
-    if type(raw.dust) == "number" then
-      -- Clamped, not rejected: a value slightly out of range is a slider
-      -- overshoot, and refusing it would throw away the rest of the file.
-      out.dust = math.max(0, math.min(1, raw.dust))
-    else
-      bad[#bad + 1] = "dust = " .. vim.inspect(raw.dust)
+  -- RETIRED KEYS. `dust` and `recede` drove the deleted blend step and
+  -- `simp_sp` coloured the deleted simp underline. Dan already has a
+  -- `lean-palette.json` containing all three, so they are IGNORED rather
+  -- than complained about: a saved file that mentions a key this version no
+  -- longer has is not a damaged file, and reporting it would train the user
+  -- to ignore the complaint list. Anything else unrecognised is simply not
+  -- read either — `out` only ever grows from the keys checked above.
+  for _, k in ipairs(RETIRED) do
+    if raw[k] ~= nil then
+      out[k] = nil
     end
   end
   if type(raw.channels) == "table" then
-    for _, k in ipairs({ "former_bold", "local_italic", "auto_recolour" }) do
+    for _, k in ipairs({ "former_bold", "local_italic", "auto_recolour", "simp_marker" }) do
       local v = raw.channels[k]
       if v ~= nil then
         if type(v) == "boolean" then
@@ -364,7 +425,7 @@ function M.validate(raw)
         end
       end
     end
-    for _, k in ipairs({ "simp_underline", "axiom_underline", "auto_underline" }) do
+    for _, k in ipairs({ "axiom_underline", "auto_underline" }) do
       local v = raw.channels[k]
       if v ~= nil then
         if is_style(v) then
@@ -373,6 +434,16 @@ function M.validate(raw)
           bad[#bad + 1] = "channels." .. k .. " = " .. vim.inspect(v)
         end
       end
+    end
+    -- MIGRATION, retired 2026-08-13. `simp_underline` was an enum over
+    -- underline styles; the channel became a background tint and the key
+    -- became `simp_marker`, a boolean. A saved palette written before the
+    -- rename still carries the old key, so read it — any style other than
+    -- "none" meant the channel was on — and drop it from the output. Not a
+    -- complaint, for the same reason as `RETIRED`: it would fire a warning
+    -- at every start for a file that is perfectly fine.
+    if raw.channels.simp_marker == nil and is_style(raw.channels.simp_underline) then
+      out.channels.simp_marker = raw.channels.simp_underline ~= "none"
     end
   end
   return out, bad
@@ -418,7 +489,7 @@ function M.validate_override(raw)
   for k, v in pairs(raw) do
     if COLOUR_KEYS[k] then
       if is_hex(v) then
-        out[k] = v
+        out[k] = norm_hex(v)
       elseif v ~= nil then
         bad[#bad + 1] = k .. " = " .. vim.inspect(v)
       end
@@ -450,12 +521,20 @@ local function inherited_fg(name)
 end
 
 --- Merge the override for `name` over the generated spec.
---- ALWAYS returns a complete specification: if the result would have no
---- foreground, the inherited one is resolved and restated, because a
---- partial definition renders colourless rather than inheriting (B1).
+---
+--- WHEN THERE IS AN OVERRIDE the result is always a COMPLETE specification:
+--- if it would have no foreground, the inherited one is resolved and
+--- restated, because a partial definition renders colourless rather than
+--- inheriting (B1).
+---
+--- WHEN THERE IS NOT it is a pass-through, `generated` and all — including
+--- `nil`. That path is reachable and deliberate: `apply_foreign_overrides`
+--- calls `resolve(name, nil)` for a group the generator never produced and
+--- guards on the result. Annotated `table|nil` for that reason; do not
+--- "fix" it by making the function return `{}`, which would CLEAR the group.
 --- @param name string
 --- @param generated table|nil what the generator said, if anything
---- @return table spec
+--- @return table|nil spec
 local function resolve(name, generated)
   local ov = M.overrides[name]
   if not ov then
@@ -497,14 +576,11 @@ local function rebuild_palette(o)
   for k in pairs(p) do
     p[k] = nil
   end
-  p.simp_sp, p.alarm, p.recede = o.simp_sp, o.alarm, o.recede
-  p.simp_bg = o.simp_bg
-  -- Every hue gets its computed dusty partner, whatever it is called. Three
-  -- today; the design intent is a hand-picked colour per cell, and nothing
-  -- here counts them.
+  p.alarm, p.simp_bg = o.alarm, o.simp_bg
+  -- A flat copy, and nothing else. There is no derived shade any more: what
+  -- is in `hues` is what gets painted.
   for name, hex in pairs(o.hues) do
     p[name] = hex
-    p[name .. "_dust"] = blend(hex, p.recede, o.dust)
   end
   return p
 end
@@ -569,24 +645,23 @@ local function cell_spec(world, level, ty, is_local)
     return { fg = M.palette[ov.hue], bold = ov.bold or former_bold }, ov.suffix
   end
 
-  -- 2 · the hand-picked cell colour. This is the normal path.
+  -- 2 · the hand-picked cell colour. In practice this is the ONLY path:
+  -- `M.validate` refills every key missing from a loaded file out of
+  -- `DEFAULTS`, so a cell cannot be cleared through `apply` at all.
   local picked = M.palette[key]
   if picked then
     return { fg = picked, bold = former_bold }, nil
   end
 
-  -- 3 · fallback, for a cell nobody picked — the original generated
-  -- behaviour, kept because deleting a cell key should degrade to something
-  -- sensible rather than to nothing. Element at full strength, type-level
-  -- scaffolding blended one step toward `recede`.
-  local base = M.palette[world]
-  if not base then
-    return { fg = M.palette.prop }, nil
-  end
-  if level == "element" then
-    return { fg = base }, nil
-  end
-  return { fg = M.palette[world .. "_dust"] or base, bold = former_bold }, nil
+  -- 3 · the family anchor, as a floor. Reachable only by mutating
+  -- `M.palette` directly, and kept for one mechanical reason: this function
+  -- must never return a spec without an `fg`. A partial definition renders
+  -- COLOURLESS (B1), and a nil spec would throw inside catppuccin's
+  -- `config` function and leave the editor with no colorscheme at all.
+  --
+  -- This is where the blend used to be. It is not a "degrade gracefully"
+  -- path any more, because there is nothing to degrade to.
+  return { fg = M.palette[world] or M.palette.prop, bold = former_bold }, nil
 end
 
 -- ── flags that change the spec ─────────────────────────────────────────
@@ -599,6 +674,15 @@ end
 --- Put ONE underline style on a spec, clearing any other. `sp` is cleared
 --- along with the style: a stray `sp` survives an overridden style and
 --- shows up as a coloured underline from a group that lost (B4).
+---
+--- AN `sp` EQUAL TO THE FOREGROUND IS NOT WRITTEN AT ALL. Neovim renders an
+--- underline with no `sp` in the foreground colour, so the two are visually
+--- identical — but a stored `sp` is a second, independent channel that
+--- SURVIVES a later style change (B4 again), and one that silently says the
+--- same thing as the foreground is a channel nobody can read. This is live:
+--- `auto_recolour` sets the foreground to `alarm` and the auto underline is
+--- also `alarm`, so every auto-implicit group used to carry `fg == sp`.
+--- tests/test_lean.lua sweeps for exactly that.
 local function set_underline(spec, style, sp)
   for _, k in ipairs(UNDERLINE_KEYS) do
     spec[k] = nil
@@ -606,7 +690,7 @@ local function set_underline(spec, style, sp)
   spec.sp = nil
   if style and style ~= "none" then
     spec[style] = true
-    spec.sp = sp
+    spec.sp = (sp ~= spec.fg) and sp or nil
   end
 end
 
@@ -631,7 +715,7 @@ local function build_flags(o)
       end,
     }
   end
-  if c.simp_underline ~= "none" then -- name kept; the channel is now a bg
+  if c.simp_marker then
     flags[#flags + 1] = {
       "simp",
       function(_, mods)
@@ -1033,7 +1117,13 @@ end
 --- truncated, hand-edited to nonsense — yields the shipped defaults, because
 --- this is called from inside catppuccin's `config` function and an error
 --- there leaves the editor with no colorscheme at all.
---- @return table state { inputs, overrides }, string[] complaints
+--- Split across two lines because LuaCATS reads everything after the type
+--- and the name as free-text description: one `@return` line mentioning two
+--- types declares ONE return, and every `return a, b` below is then a
+--- `redundant-return-value` diagnostic against an annotation that is simply
+--- wrong.
+--- @return table state { inputs, overrides }
+--- @return string[] complaints
 function M.load()
   local function empty()
     return { inputs = M.defaults(), overrides = {} }
@@ -1101,9 +1191,34 @@ local armed = false
 function M.setup(o)
   o = o or {}
   if o.load_saved then
-    local state = M.load()
+    local state, complaints = M.load()
     M.overrides = state.overrides
     M.apply(state.inputs)
+    -- SAY SO WHEN PART OF THE FILE WAS DISCARDED. `M.load` is total by
+    -- design — it must not throw inside catppuccin's `config` function — so
+    -- a hand-edited or half-corrupt `lean-palette.json` used to be repaired
+    -- in silence and the user simply got some of the colours he saved. That
+    -- is the wrong trade for a file whose entire purpose is to hold
+    -- deliberate choices. Scheduled, not immediate: this runs during
+    -- colorscheme setup, before the UI can show a message.
+    --
+    -- Retired keys are NOT complaints (see `RETIRED`), so an old saved file
+    -- stays quiet — otherwise this would fire at every start and teach the
+    -- user that the warning means nothing.
+    if #complaints > 0 then
+      vim.schedule(function()
+        vim.notify(
+          ("lean palette: %d entr%s in %s could not be read and were left at the shipped value:\n  %s")
+            :format(
+              #complaints,
+              #complaints == 1 and "y" or "ies",
+              vim.fn.fnamemodify(M.state_path, ":~"),
+              table.concat(complaints, "\n  ")
+            ),
+          vim.log.levels.WARN
+        )
+      end)
+    end
   elseif o.inputs or o.overrides then
     M.overrides = o.overrides or M.overrides
     M.apply(o.inputs or M.opts)
@@ -1349,10 +1464,14 @@ end
 -- of value:
 --
 --   defaultLibrary  "is this lemma mine, or Mathlib's?" — see the header.
---                   Cheapest expression: a FLAG entry that sets
---                   `spec.fg = blend(spec.fg, o.recede, 0.18)` for imported
---                   names, i.e. locally-proved lemmas sit one notch
---                   brighter than the library around them.
+--                   There WAS a one-line answer here: blend the foreground
+--                   one notch toward `recede` for imported names. It is
+--                   gone with the blend, and good riddance — a "one notch
+--                   dimmer" version of every colour is the timid palette
+--                   Dan rejected, applied a second time. The honest
+--                   expressions left are a hue pair per world (expensive)
+--                   or a style channel, and every style channel is spent.
+--                   Genuinely open.
 --   instance        a registered instance, as opposed to a plain def.
 --   irreducible     `simp` and `rw` will not unfold it, which is exactly
 --                   the surprise that costs a reader ten minutes.
