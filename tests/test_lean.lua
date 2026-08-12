@@ -93,7 +93,10 @@ T["lean"]["ftplugin: mathlib style without auto-wrap"] = function()
   expect.equality(child.lua_get("vim.bo.shiftwidth"), 2)
   expect.equality(child.lua_get("vim.bo.expandtab"), true)
   expect.equality(child.lua_get([[vim.bo.formatoptions:find("t") ~= nil]]), false)
-  expect.equality(child.lua_get("vim.wo.colorcolumn"), "100")
+  -- textwidth governs `gq` only. No colorcolumn: 100 is mathlib's contribution
+  -- guideline, not a rule worth a permanent ruler competing with the infoview
+  -- for width.
+  expect.equality(child.lua_get("vim.wo.colorcolumn"), "")
 end
 
 T["lean"]["ftplugin: apostrophe is a keyword character"] = function()

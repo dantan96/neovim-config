@@ -17,11 +17,12 @@ vim.bo.textwidth = 100
 
 -- ...but textwidth alone is a trap here. The global formatoptions is "tcqj",
 -- and `t` hard-wraps as you type, which splits long Lean terms mid-expression.
--- Drop `t` so textwidth only governs explicit `gq`, and show the limit with a
--- colorcolumn instead. Scoped as vim.wo[0][0] (window option, buffer-local
--- semantics) so it does not leak into the next buffer shown in this window.
+-- Drop `t` so textwidth only governs explicit `gq` on comments.
+--
+-- No colorcolumn: the 100-column rule is mathlib's contribution guideline, not
+-- something to be nagged about while working through exercises, and a ruler
+-- competes with the infoview split for horizontal room.
 vim.opt_local.formatoptions:remove("t")
-vim.wo[0][0].colorcolumn = "100"
 
 -- Primed names (`h'`, `ih₂'`) are pervasive in Lean and mathlib, so `w`, `*`
 -- and completion should treat the apostrophe as part of the identifier.
