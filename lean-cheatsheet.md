@@ -89,6 +89,53 @@ elaborator inserted where you wrote none. If one shows up on a name you meant
 to be a real constant (`nat` where you wanted `Nat`), that is the bug it exists
 to catch.
 
+## Reading the colours
+
+The patched toolchain classifies every identifier by the **type of the term it
+elaborates to**, and the palette says what that type is. Three questions, three
+independent channels — so you decode them separately rather than memorising
+combinations.
+
+**Hue — which world does it live in?**
+
+| | |
+|------|--------|
+| blue | **Prop**. A proof, a proposition, or a predicate. Lemma names, hypotheses, `Even`, `Nat.Prime` |
+| flamingo (warm pink) | **Data**. A `Type u` inhabitant, or a type. `n`, `Nat.factorial`, `Nat`, `Set` |
+| teal | **Sort-polymorphic**. `Sort u` with `u` a parameter, so genuinely undetermined. `α` in `{α : Sort*}`, `Classical.choice` |
+| mauve | Not classified: keywords and tactic names |
+
+The pair worth knowing: in `theorem two_le {m : ℕ} (h0 : m ≠ 0)`, **`m` is
+flamingo and `h0` is blue.** They used to be the same colour.
+
+**Brightness — a term, or type-level scaffolding?**
+
+Full strength is a term you manipulate. One step dusty is a *type* or a
+*proposition* — `Nat` in `{n : Nat}`, ambient context rather than content.
+
+**Bold** on a dusty name is a **type former**: a function that produces types
+or propositions. `Set`, `Eq`, `Nat.Prime`.
+
+**Italic — is it bound here?** Locals slant, globals stand upright. So a
+hypothesis `np` and a cited lemma `Nat.prime_def_lt` are both blue, and the
+slant is what separates them.
+
+**The rest**
+
+| | |
+|------|--------|
+| yellow chip | `sorry` / `admit` — an incomplete proof |
+| struck through | `@[deprecated]`; Mathlib deprecates aggressively |
+| yellow dotted underline | `@[simp]` — will `simp` use this? |
+| red double underline | an **axiom**; the proof rests on it without proof |
+| red, dashed underline | an **auto-bound implicit** — you did not write this binder, the elaborator did |
+
+Binder annotation (`{x}`, `⦃x⦄`, `[Inst α]`), `private`, `noncomputable` and
+the declaration position get no colour on purpose: the source text already
+says so, and the contrast is worth more in the binder list. The full design,
+including what is deliberately left off and how to turn it on, is at the top
+of `lua/config/lean/highlights.lua`.
+
 ## Module hierarchy
 
 Which files does this one pull in, and who pulls in this one? MIL chapters open

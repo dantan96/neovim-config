@@ -86,8 +86,23 @@ return {
             -- for. The extra categories are wired up but parked on their
             -- current appearance, so turning one on is a one-line edit.
 
-            -- THE CHANGE — CURRENTLY NOT EXPRESSED, AND THIS IS A DECISION FOR
-            -- YOU TO MAKE. Prop-ness used to arrive as three token TYPES
+            -- THE CHANGE — NOW EXPRESSED, in lua/config/lean/highlights.lua.
+            -- Read the history below for why it could not live here.
+            --
+            -- RESOLVED: the world × level grid is synthesised client-side from
+            -- an LspTokenUpdate callback into `@lean.<world>.<level>` groups
+            -- at priority 128, above Neovim's own type/mod/typemod marks. The
+            -- palette, every channel assignment and every deliberate omission
+            -- are documented at the top of that file. `require("config.lean.
+            -- highlights").setup()` is called at the bottom of this one.
+            --
+            -- What that means for the groups in THIS file: they still decide
+            -- the appearance of anything the grid does not reach — keywords,
+            -- tactics, `sorry`, and any token the server sends without a
+            -- world or a level. The grid overrides the rest.
+            --
+            -- ── the history, kept because the dead end is the expensive part
+            -- Prop-ness used to arrive as three token TYPES
             -- (leanProof / leanHypothesis / leanProp) and three groups were
             -- defined for them here. The server stopped sending those types
             -- when the declaration kind moved into the token type and
@@ -237,5 +252,15 @@ return {
       },
     })
     vim.cmd.colorscheme("catppuccin")
+    -- The Lean world × level palette. AFTER the colorscheme, because it
+    -- defines groups with nvim_set_hl and :colorscheme clears them; the
+    -- module re-arms itself on ColorScheme for every later reload.
+    --
+    -- Wired here rather than in after/ftplugin/lean.lua on purpose: the
+    -- groups must exist before the first Lean buffer is tokenised, and this
+    -- file is the one place in the config that already owns "highlight
+    -- definitions that must survive a colorscheme reload" (LineNrWrap,
+    -- LspInlayHint, @lsp.type.variable.lean, all above).
+    require("config.lean.highlights").setup()
   end,
 }
