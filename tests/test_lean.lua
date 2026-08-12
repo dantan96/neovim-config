@@ -3032,4 +3032,25 @@ T["lean"]["lean.nvim's satellite progress handler is registered AND set up"] = f
   expect.equality(got.all, { "diagnostic", "gitsigns", "lean.nvim", "search" })
 end
 
+-- markview's `actions.attach` declares `---@param _state markview.state.buf`
+-- without the `?`, while `state.set_buffer_state` -- the function it delegates
+-- straight to -- declares `new_state?`. A one-character upstream typo, patched
+-- in place in lazy's plugin directory.
+--
+-- A plugin update will revert it. This test is the tripwire: it fails loudly
+-- rather than letting the diagnostic quietly reappear and get re-triaged from
+-- scratch, which has already happened twice with a different warning. Do NOT
+-- "fix" a failure here by passing a second argument -- `{}` is truthy and
+-- skips `state.lua:190`'s early return, rebuilding the buffer's state from
+-- defaults and discarding a hybrid-mode toggle the user set.
+T["lean"]["markview's attach annotation is still patched"] = function()
+  local path = vim.fn.stdpath("data") .. "/lazy/markview.nvim/lua/markview/actions.lua"
+  if vim.fn.filereadable(path) == 0 then
+    MiniTest.skip("markview.nvim is not installed")
+  end
+  local src = table.concat(vim.fn.readfile(path), "\n")
+  local decl = src:match("(---@param _state%??) markview%.state%.buf\nactions%.attach")
+  expect.equality(decl, "---@param _state?")
+end
+
 return T
