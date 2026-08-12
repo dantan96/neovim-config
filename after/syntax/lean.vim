@@ -65,34 +65,60 @@ syn match leanConstant "\<[A-Za-z_][A-Za-z0-9_'?!]*\%(\.[A-Za-z_][A-Za-z0-9_'?!]
 " argument is a real binder list (`variable {α : Type*}`) whose names all
 " carry semantic tokens, and treating them as path components would be wrong
 " the moment the server is not attached. It gets the keyword colour only.
+" ── the rainbow, and why it is a nextgroup CHAIN and not a region ───────
+" Dan: "things like `Mathlib.Data.Real.Basic` should have been rainbow
+" coloured, starting from red ('Mathlib'), orange ('data'), etc."
+"
+" The colour must key on POSITION, not on the text — there is no list of known
+" namespace names here and there is not going to be one. A `syn region` with
+" `contains=` cannot express that: items inside a region match wherever they
+" fit and know nothing about how many came before. A `nextgroup` chain can,
+" because each link names the next position explicitly.
+"
+" Two groups per position: `leanPathC{i}` for a component followed by a dot,
+" `leanPathF{i}` for the last one, which is bold. `F` is defined BEFORE `C` at
+" each position so that where both could match — the `A` of `A.B` — `C` wins,
+" which is the "last defined wins at the same start" rule (`:h :syn-priority`)
+" that the old leanPathFinal/leanPathPrefix pair already relied on.
+"
+" `F` restarts the cycle rather than terminating it, so `open Function Set
+" Order` colours all three names and each starts at red. The cycle is six
+" long; the deepest path in MIL is five.
+"
+" VERIFIED, not assumed — this is exactly the shape B9 describes, where a
+" plausible construction silently painted nothing. `synID()` per column on
+"
+"   import Mathlib.Data.Real.Basic
+"   import Data.Mathlib.Basic.Real
+"
+" gives the same group at the same component index on both lines, and
+" tests/test_lean_namespaces.lua asserts it.
 syn keyword leanModuleKeyword import open export namespace end section universe
-      \ skipwhite nextgroup=leanPathArgs
+      \ skipwhite nextgroup=leanPathQual,leanPathF1,leanPathC1
 syn keyword leanModuleKeyword variable
-
-syn region leanPathArgs contained start="\S" end="$" oneline keepend
-      \ contains=leanPathQual,leanPathFinal,leanPathPrefix,leanPathDot,
-      \leanComment,leanBlockComment,leanString
 
 " Qualifiers that appear in these positions and are keywords, not names.
 " `syn keyword` outranks `syn match` unconditionally, so this wins over the
-" component rules below without depending on definition order.
+" component rules below without depending on definition order. It hands on to
+" the same set, so `open scoped Filter` reaches `Filter`.
 syn keyword leanPathQual contained scoped in hiding renaming as all
+      \ skipwhite nextgroup=leanPathQual,leanPathF1,leanPathC1
 
-" A component NOT followed by a dot: the name you actually mean.
 " The character class is negative rather than \w so that Unicode identifiers
 " (`Mathlib.Order.Ω`, `MIL.C05.S02`) are one component and not fragments. The
 " excluded set is punctuation only, and it has to include `-`, `/` and `"` or
-" a trailing `-- comment` and a `/- block -/` get eaten as path components:
-" both leanComment and this rule match at the `-`, and this one is defined
-" later, so it would win the tie.
-syn match leanPathFinal "[^[:space:].,:;()⟨⟩«»{}/\"\[\]-]\+" contained
-
-" A component followed by a dot: scaffolding. Defined AFTER leanPathFinal so
-" that at a position where both could match — the `A` of `A.B` — this one wins
-" the tie, which is the rule for two syn-match items at the same start.
-syn match leanPathPrefix "[^[:space:].,:;()⟨⟩«»{}/\"\[\]-]\+\ze\." contained
-
-syn match leanPathDot "\." contained
+" a trailing `-- comment` and a `/- block -/` get eaten as path components.
+let s:leanPathComponent = '[^[:space:].,:;()⟨⟩«»{}/"\[\]-]\+'
+for s:i in range(1, 6)
+  let s:next = s:i % 6 + 1
+  execute 'syn match leanPathF' . s:i . ' "' . s:leanPathComponent . '" contained'
+        \ . ' skipwhite nextgroup=leanPathQual,leanPathF1,leanPathC1'
+  execute 'syn match leanPathC' . s:i . ' "' . s:leanPathComponent . '\ze\." contained'
+        \ . ' nextgroup=leanPathDot' . s:i
+  execute 'syn match leanPathDot' . s:i . ' "\." contained'
+        \ . ' nextgroup=leanPathF' . s:next . ',leanPathC' . s:next
+endfor
+unlet s:i s:next s:leanPathComponent
 
 " ── keywords ────────────────────────────────────────────────────────────
 " These DO carry a `keyword` semantic token, so at runtime the real paint
@@ -121,6 +147,9 @@ hi def link leanModuleKeyword   @lean.path.floor
 hi def link leanBinderKeyword   @lean.binder.floor
 hi def link leanBinderSymbol    @lean.binder.keyword
 hi def link leanPathQual        @lean.path.floor
-hi def link leanPathPrefix      @lean.path.prefix
-hi def link leanPathDot         @lean.path.dot
-hi def link leanPathFinal       @lean.path.final
+for s:i in range(1, 6)
+  execute 'hi def link leanPathC' . s:i . ' @lean.path.c' . s:i
+  execute 'hi def link leanPathF' . s:i . ' @lean.path.f' . s:i
+  execute 'hi def link leanPathDot' . s:i . ' @lean.path.dot'
+endfor
+unlet s:i

@@ -55,9 +55,12 @@
 --
 --   * a KEYWORD mark here replaces the whole token's colour, and is only ever
 --     applied to a fixed, named list of keyword texts (below). Every other
---     keyword — `theorem`, `def`, `Type*`, `ℕ`, `_`, and on the patched
---     server every tactic, which arrives as type `tactic` and not `keyword`
---     at all — is left entirely to highlights.lua and the theme.
+--     keyword — `theorem`, `def`, `_`, and on the patched server every
+--     tactic, which arrives as type `tactic` and not `keyword` at all — is
+--     left entirely to highlights.lua and the theme. `Type*` and `ℕ` ARE in
+--     the list as of the 2026-08-13 retune: they are notation atoms the
+--     server calls `keyword` (GOTCHAS B7), so the grid cannot reach them and
+--     the pink Dan asked for has to come from here.
 --   * a PREFIX mark inside a dotted reference sets NO foreground. It carries
 --     only `underdotted` + `sp`, so Neovim's per-attribute composition leaves
 --     highlights.lua's foreground in place and the final component of the
@@ -106,21 +109,64 @@ local M = {}
 -- else, and nothing is blended toward a background to make it recede — a
 -- namespace prefix is scaffolding, but scaffolding you can see.
 --
--- Claimed against `wt/palette` (main confirmed brass, flamingo, olive and
--- vetoed catppuccin overlay0 for the separators in favour of SlateGray,
--- which is Dan's own punctuation colour in spthy-colorscheme.lua).
+-- RETUNED 2026-08-13. Brass, flamingo and olive are gone from the foregrounds
+-- here; what replaced each one, and why:
+--
+--   brass    was the module keywords AND every namespace prefix. Dan:
+--            "variable, section, import, namespace should be purple". They
+--            are mauve now, the same purple every other keyword already is,
+--            and separated from `theorem`/`def` by BOLD rather than by hue.
+--            Brass is not orphaned — it keeps exactly one job, as the `sp` of
+--            the underline on a namespace prefix inside a reference. It is
+--            now the only place brass appears, and it is never a foreground.
+--
+--   flamingo was the final component of a module path. Superseded by the
+--            rainbow below, and it could not have stayed anyway: measured on
+--            rendered cells, `#f2cdcd` is ALSO catppuccin's `Identifier` and
+--            therefore `@lsp.type.variable.lean` — 20 cells of it on the
+--            Gallery screen with nobody having chosen them (GOTCHAS B10).
+--
+--   olive    was the binder keywords. Dan: "I think the 'fun' keyword doesn't
+--            look great." `fun`, `have` and `with` measured 300/278/209
+--            occurrences across MIL, which by the retune's rule is far too
+--            frequent for a saturated off-theme hue. They take plain mauve —
+--            i.e. they stop being special and rejoin the keywords. The group
+--            is kept rather than deleted because `∀ ∃ λ` carry no token and
+--            are reached only from here, and because it stays one editable
+--            place if the distinction is ever wanted back.
 M.palette = {
-  -- Addressing machinery: the module keywords AND the namespace components
-  -- that qualify a name. Deliberately ONE colour for both, so `import` and
-  -- `Mathlib.Order.Filter` read as a single gesture rather than two rules.
-  brass = "#e5b567",
-  -- The name you actually mean: the last component of a module path.
-  flamingo = "#f2cdcd",
+  -- Every keyword. Module keywords take it BOLD (`import`, `namespace`,
+  -- `section`, `variable`), binder keywords plain — that is the whole
+  -- remaining split, and it is the one Dan asked for.
+  mauve = "#cba6f7",
   -- Separators only. spthy-colorscheme.lua `slateGrayPlain`, which does this
   -- same job there for brackets, colons and commas.
   slate = "#708090",
-  -- Term and binder keywords, moved off mauve.
-  olive = "#b8bb26",
+  -- The type-level furniture of a statement: `Type*`, `Sort`, and the
+  -- blackboard-bold atoms `ℕ ℤ ℚ ℝ ℂ`. All arrive as `keyword` TOKENS
+  -- (GOTCHAS B7), which is why they are here and not in the grid. Dan asked
+  -- for `Type*` "hot pink" and then for "`\R`, `\N`, etc to also be pink".
+  -- Chosen over `#ff1493`, which is the grid's predicate colour — see the
+  -- note on the resolution in palette-widening-design.md.
+  hotpink = "#ff69b4",
+  -- Underline colour for a namespace prefix inside a dotted reference, and
+  -- nothing else. Never a foreground here.
+  brass = "#e5b567",
+  -- ── the module path, coloured by POSITION ────────────────────────────
+  -- Dan: "things like `Mathlib.Data.Real.Basic` should have been rainbow
+  -- coloured, starting from red ('Mathlib'), orange ('data'), etc."
+  --
+  -- KEYED ON POSITION, NOT ON TEXT. `import Mathlib.Data` and
+  -- `import Data.Mathlib` colour their components identically; there is no
+  -- table of known namespace names anywhere and there is not going to be.
+  -- Six entries, cycling — the deepest path in MIL is five.
+  --
+  -- Catppuccin's own red/peach/yellow/green/blue/mauve rather than six new
+  -- hexes: a path sits alone at the top of a file, spatially separated from
+  -- any proof, so reusing a hue that also means something in a proof body
+  -- costs nothing (and `#f9e2af` yellow, which the grid vacated when cited
+  -- lemmas moved to lavender, would otherwise have been orphaned).
+  rainbow = { "#f38ba8", "#fab387", "#f9e2af", "#a6e3a1", "#89b4fa", "#cba6f7" },
 }
 
 -- ── keyword classification ─────────────────────────────────────────────
@@ -128,10 +174,8 @@ M.palette = {
 --
 -- DELIBERATELY ABSENT, and each for a reason:
 --   * `theorem def instance structure class inductive abbrev` — declaration
---     keywords keep mauve. They are the skeleton of the file and should stay
---     quiet; a `theorem` keyword and a lemma name are never confused.
---   * `Type* Sort ℕ` — notation atoms the server also calls `keyword`
---     (GOTCHAS B7). They are types, not structure; highlights.lua's business.
+--     keywords keep plain mauve. They are the skeleton of the file and should
+--     stay quiet; a `theorem` keyword and a lemma name are never confused.
 --   * `by` — reads as the head of the tactic block, and tactics are blue on
 --     `wt/palette`. Left alone rather than claimed from here.
 --   * `simp` — arrives as `keyword` when it is the ATTRIBUTE in `@[simp]`.
@@ -152,7 +196,22 @@ M.KEYWORDS = {
   ["section"] = "@lean.path.keyword",
   ["variable"] = "@lean.path.keyword",
   ["universe"] = "@lean.path.keyword",
-  -- term / binder -> olive
+  -- the type-level furniture of a statement -> hot pink.
+  -- `Type u` yields NO token at all (measured: `variable {α : Type u}` on
+  -- line 25 of HighlightGallery.lean produces tokens for `α`, `f`, `g` and
+  -- nothing at the `Type` or the `u`), so `Type` here is inert cover for a
+  -- form the server might tokenise later. `Type*` and `Sort` both do arrive,
+  -- as one keyword token carrying the whole atom including the star.
+  ["Type*"] = "@lean.sort.atom",
+  ["Sort*"] = "@lean.sort.atom",
+  ["Type"] = "@lean.sort.atom",
+  ["Sort"] = "@lean.sort.atom",
+  ["ℕ"] = "@lean.sort.atom",
+  ["ℤ"] = "@lean.sort.atom",
+  ["ℚ"] = "@lean.sort.atom",
+  ["ℝ"] = "@lean.sort.atom",
+  ["ℂ"] = "@lean.sort.atom",
+  -- term / binder -> plain mauve
   ["fun"] = "@lean.binder.keyword",
   ["let"] = "@lean.binder.keyword",
   ["have"] = "@lean.binder.keyword",
@@ -180,11 +239,23 @@ M.KEYWORDS = {
 ---@return table<string, vim.api.keyset.highlight>
 function M.groups()
   local p = M.palette
-  return {
+  local out = {
     -- Applied by THIS module at 129, to a token whose text is in M.KEYWORDS.
     -- Bold is safe here: nothing sits above 129 to leak it under.
-    ["@lean.path.keyword"] = { fg = p.brass, bold = true },
-    ["@lean.binder.keyword"] = { fg = p.olive, bold = true },
+    --
+    -- Bold is also the ONLY thing separating a module keyword from a
+    -- declaration keyword now that both are mauve. Kept deliberately: Dan
+    -- asked for `import`/`section`/`variable`/`namespace` to be purple, not
+    -- for them to become indistinguishable from `theorem`.
+    ["@lean.path.keyword"] = { fg = p.mauve, bold = true },
+    -- NOT bold, and identical to `@lsp.type.keyword.lean` on purpose — see
+    -- the note on `olive` above. The mark this group paints is a visual
+    -- no-op today; it exists so the category stays addressable.
+    ["@lean.binder.keyword"] = { fg = p.mauve },
+    -- `Type*`, `Sort`, `ℕ`, `ℝ`. Not bold: hot pink bold is the shouting the
+    -- retune removed, and `Type*` measured 362 occurrences across MIL —
+    -- more than `fun`.
+    ["@lean.sort.atom"] = { fg = p.hotpink },
 
     -- The COLD-START FLOOR, used by after/syntax/lean.vim for the same words.
     -- Identical but for carrying NO attribute bits, and that is the whole
@@ -196,19 +267,31 @@ function M.groups()
     -- TACTIC, which the server types `tactic` rather than `keyword` so this
     -- module deliberately leaves alone. Setting only `fg` means a token that
     -- outranks us takes the whole appearance and we contribute nothing.
-    ["@lean.path.floor"] = { fg = p.brass },
-    ["@lean.binder.floor"] = { fg = p.olive },
+    ["@lean.path.floor"] = { fg = p.mauve },
+    ["@lean.binder.floor"] = { fg = p.mauve },
 
     -- Token-free by measurement, so their attributes cannot leak: the server
     -- emits nothing at these columns at all.
-    ["@lean.path.prefix"] = { fg = p.brass, underdotted = true, sp = p.brass },
     ["@lean.path.dot"] = { fg = p.slate },
-    ["@lean.path.final"] = { fg = p.flamingo, bold = true },
     -- Inside a dotted reference, over highlights.lua's 128. No fg: the
-    -- foreground underneath is the whole point of leaving it alone.
+    -- foreground underneath is the whole point of leaving it alone. This is
+    -- deliberately NOT rainbowed — a reference already carries a semantic
+    -- colour and repainting `Nat.` red would fight it.
     ["@lean.ns.prefix"] = { underdotted = true, sp = p.brass },
     ["@lean.ns.dot"] = { fg = p.slate },
   }
+  -- The rainbow, two groups per position: `cN` for a component followed by a
+  -- dot, `fN` for the last one. Same hue; the FINAL one is bold.
+  --
+  -- Bold rather than "wherever the cycle lands" because the cycle position of
+  -- the last component is a function of how deep the path is: `namespace
+  -- Filter` would land on red and `Mathlib.Data.Real.Basic` on green, so
+  -- position cannot mark it. Bold marks it identically at any depth.
+  for i, hex in ipairs(p.rainbow) do
+    out["@lean.path.c" .. i] = { fg = hex }
+    out["@lean.path.f" .. i] = { fg = hex, bold = true }
+  end
+  return out
 end
 
 --- Priority of every mark this module sets.
@@ -320,18 +403,26 @@ end
 --- well as definitions, and the syntax file is not re-sourced. Emitted with
 --- `default = true`, i.e. exactly `hi def link`, so an explicit
 --- `:hi link leanPathFinal Whatever` from the user still wins and survives.
-M.LINKS = {
-  -- The floor groups, NOT the 129 ones — see M.groups() for the measurement.
-  leanModuleKeyword = "@lean.path.floor",
-  leanBinderKeyword = "@lean.binder.floor",
-  leanPathQual = "@lean.path.floor",
-  -- ...but `∀ ∃ λ` carry no token ever, so nothing can outrank them and they
-  -- get the full treatment.
-  leanBinderSymbol = "@lean.binder.keyword",
-  leanPathPrefix = "@lean.path.prefix",
-  leanPathDot = "@lean.path.dot",
-  leanPathFinal = "@lean.path.final",
-}
+M.LINKS = (function()
+  local links = {
+    -- The floor groups, NOT the 129 ones — see M.groups() for the measurement.
+    leanModuleKeyword = "@lean.path.floor",
+    leanBinderKeyword = "@lean.binder.floor",
+    leanPathQual = "@lean.path.floor",
+    -- ...but `∀ ∃ λ` carry no token ever, so nothing can outrank them and they
+    -- get the full treatment.
+    leanBinderSymbol = "@lean.binder.keyword",
+  }
+  -- The rainbow chain. Also token-free by measurement, so `f{i}`'s bold has
+  -- nothing to leak under. Every separator shares one group; only the
+  -- components cycle.
+  for i = 1, #M.palette.rainbow do
+    links["leanPathC" .. i] = "@lean.path.c" .. i
+    links["leanPathF" .. i] = "@lean.path.f" .. i
+    links["leanPathDot" .. i] = "@lean.path.dot"
+  end
+  return links
+end)()
 
 --- Define every group. Idempotent; re-run from the ColorScheme autocmd.
 function M.define()
@@ -350,8 +441,9 @@ end
 --- `lua/config/lean/highlights.lua` (see its NOTE ON SCOPE). Under a derived
 --- Ghostty bundle — GhosttyNu, GhosttyFish, GhosttyElvish, GhosttyXonsh —
 --- neither catppuccin nor the world x level grid loads, and Lean is meant to
---- render in that profile's own colours. Painting brass/flamingo/slate/olive
---- over a foreign scheme with no grid underneath them would be half a design.
+--- render in that profile's own colours. Painting mauve, hot pink, slate and
+--- a six-colour rainbow over a foreign scheme with no grid underneath them
+--- would be half a design.
 ---
 --- Gating this off is a strict non-regression: `after/syntax/lean.vim`'s
 --- `hi def link` targets then resolve to nothing, and an unresolved link

@@ -77,14 +77,70 @@ end
 
 -- ── the syntax layer: module paths ─────────────────────────────────────
 
-NS["path: prefix, separator and final component are three groups"] = function()
+NS["path: components are coloured by POSITION, cycling"] = function()
   -- import Mathlib.Order.Filter.Basic
   --        ^7      ^14 ^15         ^28
+  -- `C{i}` is a component followed by a dot, `F{i}` the last one. The index
+  -- is the component's POSITION in the path, which is the whole point of the
+  -- rainbow: 1 red, 2 orange, 3 yellow, 4 green...
   expect.equality(syn_at(1, 0), "leanModuleKeyword")
-  expect.equality(syn_at(1, 7), "leanPathPrefix") -- Mathlib
-  expect.equality(syn_at(1, 14), "leanPathDot")
-  expect.equality(syn_at(1, 15), "leanPathPrefix") -- Order
-  expect.equality(syn_at(1, 28), "leanPathFinal") -- Basic
+  expect.equality(syn_at(1, 7), "leanPathC1") -- Mathlib
+  expect.equality(syn_at(1, 14), "leanPathDot1")
+  expect.equality(syn_at(1, 15), "leanPathC2") -- Order
+  expect.equality(syn_at(1, 21), "leanPathC3") -- Filter
+  expect.equality(syn_at(1, 28), "leanPathF4") -- Basic
+end
+
+NS["path: the position, not the text, decides the colour"] = function()
+  -- The failure this guards is a "rainbow" that is really a lookup table of
+  -- known namespace names — which would colour `Mathlib` red wherever it
+  -- appeared and leave an unknown vendor path grey. Two paths with the SAME
+  -- components in the OPPOSITE order must colour position-for-position
+  -- identically. This is also the mechanism check for the nextgroup chain
+  -- (GOTCHAS B9: a plausible syntax construction that silently paints
+  -- nothing, while `:syntax list` looks perfect).
+  local got = child.lua_get([[(function()
+    -- Restore the shared child's buffer afterwards: every other case in this
+    -- file reads `synstack()` from whatever is current, and a scratch buffer
+    -- left in place makes six later cases fail for a reason that has nothing
+    -- to do with them.
+    local was = vim.api.nvim_get_current_buf()
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+      "import Mathlib.Data.Real.Basic",
+      "import Basic.Real.Data.Mathlib",
+      "import A.B.C.D.E.F.G.H",
+    })
+    vim.api.nvim_set_current_buf(buf)
+    vim.bo[buf].filetype = "lean"
+    local out = {}
+    for l = 1, 3 do
+      local line = vim.api.nvim_buf_get_lines(buf, l - 1, l, false)[1]
+      local row = {}
+      for c = 8, #line do
+        local st = vim.fn.synstack(l, c)
+        local g = #st > 0 and vim.fn.synIDattr(st[#st], "name") or ""
+        if g ~= row[#row] then row[#row + 1] = g end
+      end
+      out[l] = row
+    end
+    vim.api.nvim_set_current_buf(was)
+    vim.api.nvim_buf_delete(buf, { force = true })
+    return out
+  end)()]])
+  expect.equality(got[1], got[2])
+  -- Non-vacuity: an empty or all-blank reading would compare equal to itself.
+  expect.equality(got[1], {
+    "leanPathC1", "leanPathDot1", "leanPathC2", "leanPathDot2",
+    "leanPathC3", "leanPathDot3", "leanPathF4",
+  })
+  -- ...and the cycle wraps rather than running out at six.
+  expect.equality(got[3], {
+    "leanPathC1", "leanPathDot1", "leanPathC2", "leanPathDot2",
+    "leanPathC3", "leanPathDot3", "leanPathC4", "leanPathDot4",
+    "leanPathC5", "leanPathDot5", "leanPathC6", "leanPathDot6",
+    "leanPathC1", "leanPathDot1", "leanPathF2",
+  })
 end
 
 NS["path: every name in a multi-name open is reached"] = function()
@@ -93,38 +149,39 @@ NS["path: every name in a multi-name open is reached"] = function()
   -- rendered cells before this change: Function #cdd6f4, Set #89b4fa.
   -- open Function Set Order
   --      ^5       ^14 ^18
-  expect.equality(syn_at(2, 5), "leanPathFinal")
-  expect.equality(syn_at(2, 14), "leanPathFinal")
-  expect.equality(syn_at(2, 18), "leanPathFinal")
+  -- Each name restarts the cycle at position 1, so all three are `F1`.
+  expect.equality(syn_at(2, 5), "leanPathF1")
+  expect.equality(syn_at(2, 14), "leanPathF1")
+  expect.equality(syn_at(2, 18), "leanPathF1")
 end
 
 NS["path: `scoped` is a qualifier, not a path component"] = function()
   -- open scoped Classical
   --      ^5     ^12
   expect.equality(syn_at(3, 5), "leanPathQual")
-  expect.equality(syn_at(3, 12), "leanPathFinal")
+  expect.equality(syn_at(3, 12), "leanPathF1")
 end
 
 NS["path: universe and section names are final components"] = function()
   expect.equality(syn_at(4, 0), "leanModuleKeyword") -- universe
-  expect.equality(syn_at(4, 9), "leanPathFinal") -- u
-  expect.equality(syn_at(4, 11), "leanPathFinal") -- v
+  expect.equality(syn_at(4, 9), "leanPathF1") -- u
+  expect.equality(syn_at(4, 11), "leanPathF1") -- v
 end
 
 NS["path: a dotted namespace splits, on `namespace` and on `end` alike"] = function()
   -- namespace MIL.C05.S02      end MIL.C05.S02
-  expect.equality(syn_at(5, 10), "leanPathPrefix") -- MIL
-  expect.equality(syn_at(5, 13), "leanPathDot")
-  expect.equality(syn_at(5, 18), "leanPathFinal") -- S02
-  expect.equality(syn_at(9, 4), "leanPathPrefix") -- MIL
-  expect.equality(syn_at(9, 12), "leanPathFinal") -- S02
+  expect.equality(syn_at(5, 10), "leanPathC1") -- MIL
+  expect.equality(syn_at(5, 13), "leanPathDot1")
+  expect.equality(syn_at(5, 18), "leanPathF3") -- S02
+  expect.equality(syn_at(9, 4), "leanPathC1") -- MIL
+  expect.equality(syn_at(9, 12), "leanPathF3") -- S02
 end
 
 NS["path: `variable` does NOT open a path region"] = function()
   -- Its argument is a binder list, not a path. `variable {α : Type u}` must
   -- leave `α` to the semantic layer rather than calling it a module name.
   expect.equality(syn_at(6, 0), "leanModuleKeyword")
-  expect.no_equality(syn_at(6, 10), "leanPathFinal")
+  expect.no_equality(syn_at(6, 10), "leanPathF1")
 end
 
 NS["path: a trailing comment is not eaten as a component"] = function()
@@ -156,6 +213,7 @@ NS["`∀ ∃ λ` are binder keywords and not operators"] = function()
   local got = child.lua_get([[(function()
     local buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "theorem q : ∀ n, ∃ m, n = m := λ n => rfl" })
+    local was = vim.api.nvim_get_current_buf()
     vim.api.nvim_set_current_buf(buf)
     vim.bo[buf].filetype = "lean"
     local out = {}
@@ -164,11 +222,12 @@ NS["`∀ ∃ λ` are binder keywords and not operators"] = function()
       local st = vim.fn.synstack(1, c + 1)
       out[needle] = #st > 0 and vim.fn.synIDattr(st[#st], "name") or ""
     end
+    vim.api.nvim_set_current_buf(was)
     return out
   end)()]])
-  -- Their own group, linked straight to the bold @lean.binder.keyword rather
-  -- than to the attribute-free floor: the server emits no token for them, so
-  -- nothing can outrank them and nothing can leak. See the floor-group case.
+  -- Their own group, linked straight to @lean.binder.keyword rather than to
+  -- the attribute-free floor: the server emits no token for them, so nothing
+  -- can outrank them and nothing can leak. See the floor-group case.
   expect.equality(got["∀"], "leanBinderSymbol")
   expect.equality(got["∃"], "leanBinderSymbol")
   expect.equality(got["λ"], "leanBinderSymbol")
@@ -241,15 +300,34 @@ NS["keyword: only the listed words move, and the whole token moves"] = function(
   )
 end
 
-NS["keyword: declaration keywords, sorts and tactics are refused"] = function()
-  -- `theorem`/`def` keep mauve by design. `Type*` and `ℕ` are notation atoms
-  -- the server also calls `keyword` (GOTCHAS B7). `rw`/`exact` arrive as type
+NS["keyword: declaration keywords and tactics are refused"] = function()
+  -- `theorem`/`def` keep plain mauve by design. `rw`/`exact` arrive as type
   -- `tactic` on the patched server but as `keyword` on the stock one — this
   -- module must be correct under both, which it is because it dispatches on
   -- the text and they are not in the list.
-  for _, kw in ipairs({ "theorem", "def", "instance", "structure", "class", "Type*", "ℕ", "by", "simp", "_", "rw", "exact" }) do
+  for _, kw in ipairs({ "theorem", "def", "instance", "structure", "class", "by", "simp", "_", "rw", "exact" }) do
     expect.equality(marks({ type = "keyword", start_col = 0, end_col = #kw, modifiers = {} }, kw), {})
   end
+end
+
+NS["keyword: the sort atoms are claimed, and by TEXT"] = function()
+  -- `Type*` and the blackboard-bold numerals are notation atoms the server
+  -- calls `keyword` (GOTCHAS B7) — the grid cannot see them at all, so pink
+  -- for them has to come from this layer. Dan asked for `Type*` hot pink and
+  -- then for "`\R`, `\N`, etc to also be pink".
+  for _, kw in ipairs({ "Type*", "Sort*", "Sort", "ℕ", "ℤ", "ℚ", "ℝ", "ℂ" }) do
+    expect.equality(
+      marks({ type = "keyword", start_col = 0, end_col = #kw, modifiers = {} }, kw),
+      { { 0, #kw, "@lean.sort.atom" } }
+    )
+  end
+  -- Dispatch is on TEXT, not on type: a `variable` token whose text happens
+  -- to be `ℕ` is not a thing, but an identifier called `Sort` is, and it must
+  -- not be claimed.
+  expect.equality(
+    marks({ type = "variable", start_col = 0, end_col = 4, modifiers = { ["local"] = true } }, "Sort"),
+    {}
+  )
 end
 
 -- ── groups, links and the priority contract ────────────────────────────
@@ -284,9 +362,12 @@ NS["every group is a complete spec with a foreground, bar the one that must not 
   for _, name in ipairs({
     "@lean.path.keyword",
     "@lean.path.floor",
-    "@lean.path.prefix",
     "@lean.path.dot",
-    "@lean.path.final",
+    "@lean.path.c1",
+    "@lean.path.f1",
+    "@lean.path.c6",
+    "@lean.path.f6",
+    "@lean.sort.atom",
     "@lean.binder.keyword",
     "@lean.binder.floor",
     "@lean.ns.dot",
@@ -320,12 +401,18 @@ NS["the syntax-layer floor groups carry no attribute bits"] = function()
   end)()]])
   -- `∀ ∃ λ` are the exception and are allowed the full treatment: measured,
   -- the server emits no token for them, so there is nothing to leak under.
-  expect.equality(got.leanBinderSymbol, "@lean.binder.keyword:bold")
+  -- Not bold any more: binder keywords rejoined plain mauve in the retune,
+  -- so there is no attribute left to carry. The exemption stands regardless.
+  expect.equality(got.leanBinderSymbol, "@lean.binder.keyword:")
   expect.equality(got.leanModuleKeyword, "@lean.path.floor:")
   expect.equality(got.leanBinderKeyword, "@lean.binder.floor:")
   expect.equality(got.leanPathQual, "@lean.path.floor:")
   -- The path components themselves keep theirs — also measured token-free.
-  expect.equality(got.leanPathFinal, "@lean.path.final:bold")
+  -- Only the FINAL component of a path is bold, at every position.
+  for i = 1, 6 do
+    expect.equality(got["leanPathC" .. i], "@lean.path.c" .. i .. ":")
+    expect.equality(got["leanPathF" .. i], "@lean.path.f" .. i .. ":bold")
+  end
 end
 
 NS["the groups survive a colorscheme change"] = function()
@@ -333,17 +420,17 @@ NS["the groups survive a colorscheme change"] = function()
   -- the syntax file is not re-sourced. Without the ColorScheme autocmd every
   -- path component would go colourless the first time the theme is reloaded.
   local got = child.lua_get([[(function()
-    local before = vim.api.nvim_get_hl(0, { name = "@lean.path.final" }).fg
+    local before = vim.api.nvim_get_hl(0, { name = "@lean.path.f4" }).fg
     vim.cmd("colorscheme " .. (vim.g.colors_name or "default"))
     vim.wait(100)
     return {
-      fg = vim.api.nvim_get_hl(0, { name = "@lean.path.final" }).fg,
+      fg = vim.api.nvim_get_hl(0, { name = "@lean.path.f4" }).fg,
       before = before,
-      link = vim.api.nvim_get_hl(0, { name = "leanPathFinal", link = true }).link,
+      link = vim.api.nvim_get_hl(0, { name = "leanPathF4", link = true }).link,
     }
   end)()]])
   expect.equality(got.fg, got.before)
-  expect.equality(got.link, "@lean.path.final")
+  expect.equality(got.link, "@lean.path.f4")
 end
 
 NS["nothing is painted under a derived Ghostty profile"] = function()
@@ -370,10 +457,13 @@ NS["the palette is hand-picked, not derived"] = function()
   -- Named explicitly so that a future "just blend it a bit" edit has to delete
   -- an assertion rather than slip through. Dan's words: "FUCK any blending."
   expect.equality(child.lua_get([[require("config.lean.namespace_hl").palette]]), {
-    brass = "#e5b567",
-    flamingo = "#f2cdcd",
+    mauve = "#cba6f7",
     slate = "#708090",
-    olive = "#b8bb26",
+    hotpink = "#ff69b4",
+    brass = "#e5b567",
+    -- Six catppuccin hues, cycling by POSITION. Spelled out rather than
+    -- counted so that "rainbow" cannot quietly become three colours.
+    rainbow = { "#f38ba8", "#fab387", "#f9e2af", "#a6e3a1", "#89b4fa", "#cba6f7" },
   })
 end
 

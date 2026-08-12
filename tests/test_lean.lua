@@ -2006,10 +2006,10 @@ T["lean"]["lemma references are highlighted"] = new_set({
     -- Module paths WERE plain text; they no longer are. `leanModulePath`
     -- linked to Normal on purpose and that is exactly what was wrong with it:
     -- the first line of every file was the least coloured thing on screen.
-    -- The path is now split into leanPathPrefix / leanPathDot / leanPathFinal
-    -- (see tests/test_lean_namespaces.lua); this case just pins that the
-    -- non-final components are reached at all.
-    { 1, "Mathlib.Data.Real.Basic", "leanPathPrefix" },
+    -- The path is now split by POSITION into leanPathC{i} / leanPathDot{i} /
+    -- leanPathF{i} (see tests/test_lean_namespaces.lua); this case just pins
+    -- that the first component is reached at all.
+    { 1, "Mathlib.Data.Real.Basic", "leanPathC1" },
     -- Untouched: the stock keyword and sort groups, which this file no longer
     -- splits. Colours the user already had must not move.
     { 2, "def", "leanDeclaration" },
