@@ -26,6 +26,9 @@ local child = MiniTest.new_child_neovim()
 -- A second child for T["global option leaks"], which must snapshot the global
 -- options BEFORE any Lean buffer exists.
 local leak_child = MiniTest.new_child_neovim()
+-- A third, for T["snippets"], which must assert against a cold start rather
+-- than against whatever the shared child has already pulled in.
+local snippet_child = MiniTest.new_child_neovim()
 local tmp_dir
 
 T["lean"] = new_set({
@@ -1393,6 +1396,61 @@ T["module name"]["declines rather than inventing a name"] = function()
   -- No root known and no other rule matches: decline, do not fall back to the
   -- absolute path (which would yield ".Users.dan.…").
   expect.equality(err("/Users/dan/scratch/Foo.lean", nil):find("not inside") ~= nil, true)
+end
+
+-- ── lean.nvim's snippets reach the completion menu (parity audit #41) ──
+-- lean.nvim ships snippets/lean.json through its own package.json and
+-- `require('luasnip').get_snippets('lean')` returned 0 in a live MIL buffer.
+-- Its own child so the assertion is about a cold start, not about whatever
+-- the shared T["lean"] child has already loaded.
+T["snippets"] = new_set({
+  hooks = {
+    pre_once = function()
+      H.setup_child(snippet_child)
+      snippet_child.lua([[require("lazy").load({ plugins = { "LuaSnip" } })]])
+      snippet_child.lua([[vim.wait(2000, function()
+        return package.loaded["luasnip"] ~= nil
+      end)]])
+    end,
+    post_once = function() snippet_child.stop() end,
+  },
+})
+
+-- Note what is NOT done here: no .lean file is opened, so lean.nvim never
+-- loads. That is the strongest form of the claim — the fix resolves the
+-- snippet directory from lazy's SPEC rather than from the runtimepath, so it
+-- cannot depend on load ordering at all. `enew` + `set ft=lean` fires
+-- LuaSnip's FileType hook without matching lean.nvim's `BufReadPre *.lean`.
+T["snippets"]["lean.nvim's snippets are loaded"] = function()
+  local triggers = snippet_child.lua_get([[(function()
+    vim.cmd("enew")
+    vim.bo.filetype = "lean"
+    vim.wait(1000)
+    local out = {}
+    for _, s in ipairs(require("luasnip").get_snippets("lean") or {}) do
+      table.insert(out, tostring(s.trigger))
+    end
+    table.sort(out)
+    return out
+  end)()]])
+  -- Measured live in a MIL buffer: five triggers, not the four the audit and
+  -- the roadmap both say (`ns` is a second trigger for the namespace snippet).
+  expect.equality(triggers, { "calc", "example", "namespace", "ns", "section" })
+end
+
+-- The fix is a SECOND lazy_load call and not a `paths` argument on the
+-- existing one, because `paths` REPLACES the runtimepath scan
+-- (from_vscode.lua:455-474). This is the case that would catch someone
+-- "simplifying" the two calls into one and silently unloading
+-- friendly-snippets for every other language in the config.
+T["snippets"]["friendly-snippets still load for other filetypes"] = function()
+  local n = snippet_child.lua_get([[(function()
+    vim.cmd("enew")
+    vim.bo.filetype = "lua"
+    vim.wait(1000)
+    return #(require("luasnip").get_snippets("lua") or {})
+  end)()]])
+  expect.equality(n > 0, true)
 end
 
 -- ── \q / \Q · the message census (parity audit #1 and #37) ─────────────
