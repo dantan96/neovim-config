@@ -106,8 +106,11 @@ local function patch_load(dir)
     -- Benign as written (that `ok` is read once before the closure can run,
     -- and here it is written then read immediately), but nothing enforces
     -- either of those, and no linter flags it.
-    local ok, decoded = pcall(vim.json.decode, content)
-    if not ok then
+    -- `decoded_ok`, not `ok`: `local ok` here would shadow patch_load's own
+    -- `ok` (line 83). Declaring it local was the fix for an accidental
+    -- upvalue write; renaming keeps that without the shadowing.
+    local decoded_ok, decoded = pcall(vim.json.decode, content)
+    if not decoded_ok then
       return original(...)
     end
     memo = decoded
