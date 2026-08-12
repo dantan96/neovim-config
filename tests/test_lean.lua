@@ -1210,8 +1210,12 @@ T["lean"]["lemma references are highlighted"] = new_set({
 T["infoview background"] = new_set({
   hooks = {
     pre_case = function()
-      local normal = vim.api.nvim_get_hl(0, { name = "Normal" })
-      local func = vim.api.nvim_get_hl(0, { name = "Function" })
+      -- snapshot(), not a bare nvim_get_hl: the read shape is not the write
+      -- shape (config/hl.lua), and this restore runs in a finally hook where
+      -- a throw would leave the colorscheme wrecked for later cases.
+      local HL = require("config.hl")
+      local normal = HL.snapshot("Normal")
+      local func = HL.snapshot("Function")
       MiniTest.finally(function()
         vim.api.nvim_set_hl(0, "Normal", normal)
         vim.api.nvim_set_hl(0, "Function", func)
