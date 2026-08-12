@@ -34,8 +34,12 @@ T["lean"] = new_set({
       H.setup_child(child)
       tmp_dir = vim.fn.tempname()
       vim.fn.mkdir(tmp_dir, "p")
-      -- No lakefile here on purpose: lean.nvim finds no project and starts
-      -- no language server, so these cases test the config, not the server.
+      -- No lakefile here on purpose, so nothing is ever elaborated and these
+      -- cases test the config rather than the server. NOTE this is not the
+      -- same as "no client": measured directly, leanls still attaches to this
+      -- buffer and still advertises its full capability set — it simply has
+      -- no project to serve. The occurrence-highlighting cases at the bottom
+      -- of this file depend on that distinction.
       vim.fn.writefile({
         "import Mathlib.Data.Real.Basic",
         "def dvalue : Nat := 3",
@@ -122,8 +126,10 @@ T["lean"]["ftplugin: apostrophe is a keyword character"] = function()
   )
 end
 
--- Buffer-local because mini.operators owns the `gr` prefix globally, shadowing
--- Neovim's built-in grn/gra/grr LSP maps.
+-- Buffer-local aliases for the LSP actions. These began as workarounds for
+-- mini.operators DELETING Neovim's built-in grn/gra/grr (see the gr* cases
+-- below, which pin the fix); they are kept because `\`-prefixed maps are
+-- where every other Lean action lives.
 T["lean"]["config-owned buffer-local maps exist"] = new_set({
   parametrize = { { "\\?" }, { "\\n" }, { "\\a" }, { "\\f" }, { "\\b" }, { "\\h" } },
 }, {
@@ -142,10 +148,11 @@ T["lean"]["config-owned buffer-local maps exist"] = new_set({
 })
 
 -- ── LSP folding ────────────────────────────────────────────────────────
--- This child has no language server, so what is under test is the WIRING:
--- the options are set, they are set at the right scope, and they do not
--- leak. That vim.lsp.foldexpr() then produces real folds was checked
--- against a live server in a pty-hosted TUI (see the commit).
+-- This child has no PROJECT (no lakefile), so no folding ranges ever arrive
+-- and what is under test is the WIRING: the options are set, they are set at
+-- the right scope, and they do not leak. That vim.lsp.foldexpr() then produces
+-- real folds was checked against a live server in a pty-hosted TUI (see the
+-- commit).
 T["lean"]["ftplugin: folds come from the language server"] = function()
   expect.equality(child.lua_get("vim.wo.foldmethod"), "expr")
   expect.equality(child.lua_get("vim.wo.foldexpr"), "v:lua.vim.lsp.foldexpr()")
@@ -893,6 +900,191 @@ T["lean"]["no <LocalLeader> map is a prefix of another"] = function()
   expect.equality(report.stalls, "")
   -- And \s is still a working leaf, not a group prefix.
   expect.equality(report.accept_suggestion, "Accept the first infoview suggestion.")
+end
+
+-- ── occurrence highlighting ────────────────────────────────────────────
+-- lua/config/lean/document_highlight.lua. The server has advertised
+-- documentHighlightProvider all along (Watchdog.lean:1579) and nothing called
+-- it. Everything below is testable without a Lean server: the gating is
+-- ordinary autocmd and client-capability logic, and a five-line in-process LSP
+-- client is enough to exercise it. What needed a real one — that the server
+-- answers, and that the highlights actually paint — was checked in a
+-- pty-hosted TUI against MIL (see the commit).
+
+-- An in-process language server advertising whatever capabilities it is given.
+-- Neovim's `cmd`-as-a-function form, so no process is spawned, no Lean is
+-- involved, and the capability set is a parameter rather than a fixture.
+-- Prefixed onto a chunk that must itself be an expression, hence the wrapper.
+local FAKE_LEANLS = [[(function()
+  local function make_server(caps)
+    return function(dispatchers)
+      local closing = false
+      return {
+        request = function(method, _params, callback)
+          if method == "initialize" then
+            callback(nil, { capabilities = caps })
+          elseif method == "shutdown" then
+            callback(nil, nil)
+          end
+          return true, 1
+        end,
+        notify = function() return true end,
+        is_closing = function() return closing end,
+        terminate = function() closing = true; dispatchers.on_exit(0, 0) end,
+      }
+    end
+  end
+]]
+local END_CHUNK = "\nend)()"
+
+T["lean"]["occurrence highlighting is wired at startup"] = function()
+  local events = child.lua_get([[(function()
+    local out = {}
+    for _, au in ipairs(vim.api.nvim_get_autocmds({ group = "LeanDocumentHighlight" })) do
+      if au.buflocal ~= true then table.insert(out, au.event) end
+    end
+    table.sort(out)
+    return out
+  end)()]])
+  -- The augroup existing at all is the "did the require() ever run" check:
+  -- nvim_get_autocmds on an unknown group raises, so a missing wire-up is a
+  -- hard error here rather than an empty list.
+  expect.equality(events, { "LspAttach", "LspDetach" })
+end
+
+-- CursorHold waits 'updatetime', which is global-only — there is no buffer
+-- scope for it. At Neovim's default 4000 ms the feature works and is never
+-- seen, which is indistinguishable from broken.
+T["lean"]["updatetime is short enough for CursorHold to be useful"] = function()
+  expect.equality(child.lua_get("vim.o.updatetime") <= 500, true)
+end
+
+-- End to end in this child: a real Lean buffer, a real leanls attach (which
+-- happens even here, where there is no lakefile — the client starts and
+-- advertises documentHighlightProvider whether or not `lake serve` can go on
+-- to serve anything), and the pair of autocmds armed on it.
+T["lean"]["a real Lean buffer is armed"] = function()
+  local events = child.lua_get([[(function()
+    local out = {}
+    for _, au in ipairs(vim.api.nvim_get_autocmds({
+      group = "LeanDocumentHighlight", buffer = vim.fn.bufnr("probe.lean")
+    })) do
+      table.insert(out, au.event)
+    end
+    table.sort(out)
+    return out
+  end)()]])
+  expect.equality(events, { "CursorHold", "CursorMoved", "InsertEnter", "WinLeave" })
+end
+
+-- The two gates, measured against clients that differ in exactly one thing
+-- each: the capability, and the filetype. Anything else being equal is what
+-- makes an empty list mean "the gate held" rather than "the client never
+-- started".
+T["lean"]["arming is gated on the capability and on the filetype"] = function()
+  local got = child.lua_get(FAKE_LEANLS .. [[
+    local function probe(ft, caps)
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.bo[buf].filetype = ft
+      local id = vim.lsp.start(
+        { name = "leanls", cmd = make_server(caps) },
+        { bufnr = buf, reuse_client = function() return false end }
+      )
+      vim.wait(2000, function() return id ~= nil and vim.lsp.get_client_by_id(id) ~= nil end)
+      local events = {}
+      for _, au in ipairs(vim.api.nvim_get_autocmds({
+        group = "LeanDocumentHighlight", buffer = buf
+      })) do
+        table.insert(events, au.event)
+      end
+      table.sort(events)
+      local supported = vim.lsp.get_client_by_id(id)
+        :supports_method("textDocument/documentHighlight", buf)
+      vim.lsp.stop_client(id, true)
+      vim.api.nvim_buf_delete(buf, { force = true })
+      return { events = events, supported = supported }
+    end
+    return {
+      capable = probe("lean", { documentHighlightProvider = true }),
+      incapable = probe("lean", {}),
+      infoview = probe("leaninfo", { documentHighlightProvider = true }),
+    }
+  ]] .. END_CHUNK)
+
+  -- The control: same fake server, capability on, ordinary Lean buffer.
+  expect.equality(got.capable.supported, true)
+  expect.equality(
+    got.capable.events,
+    { "CursorHold", "CursorMoved", "InsertEnter", "WinLeave" }
+  )
+
+  -- A server that cannot answer must not be asked once per CursorHold.
+  expect.equality(got.incapable.supported, false)
+  expect.equality(got.incapable.events, {})
+
+  -- The infoview: identical, capable client — only the filetype differs.
+  expect.equality(got.infoview.supported, true)
+  expect.equality(got.infoview.events, {})
+end
+
+-- The two runtime guards inside the CursorHold callback, which the autocmd
+-- list above cannot show. Stubbing vim.lsp.buf.document_highlight is the only
+-- way to see "was it called?" without a server that would answer.
+--
+-- The infoview half matters more than it looks: the autocmds are buffer-scoped
+-- to a `lean` buffer, but lean.nvim rewrites buffer contents and filetypes
+-- freely, and "the cursor is in a rendered goal state" must never produce
+-- highlight requests over pretty-printed text.
+T["lean"]["CursorHold fires only in normal mode, and never in the infoview"] = function()
+  local calls = child.lua_get(FAKE_LEANLS .. [[
+    local buf = vim.api.nvim_create_buf(true, false)
+    vim.api.nvim_set_current_buf(buf)
+    vim.bo[buf].filetype = "lean"
+    local id = vim.lsp.start(
+      { name = "leanls", cmd = make_server({ documentHighlightProvider = true }) },
+      { bufnr = buf, reuse_client = function() return false end }
+    )
+    vim.wait(2000, function() return id ~= nil and vim.lsp.get_client_by_id(id) ~= nil end)
+
+    local n = 0
+    local real = vim.lsp.buf.document_highlight
+    vim.lsp.buf.document_highlight = function() n = n + 1 end
+
+    local out = {}
+    local function hold() vim.api.nvim_exec_autocmds("CursorHold", { buffer = buf }) end
+
+    -- 1. normal mode, filetype lean: the whole point.
+    hold()
+    out.normal = n
+
+    -- 2. insert mode. Genuinely in it, not simulated: `<Cmd>` runs a command
+    --    WITHOUT leaving the mode it was pressed in, which is the only way to
+    --    observe insert mode from a synchronous test. mode_during is returned
+    --    rather than asserted in here so a feedkeys that failed shows up as a
+    --    failure instead of a vacuous pass.
+    _G.__lean_probe = function()
+      out.mode_during = vim.fn.mode()
+      hold()
+      out.after_insert = n
+    end
+    vim.api.nvim_feedkeys(vim.keycode("i<Cmd>lua __lean_probe()<CR><Esc>"), "x", false)
+    _G.__lean_probe = nil
+
+    -- 3. back in normal mode, but the buffer is now an infoview.
+    vim.bo[buf].filetype = "leaninfo"
+    hold()
+    out.after_leaninfo = n
+
+    vim.lsp.buf.document_highlight = real
+    vim.lsp.stop_client(id, true)
+    vim.api.nvim_buf_delete(buf, { force = true })
+    return out
+  ]] .. END_CHUNK)
+  expect.equality(calls.mode_during, "i")
+  expect.equality(calls.normal, 1)
+  -- Both guards hold the count where it was.
+  expect.equality(calls.after_insert, 1)
+  expect.equality(calls.after_leaninfo, 1)
 end
 
 return T

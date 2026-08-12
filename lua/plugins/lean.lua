@@ -88,6 +88,16 @@ return {
         progress_bars = { enable = true },
         stderr = { enable = true },
       }
+
+      -- Occurrence highlighting, which the server has always been able to
+      -- serve and nothing ever asked for. Set up here rather than in
+      -- after/ftplugin/lean.lua because it is autocmds, and that file must
+      -- define none — it re-runs on every :edit, and
+      -- tests/test_invariants.lua asserts the autocmd population is unchanged
+      -- by a re-source. `init` runs at startup, before lean.nvim itself
+      -- loads, which is early enough for the module's LspAttach hook to see
+      -- the first Lean file of the session.
+      require("config.lean.document_highlight").setup()
     end,
 
     -- Workaround for an upstream crash in `:Telescope loogle`.
