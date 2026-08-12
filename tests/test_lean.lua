@@ -1588,13 +1588,16 @@ end
 -- colorscheme reload, as with LineNrWrap). catppuccin's stock value is
 -- Comment's exact fg, which makes a hint read as a comment; ours must not be.
 T["lean"]["LspInlayHint is distinguishable from Comment"] = function()
-  local hl = child.lua_get([[(function()
+  -- `fgs`, not `hl`: `hl()` is the file-level helper that runs a body against
+  -- a fresh highlights module, and a local of that name inside a case makes
+  -- the helper unreachable exactly where someone would reach for it.
+  local fgs = child.lua_get([[(function()
     local hint = vim.api.nvim_get_hl(0, { name = "LspInlayHint", link = false })
     local comment = vim.api.nvim_get_hl(0, { name = "Comment", link = false })
     return { hint = hint.fg or "MISSING", comment = comment.fg or "MISSING" }
   end)()]])
-  expect.no_equality(hl.hint, "MISSING")
-  expect.no_equality(hl.hint, hl.comment)
+  expect.no_equality(fgs.hint, "MISSING")
+  expect.no_equality(fgs.hint, fgs.comment)
 end
 
 -- \? reads this at press time; a rename would fail silently into the fallback.
