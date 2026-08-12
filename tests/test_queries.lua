@@ -59,11 +59,13 @@ T["queries"]["config query files resolve"] = new_set({
         found = true
       end
     end
-    expect.equality(
-      found,
-      true,
-      string.format("%s not in get_files(%q, %q)", path, lang, query)
-    )
+    -- `{ fail_reason = ... }`, not a bare string: MiniTest reads
+    -- `opts.fail_reason` off the third argument (mini/test.lua:700-704), so
+    -- a plain string was silently discarded and this case had been failing
+    -- with the generic "Failed expectation for equality" all along.
+    expect.equality(found, true, {
+      fail_reason = string.format("%s not in get_files(%q, %q)", path, lang, query),
+    })
   end,
 })
 
