@@ -186,7 +186,7 @@ local spec = {
     -- this call is a no-op there and reapplies the old wrappers on machines
     -- that fell back to upstream. Must run before anything requires
     -- lean.satellite or builds the Loogle picker.
-    require("config.lean.upstream_fixes").setup()
+    require("config.lean.fork").warn_if_missing()
 
     -- ── satellite.nvim: whole-file elaboration progress ─────────────────
     -- lean.nvim ships lua/lean/satellite.lua, a Satellite.Handler plotting
@@ -208,7 +208,6 @@ local spec = {
 
     -- The satellite shim that used to sit here is now a real in-tree fix in
     -- the fork (FORK-CHANGES.md M3) and, for machines without it, lives in
-    -- config.lean.upstream_fixes, which the call at the top of this function
     -- makes.
 
     local has_satellite, sat = pcall(require, "satellite.handlers")

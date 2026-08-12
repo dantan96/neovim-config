@@ -69,61 +69,21 @@
 -- `lua/lean/` — which is why this survived a bind, a clue entry, a cheatsheet
 -- row and three passing tests.
 --
--- Fixed by replacing `load` with one that reads the file from the plugin's own
--- directory and memoizes, falling back to upstream if that file is ever not
--- there. A fourth local patch to lean.nvim behaviour, in the same style as the
--- three in lua/plugins/lean.lua. Remove when upstream uses `getinfo(1)`.
+-- Fixed IN THE FORK (FORK-CHANGES.md M4), not here: `getinfo(2)` became
+-- `getinfo(1)`. This file now only handles abbreviations in telescope prompts.
 
 local M = {}
 
----Read lean.nvim's abbreviation table from a path that does not depend on who
----is calling.
----@param dir string lean.nvim's plugin directory
-local function patch_load(dir)
-  local ok, abbreviations = pcall(require, "lean.abbreviations")
-  if not ok or type(abbreviations.load) ~= "function" then
-    return
-  end
-  local path = vim.fs.joinpath(dir, "vscode-lean", "abbreviations.json")
-  if not vim.uv.fs_stat(path) then
-    return -- upstream moved it; leave their resolution alone
-  end
-  local original = abbreviations.load
-  local memo
-  abbreviations.load = function(...)
-    if memo then
-      return memo
-    end
-    local file = io.open(path, "r")
-    if not file then
-      return original(...)
-    end
-    local content = file:read("*a")
-    file:close()
-    -- `local` on BOTH names. Without it `ok` resolves to the `local ok` at
-    -- the top of patch_load and this closure writes to it as an upvalue on
-    -- every call -- an accidental shared write inside a memoizing patch.
-    -- Benign as written (that `ok` is read once before the closure can run,
-    -- and here it is written then read immediately), but nothing enforces
-    -- either of those, and no linter flags it.
-    -- `decoded_ok`, not `ok`: `local ok` here would shadow patch_load's own
-    -- `ok` (line 83). Declaring it local was the fix for an accidental
-    -- upvalue write; renaming keeps that without the shadowing.
-    local decoded_ok, decoded = pcall(vim.json.decode, content)
-    if not decoded_ok then
-      return original(...)
-    end
-    memo = decoded
-    return memo
-  end
-end
+-- The `\la` crash fix USED to live here as a wrapper around
+-- `abbreviations.load`. It is now a real in-tree fix in the fork
+-- (FORK-CHANGES.md M4): `debug.getinfo(2)` -> `debug.getinfo(1)`, so the JSON
+-- resolves from that function's own frame rather than its caller's.
+--
+-- Deliberately NOT kept as a fallback. A silent fallback is what let the
+-- original bug survive: the keymap, the clue entry, the cheatsheet row and
+-- three tests all reported `\la` as working while it threw on every press.
+-- lua/config/lean/fork.lua notifies loudly if the fork is missing instead.
 
----@return string|nil dir lean.nvim's plugin directory, if lazy knows it
-local function plugin_dir()
-  local ok, lazy_config = pcall(require, "lazy.core.config")
-  local spec = ok and lazy_config.plugins["lean.nvim"]
-  return spec and spec.dir or nil
-end
 
 ---Whether lean.nvim's abbreviation machinery is loaded and so safe to reach
 ---for without loading the plugin as a side effect.
@@ -147,10 +107,6 @@ end
 
 ---Called from lua/plugins/lean.lua's `config`, i.e. once lean.nvim loads.
 function M.setup()
-  local dir = plugin_dir()
-  if dir then
-    patch_load(dir)
-  end
 
   vim.api.nvim_create_autocmd("FileType", {
     group = vim.api.nvim_create_augroup("LeanAbbreviationsInPrompts", { clear = true }),

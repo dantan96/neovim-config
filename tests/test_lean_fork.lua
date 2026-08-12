@@ -98,19 +98,40 @@ end
 
 -- ── The invariant itself ────────────────────────────────────────────────────
 
-T["lean fork"]["exactly one of fork-fixes and config-wrappers is active"] = function()
-  -- On the fork: setup() applies nothing, because the fixes are in-tree.
+-- There is no silent fallback any more. config.lean.upstream_fixes used to
+-- reapply three wrappers when the fork was absent, so a missing fork looked
+-- like a normal session on plain upstream lean.nvim. Dan rejected that
+-- outright: the fork is gitignored and never pushed, and the sibling Lean
+-- fork's build directory was clobbered by a stray build the same day, so a
+-- quiet degradation is the worst possible behaviour here.
+T["lean fork"]["a missing fork is loud, not a silent fallback"] = function()
   restart_with_fork()
-  expect.equality(child.lua_get([[require("config.lean.upstream_fixes").setup()]]), {})
+  -- Present: says nothing.
+  -- Reload first: `config` in lua/plugins/lean.lua already called this at
+  -- startup, and the once-per-session guard would otherwise make every
+  -- assertion below trivially false.
+  expect.equality(child.lua_get([[(function()
+    package.loaded["config.lean.fork"] = nil
+    return require("config.lean.fork").warn_if_missing()
+  end)()]]), false)
 
-  -- Off the fork: setup() applies all three, by name. A list, not a count —
-  -- a count would keep passing if one fix were replaced by another.
+  -- Absent: notifies, at ERROR, naming the path. Captured rather than
+  -- asserted on a side effect, so a downgrade to a lower level fails here.
   restart_without_fork()
-  expect.equality(child.lua_get([[require("config.lean.upstream_fixes").setup()]]), {
-    "satellite_winbuf_pred",
-    "loogle_search",
-    "loogle_finder",
-  })
+  local got = child.lua_get([[(function()
+    local lvl, msg
+    package.loaded["config.lean.fork"] = nil
+    local orig = vim.notify
+    vim.notify = function(m, l) msg, lvl = m, l end
+    local fired = require("config.lean.fork").warn_if_missing()
+    vim.notify = orig
+    return { fired = fired, lvl = lvl, names_path = (msg or ""):find("lean%-nvim%-rich") ~= nil,
+             names_loss = (msg or ""):find("Loogle") ~= nil }
+  end)()]])
+  expect.equality(got.fired, true)
+  expect.equality(got.lvl, vim.log.levels.ERROR)
+  expect.equality(got.names_path, true)
+  expect.equality(got.names_loss, true)
 end
 
 T["lean fork"]["the fork carries the three fixes the wrappers would have applied"] = function()
@@ -156,28 +177,8 @@ T["lean fork"]["the fork carries the three fixes the wrappers would have applied
   expect.equality(satellite:find("if pred() == false then", 1, true) ~= nil, true)
 end
 
-T["lean fork"]["the wrapper survives being applied twice"] = function()
-  -- Repeated setup() must not change what search answers. Not a hypothetical:
-  -- lazy re-running a plugin's `config`, or a `:source` of the plugin spec,
-  -- would call it again. No network — vim.system is stubbed in the child, so
-  -- this exercises the wrapper rather than Loogle's uptime.
-  restart_without_fork()
-  child.lua([[
-    local function answer(status, body)
-      return function() return { code = 0, stdout = body, stderr = status } end
-    end
-    vim.system = function() return { wait = answer("500", "boom") } end
+-- (The "wrapper survives being applied twice" case is gone with
+-- config.lean.upstream_fixes: there are no wrappers left to reapply.)
 
-    local fixes = require("config.lean.upstream_fixes")
-    fixes.setup()
-    fixes.setup()
-
-    local results, err = require("lean.loogle").search("abc")
-    _G.__fork_test = { results = results, err = err, rtype = type(results) }
-  ]])
-  -- Upstream would have thrown out of here; wrapped, it must be a table.
-  expect.equality(child.lua_get([[_G.__fork_test.rtype]]), "table")
-  expect.equality(child.lua_get([[type(_G.__fork_test.err)]]), "string")
-end
 
 return T

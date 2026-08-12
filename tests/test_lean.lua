@@ -3053,4 +3053,29 @@ T["lean"]["markview's attach annotation is still patched"] = function()
   expect.equality(decl, "---@param _state?")
 end
 
+-- Second upstream annotation patch, same shape and same tripwire reasoning as
+-- the markview one above. multicursor declares all four `mc.OperatorOpts`
+-- fields as required while `@param opts?` makes the whole table optional and
+-- the implementation defaults every one of them. `mw` passes two, so lua_ls
+-- reported `missing-fields`.
+--
+-- Supplying them was NOT an option: `wordBoundary` defaults to `vMode == nil`,
+-- computed from the mode at call time, so any static value changes what `mw`
+-- does in normal mode. The declaration was the thing that was wrong.
+--
+-- Not Lean-specific, but it lives here beside its sibling so both tripwires
+-- are in one place rather than one being forgotten.
+T["lean"]["multicursor's OperatorOpts fields are still optional"] = function()
+  local path = vim.fn.stdpath("data") .. "/lazy/multicursor.nvim/lua/multicursor-nvim/examples.lua"
+  if vim.fn.filereadable(path) == 0 then
+    MiniTest.skip("multicursor.nvim is not installed")
+  end
+  local src = table.concat(vim.fn.readfile(path), "\n")
+  local block = src:match("%-%-%- @class mc%.OperatorOpts\n(.-)\n\n")
+  expect.equality(type(block), "string")
+  for _, f in ipairs({ "pattern", "motion", "visual", "wordBoundary" }) do
+    expect.equality({ f, block:find("@field " .. f .. "%?") ~= nil }, { f, true })
+  end
+end
+
 return T
