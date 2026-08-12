@@ -748,6 +748,14 @@ function M.render(R)
     lines[#lines + 1] = s or ""
     return #lines - 1 -- 0-based row of what was just added
   end
+  --- One blank line, never two. The number of paragraphs above any given
+  --- point varies with how much the server had to say, so the separators
+  --- cannot be placed statically without either doubling or vanishing.
+  local function gap()
+    if #lines > 0 and lines[#lines] ~= "" then
+      put()
+    end
+  end
   --- Add a line and paint a substring of it in `group`.
   local function put_hl(s, group, from, to)
     local r = put(s)
@@ -788,7 +796,7 @@ function M.render(R)
     )
   end
   if #R.clients > 0 then
-    put()
+    gap()
   end
   if not R.attached then
     put("  No `leanls` client is attached to this buffer.")
@@ -811,7 +819,7 @@ function M.render(R)
   end
 
   for i, tok in ipairs(R.tokens) do
-    put()
+    gap()
     if #R.tokens > 1 then
       put(("  token %d of %d (client %s)"):format(i, #R.tokens, tostring(tok.client_id)))
     end
