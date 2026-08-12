@@ -137,6 +137,41 @@ return {
       -- the progress-event refresh. Running it twice is harmless: the function
       -- is a `nvim_create_augroup(..., {})` — i.e. clearing — plus a
       -- tbl_deep_extend onto its own config.
+      --
+      -- AND A SHIM, because lean.nvim's handler does not currently run at all
+      -- against satellite's `main`. lean/satellite.lua:68 opens update() with
+      --
+      --     local pred = async.winbuf_pred(bufnr, winid)
+      --
+      -- but satellite moved winbuf_pred from `satellite.async` to
+      -- `satellite.util` in its commit fc9672c ("refactor: update async lib to
+      -- newer conventions") — its own diagnostic handler calls
+      -- `util.winbuf_pred` (handlers/diagnostic.lua:96). So the field is nil and
+      -- every render throws:
+      --
+      --     vim.schedule callback: .../lean/satellite.lua:68:
+      --       attempt to call field 'winbuf_pred' (a nil value)
+      --
+      -- Measured that way, not guessed: the traceback appeared in :messages the
+      -- moment a buffer long enough to need a scrollbar was opened, and the
+      -- handler's mark count sat at 0 throughout. Restoring the name onto the
+      -- module table is enough — lean/satellite.lua holds `async` as an upvalue
+      -- and indexes the field at call time, so this reaches it whichever module
+      -- loaded first. Guarded, so it disappears the day upstream fixes it.
+      --
+      -- The one thing not restored is the early abort: `async.ipairs` now takes
+      -- a single argument, so the `pred` lean passes as a second one is ignored
+      -- and its loop runs to completion instead of bailing when the buffer
+      -- changes underneath it. Harmless — the marks are recomputed on the next
+      -- render anyway — and not something to paper over from here.
+      local has_async, satellite_async = pcall(require, "satellite.async")
+      if has_async and satellite_async.winbuf_pred == nil then
+        local has_util, satellite_util = pcall(require, "satellite.util")
+        if has_util and type(satellite_util.winbuf_pred) == "function" then
+          satellite_async.winbuf_pred = satellite_util.winbuf_pred
+        end
+      end
+
       local has_satellite, sat = pcall(require, "satellite.handlers")
       if has_satellite then
         pcall(require, "lean.satellite")

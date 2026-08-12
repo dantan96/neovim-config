@@ -115,6 +115,13 @@ scope?" without grepping `.lake/packages`.
 `\lw` is the one to reach for with a half-remembered name. Ranking is mediocre;
 scroll. See *Finding lemmas* below for when to prefer `exact?` over any of them.
 
+Two footnotes on this group. These are **normal-mode** maps, so `\l` here does
+not collide with the insert-mode abbreviation `\l` → `←` further down. And `\la`
+carries a known upstream bug: picking an abbreviation whose expansion contains
+a `$CURSOR` placeholder inserts the literal text `$CURSOR`, because the picker
+calls `nvim_put` on the raw replacement instead of routing it through
+`abbreviations.convert`. Most entries are unaffected.
+
 ## Folding
 
 Folds come from the language server, so they follow declarations rather than
