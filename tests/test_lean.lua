@@ -1749,8 +1749,13 @@ T["lean"]["lemma references are highlighted"] = new_set({
     -- Numbers are defined earlier in lean.nvim's syntax file and would lose
     -- the tie to any rule starting with \w.
     { 2, "3", "leanNumber" },
-    -- Module paths were plain text before and stay that way.
-    { 1, "Mathlib.Data.Real.Basic", "leanModulePath" },
+    -- Module paths WERE plain text; they no longer are. `leanModulePath`
+    -- linked to Normal on purpose and that is exactly what was wrong with it:
+    -- the first line of every file was the least coloured thing on screen.
+    -- The path is now split into leanPathPrefix / leanPathDot / leanPathFinal
+    -- (see tests/test_lean_namespaces.lua); this case just pins that the
+    -- non-final components are reached at all.
+    { 1, "Mathlib.Data.Real.Basic", "leanPathPrefix" },
     -- Untouched: the stock keyword and sort groups, which this file no longer
     -- splits. Colours the user already had must not move.
     { 2, "def", "leanDeclaration" },
