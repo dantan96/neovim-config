@@ -976,9 +976,13 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
     expect.no_equality(got.fgs[k], "nil")
   end
   -- THE THREE IN `two_le`'s BINDER LIST, by name and by hex.
-  expect.equality(got.fgs.hyp, "#ff1493") -- h0, h1 — DeepPink
+  -- RETUNED 2026-08-13: the loud pinks moved off the two commonest cells and
+  -- onto the rare ones. A hypothesis is the single most frequent identifier
+  -- in a proof and now takes a CALM pink; magenta went to the type variable,
+  -- which Dan named for it.
+  expect.equality(got.fgs.hyp, "#f5c2e7") -- h0, h1 — pink, calm
   expect.equality(got.fgs.dat, "#a6e3a1") -- m     — green
-  expect.equality(got.fgs.srt, "#89dceb") -- G, α  — sky
+  expect.equality(got.fgs.srt, "#ff5fff") -- G, α  — magenta
   -- ...and pairwise distinct, stated separately so a future recolour that
   -- moves two of them onto one hue fails here and not only on the hexes.
   expect.no_equality(got.fgs.hyp, got.fgs.dat)
@@ -1197,7 +1201,81 @@ T["lean"]["highlights: tactics are split off the keyword purple"] = function()
   expect.no_equality(got.kw.fg, "nil")
   expect.no_equality(got.tac.fg, got.kw.fg)
   expect.equality(got.tac.fg, "#89b4fa") -- blue, bold: the verbs of a proof
+  -- Bold, and DELIBERATELY exempt from the retune's "no bold on a loud
+  -- colour" sweep below. Put to Dan explicitly, because bright-plus-bold on
+  -- something this frequent is the shape he had just corrected; he said keep
+  -- it. Recorded here so nobody "finishes the sweep" later.
   expect.equality(got.tac.bold, true)
+end
+
+-- The retune, stated as an invariant rather than as a list of hexes.
+--
+-- Dan, 2026-08-13: "making such a bright colour almost always bold as well
+-- was not a good idea lmao. So get rid of the boldness of the pink." The
+-- instruction is general — every bright pink and magenta, not the three
+-- entries he happened to name — so it is enforced by SWEEPING the whole
+-- generated set rather than by asserting on the groups we remembered.
+--
+-- "Bright pink or magenta" is defined arithmetically and not by a list: a
+-- strong red channel, a present blue channel, and a green channel below both
+-- by a clear margin. Measured against every hex in play, it catches
+-- `#ff1493`, `#ff5fff`, `#f5c2e7`, `#ff69b4` and `#f38ba8`, and lets
+-- `#fab387` peach, `#f9e2af` yellow, `#89b4fa` blue, `#cba6f7` mauve,
+-- `#eba0ac` maroon and `#f5e0dc` rosewater through — which is the
+-- distinction the instruction actually draws.
+T["lean"]["highlights: no bright pink or magenta is bold"] = function()
+  local got = hl([[
+    M.setup()
+    M.warm()
+    local bold = {}
+    local function bright_pink(hex)
+      local r = tonumber(hex:sub(2, 3), 16)
+      local g = tonumber(hex:sub(4, 5), 16)
+      local b = tonumber(hex:sub(6, 7), 16)
+      return r >= 0xd0 and b >= 0x80 and g <= r - 0x30 and g <= b - 0x18
+    end
+    local pink = {}
+    for name, spec in pairs(M._specs()) do
+      if spec.fg and bright_pink(spec.fg) then
+        pink[#pink + 1] = name
+        if spec.bold then bold[#bold + 1] = name .. " " .. spec.fg end
+      end
+    end
+    table.sort(bold)
+    table.sort(pink)
+    return { bold = bold, pink = pink,
+             prop_former = vim.api.nvim_get_hl(0, { name = "@lean.prop.former", link = false }),
+             data_former = vim.api.nvim_get_hl(0, { name = "@lean.data.former", link = false }),
+             cls = vim.api.nvim_get_hl(0, { name = "@lean.data.former.class", link = false }) }
+  ]])
+  -- NON-VACUITY, TWICE OVER. A predicate that matched nothing would leave
+  -- the loop asserting nothing at all — the "green suite that cannot fail"
+  -- mode (GOTCHAS E). So the matched set is named in full rather than
+  -- counted: it is the answer to "how much pink is on screen", which is the
+  -- other half of the retune ("I do love magenta and pink — we're gonna try
+  -- to make sure those aren't too rare!").
+  expect.equality(got.pink, {
+    "@lean.data.former.class",     -- #f38ba8  Group, Monoid
+    "@lean.data.sort.auto",        -- #f38ba8  the alarm recolour
+    "@lean.data.sort.class",       -- #f38ba8
+    "@lean.data.sort.local",       -- #ff5fff  a type variable
+    "@lean.prop",                  -- #ff1493  the world anchor
+    "@lean.prop.element.local",    -- #f5c2e7  a hypothesis
+    "@lean.prop.former",           -- #ff1493  a predicate
+  })
+  expect.equality(got.bold, {})
+  -- The two cells Dan named, spelled out, because the sweep above would also
+  -- pass if `prop.former` had quietly stopped being pink at all.
+  expect.equality(got.prop_former.fg, tonumber("ff1493", 16))
+  expect.equality(got.prop_former.italic, true)
+  expect.equality(got.prop_former.bold, nil)
+  expect.equality(got.cls.italic, true)
+  expect.equality(got.cls.bold, nil)
+  -- ...and the scope of the exemption: `former` is still a BOLD channel, so
+  -- the data-world former keeps it. Without this the CELL_STYLE table could
+  -- be widened to every cell and nothing would notice.
+  expect.equality(got.data_former.bold, true)
+  expect.equality(got.data_former.italic, nil)
 end
 
 -- The failure that is invisible in review and fatal in use: a module with a
@@ -1267,7 +1345,7 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
   -- variant repeats its partner wherever the two are not confusable), but a
   -- table that collapsed back toward a handful would be the rejected
   -- palette wearing more keys, and nothing else in the suite would notice.
-  expect.equality(got.ndistinct, 14)
+  expect.equality(got.ndistinct, 15)
 end
 
 -- ╭──────────────────────────────────────────────────────────────────────╮

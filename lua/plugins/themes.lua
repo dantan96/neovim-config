@@ -159,7 +159,10 @@ return {
             -- deliberate colour rather than an absence. So each one now takes
             -- the colour its own kind takes in the grid, and a miss degrades
             -- to a near neighbour instead of to an unrelated hue.
-            ["@lsp.type.class.lean"] = { fg = HUES.kind_class, bold = true },
+            -- Italic, not bold: the grid's own `class` override dropped the
+            -- bold in the 2026-08-13 retune and this seam has to say the same
+            -- thing, or a classification miss reads as a deliberate style.
+            ["@lsp.type.class.lean"] = { fg = HUES.kind_class, italic = true },
             ["@lsp.type.struct.lean"] = { fg = HUES.data_sort },
             ["@lsp.type.enumMember.lean"] = { fg = HUES.kind_constructor },
             -- A plain `def` is most often data-valued, so the datum colour

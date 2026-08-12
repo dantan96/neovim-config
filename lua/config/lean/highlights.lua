@@ -202,12 +202,50 @@ local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted",
 -- should have done.
 --
 -- COUNT, because the whole complaint was that too few colours appear:
--- 24 keys holding 14 DISTINCT hexes. The collisions are deliberate — the
--- `_local` variants of `poly` and of `prop_former` repeat their plain
--- partner, because locality is worth a hue split only where the two are
--- confusable and abundant, which is `prop.element` and `data.element`.
--- Twelve of the fourteen come straight from this machine's spthy scheme
--- (lua/config/spthy-colorscheme.lua); six of those are outside catppuccin.
+-- 24 keys holding 15 DISTINCT hexes. The collisions are deliberate — the
+-- `_local` variants of `poly` and of `prop_sort` repeat their plain partner,
+-- because locality is worth a hue split only where the two are confusable and
+-- abundant, which is `prop.element`, `prop.former` and `data.element`.
+--
+-- ── RETUNE, 2026-08-13, AND THE RULE IT ESTABLISHES ────────────────────
+-- The widened palette was shown to Dan and corrected again. The correction is
+-- one rule, and it decides every allocation in the table below:
+--
+--     THE LOUDEST COLOURS GO TO THE LEAST FREQUENT CELLS, AND THE MOST
+--     FREQUENT CELLS TAKE THEMATIC (catppuccin) COLOURS, CALM AND NOT BOLD.
+--
+-- Which is the SAME error as §0.2 of the design doc, arriving inverted: that
+-- version put the vivid colours on the rarest cells and was told to spend the
+-- gamut where the screen is; this one obeyed and put DeepPink on a hypothesis
+-- and magenta on `{s t : Set α}` — the two commonest things in a proof.
+-- "Spend the gamut where the screen is" was never "shout where the screen
+-- is". Dan: *"making such a bright colour almost always bold as well was not
+-- a good idea lmao"*, and *"making `@lean.data.element.local` olive — indeed,
+-- making it off-thematic in general, for something so common — was clearly a
+-- massive fuckup."*
+--
+-- The qualifier that keeps this from over-correcting, also his: *"I do love
+-- magenta and pink — we're gonna try to make sure those aren't too rare!"*
+-- Pink and magenta must be RELIABLY PRESENT on any screenful; what has to be
+-- rare is the SHOUTING (bold, and a hue that fights its neighbours). So the
+-- pinks stay abundant — hypotheses, type variables, `Type*`, `ℕ` — and every
+-- one of them is non-bold.
+--
+-- FREQUENCIES ARE MEASURED, NOT GUESSED. Cells per file, counted off
+-- `tools/lsp_probe.py` (MIL C09 S01 / C04 S01 / C05 S03 / HighlightGallery):
+--
+--   data.element.local  343 132 288  58   green      the commonest thing there is
+--   data.sort.local     305   9   6  13   magenta    `Type*`-heavy chapters
+--   prop.former.local     0 155   8  56   rosewater  `{s t : Set α}`
+--   prop.element.local   24 125 137  49   pink       a hypothesis
+--   prop.element         44  38  57  50   lavender   a cited lemma
+--   data.former.glob    130  11  14  12   DarkOrange (55 after `class` takes 75)
+--   prop.former.glob     21  43  17  16   DeepPink   `Even`, `Prime`, `Set α`
+--
+-- Off-theme hexes are now confined to cells that measured RARE: `#908070`
+-- (projections: 12 in the Gallery, 0 in three MIL chapters) and `#ff8c00`
+-- (type constructors). `#8b4513` SaddleBrown is gone — Dan: "change it
+-- completely" — and it was near-black on this background besides.
 --
 -- THE INVARIANT ABOUT `sp`, stated precisely, because the loose version was
 -- costing colours it had no right to:
@@ -251,20 +289,21 @@ local DEFAULTS = {
     -- what made the old palette read as monochrome.
 
     -- Prop world. A proof, a proposition, a predicate.
-    prop_element_local = "#ff1493", -- DeepPink  — A HYPOTHESIS. `h0`, `h1`
-    prop_element = "#f9e2af", -- yellow    — A CITED LEMMA. `mul_assoc`
-    prop_sort_local = "#f5c2e7", -- pink      — a local `p : Prop`
+    -- ORDERED BY MEASURED FREQUENCY, loudest last. See the RETUNE note above.
+    prop_element_local = "#f5c2e7", -- pink      — A HYPOTHESIS. `h0`, `h1`
+    prop_element = "#b4befe", -- lavender  — A CITED LEMMA. `mul_assoc`
+    prop_sort_local = "#ffc0cb", -- pinkPlain — a local `p : Prop` (rare; see below)
     prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
-    prop_former_local = "#ff5fff", -- magenta   — a local predicate `p : α → Prop`
-    prop_former = "#ff5fff", -- magenta   — A PREDICATE. `Even`, `Prime`, `Set`
+    prop_former_local = "#f5e0dc", -- rosewater — a local predicate `{s t : Set α}`
+    prop_former = "#ff1493", -- DeepPink  — A PREDICATE. `Even`, `Prime`, `Interval.Wf`
 
     -- Data world.
     data_element_local = "#a6e3a1", -- green     — A DATUM YOU BOUND. `m`, `n`
     data_element = "#fab387", -- peach     — A GLOBAL DATUM. `Nat.factorial`
-    data_sort_local = "#89dceb", -- sky       — A TYPE VARIABLE. `α`, `G`
-    data_sort = "#eba0ac", -- maroon    — A CONCRETE TYPE. `ℕ`, `Filter α`
+    data_sort_local = "#ff5fff", -- magenta   — A TYPE VARIABLE. `α`, `G`
+    data_sort = "#eba0ac", -- maroon    — A CONCRETE TYPE. `Interval`, `Filter α`
     data_former_local = "#eba0ac", -- maroon    — a local type family
-    data_former = "#8b4513", -- SaddleBrown — A TYPE CONSTRUCTOR. `List`, `Prod`
+    data_former = "#ff8c00", -- DarkOrange — A TYPE CONSTRUCTOR. `List`, `Prod`
 
     -- Poly world — genuinely undetermined `Sort u`. A deliberately tight
     -- family, because these are rare and should read as one thing.
@@ -631,9 +670,30 @@ local KIND_HUE = {
   class = {
     hue = "kind_class",
     suffix = "class",
-    bold = true,
+    -- Dan, on the retune: "`@lean.data.former.class` could also do without
+    -- boldness, and could also be italicised". `class` measured 75 cells in
+    -- one MIL chapter, so it is not a rare cell and red-bold on it is the
+    -- shouting the retune is removing.
+    style = { bold = false, italic = true },
     cells = { data_sort = true, data_former = true },
   },
+}
+
+-- Per-CELL style, where the channel default is wrong for one cell of the grid.
+--
+-- `former` is bold by default — the head of a type expression is prominent —
+-- and that is right for `data.former` (`List`, `Prod`), which is rare. It is
+-- wrong for the Prop-world formers: `prop.former` is DeepPink, and DeepPink
+-- bold is exactly what Dan struck out ("get rid of the boldness of the
+-- pink"); `prop.former.local` measured 155 cells in one MIL chapter, which is
+-- far too many to shout. Both take italic instead — the same style he asked
+-- for on `@lean.prop.former` when he moved the hypothesis look onto it.
+--
+-- Keyed WITHOUT the `_local` suffix, i.e. on the grid cell: the `_local`
+-- variant additionally picks up italic from the `local` channel, which is
+-- idempotent with this.
+local CELL_STYLE = {
+  prop_former = { bold = false, italic = true },
 }
 
 --- Complete spec for one grid cell. Never a delta — see mechanic 1.
@@ -655,9 +715,20 @@ local function cell_spec(world, level, ty, is_local)
   -- 1 · a kind override, where one is in scope for this cell. Scoped on the
   -- cell WITHOUT the local variant: a constructor, a projection and a class
   -- are all globals, so `data_element_local` should never match one.
+  -- A style delta is applied with `v and true or nil` rather than written
+  -- straight through: `bold = false` would be a live attribute in the spec
+  -- table that every test and the picker then have to reason about, where
+  -- absent is what "not bold" actually means everywhere else in this file.
+  local function styled(spec, delta)
+    for k, v in pairs(delta or {}) do
+      spec[k] = v and true or nil
+    end
+    return spec
+  end
+
   local ov = ty and KIND_HUE[ty]
   if ov and ov.cells[world .. "_" .. level] and M.palette[ov.hue] then
-    return { fg = M.palette[ov.hue], bold = ov.bold or former_bold }, ov.suffix
+    return styled({ fg = M.palette[ov.hue], bold = former_bold }, ov.style), ov.suffix
   end
 
   -- 2 · the hand-picked cell colour. In practice this is the ONLY path:
@@ -665,7 +736,7 @@ local function cell_spec(world, level, ty, is_local)
   -- `DEFAULTS`, so a cell cannot be cleared through `apply` at all.
   local picked = M.palette[key]
   if picked then
-    return { fg = picked, bold = former_bold }, nil
+    return styled({ fg = picked, bold = former_bold }, CELL_STYLE[world .. "_" .. level]), nil
   end
 
   -- 3 · the family anchor, as a floor. Reachable only by mutating
