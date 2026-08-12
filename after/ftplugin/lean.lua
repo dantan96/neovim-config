@@ -125,6 +125,14 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>y", desc = "Yank module name" },
     { mode = "n", keys = "<LocalLeader>q", desc = "Messages in this file" },
     { mode = "n", keys = "<LocalLeader>Q", desc = "Messages in all buffers" },
+    { mode = "n", keys = "<LocalLeader>z", desc = "Fill open goals with sorry" },
+    { mode = "n", keys = "<LocalLeader>R", desc = "Restart the Lean SERVER" },
+    { mode = "n", keys = "<LocalLeader>k", desc = "Incoming calls" },
+    { mode = "n", keys = "<LocalLeader>K", desc = "Outgoing calls" },
+    { mode = "n", keys = "<LocalLeader>e", desc = "+examine (text popups)" },
+    { mode = "n", keys = "<LocalLeader>eg", desc = "Goal, as a popup" },
+    { mode = "n", keys = "<LocalLeader>et", desc = "Term goal, as a popup" },
+    { mode = "n", keys = "<LocalLeader>em", desc = "Messages on this line" },
   },
 }
 
@@ -232,6 +240,45 @@ vim.api.nvim_buf_create_user_command(0, "LeanMessages", messages.file, {
 vim.api.nvim_buf_create_user_command(0, "LeanAllMessages", messages.workspace, {
   desc = "Every diagnostic in every buffer, in the quickfix list",
 })
+
+-- ── the last unexposed built-ins ──────────────────────────────────────────
+-- Parity audit #36, #38, #42, #43. Five capabilities that were installed,
+-- working, and reachable only by typing a command name in full — which the
+-- audit counts, correctly, as not reachable at all.
+--
+-- KEY CHOICES, FROM A LIVE DUMP AND NOT FROM THE TABLE ABOVE. `:nmap \` in a
+-- MIL buffer, unioned with the global map list, is the only honest source:
+-- the clue table is documentation. `\g`, `\S` and `\/` LOOK free in a Lean
+-- buffer and are not — they are lean.nvim's infoview maps
+-- (infoview.lua:240-330), and giving them a second meaning in the source
+-- window would be worse than using a duller letter. See lean-cheatsheet.md,
+-- "The `\` namespace".
+--
+-- `\z` for sorry-filling because `s` and `S` are both spoken for by
+-- suggestions, in both windows; a cold key also suits the only binding here
+-- that edits the buffer.
+map("<LocalLeader>z", "<Cmd>LeanSorryFill<CR>", "Fill open goals with sorry")
+
+-- `\R` next to `\r`, which restarts the FILE. This restarts the SERVER, and
+-- it is the one you need when the server itself wedges rather than the file
+-- (#38). Named explicitly rather than a bare :LspRestart, which would also
+-- bounce every other client attached to the buffer.
+map("<LocalLeader>R", "<Cmd>LspRestart leanls<CR>", "Restart the Lean SERVER")
+
+-- Call hierarchy (#36). Ranked last in the roadmap and honestly so: MIL is not
+-- a codebase you navigate. Two keys because the pair is `\w`/`\W`-shaped and
+-- costs nothing beyond the letters.
+map("<LocalLeader>k", vim.lsp.buf.incoming_calls, "Incoming calls")
+map("<LocalLeader>K", vim.lsp.buf.outgoing_calls, "Outgoing calls")
+
+-- `\e` · +examine — the three text popups (#42). A GROUP, so three low-value
+-- commands cost one letter rather than three. `\e` itself is deliberately NOT
+-- mapped: mini.clue only auto-executes on an exactly-one-clue match
+-- (clue.lua:1507), so a mapped prefix stops firing altogether. Same shape as
+-- `\d`, `\l` and `\m`, and tests/test_lean.lua enforces it.
+map("<LocalLeader>eg", "<Cmd>LeanGoal<CR>", "Goal, as a popup")
+map("<LocalLeader>et", "<Cmd>LeanTermGoal<CR>", "Term goal, as a popup")
+map("<LocalLeader>em", "<Cmd>LeanLineDiagnostics<CR>", "Messages on this line")
 
 -- Lean cheatsheet. Built as a scratch buffer rather than :edit-ing the file,
 -- because the infoview window carries 'winfixbuf' and editing into it aborts

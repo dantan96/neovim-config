@@ -1781,6 +1781,13 @@ local PARITY_MAPS = {
   { "\\y", "Yank module name" },
   { "\\q", "Messages in this file" },
   { "\\Q", "Messages in all buffers" },
+  { "\\z", "Fill open goals with sorry" },
+  { "\\R", "Restart the Lean SERVER" },
+  { "\\k", "Incoming calls" },
+  { "\\K", "Outgoing calls" },
+  { "\\eg", "Goal, as a popup" },
+  { "\\et", "Term goal, as a popup" },
+  { "\\em", "Messages on this line" },
 }
 
 local parity_parametrize = {}
@@ -1896,6 +1903,45 @@ T["lean"]["no <LocalLeader> map is a prefix of another"] = function()
   -- And \s is still a working leaf, not a group prefix.
   expect.equality(report.accept_suggestion, "Accept the first infoview suggestion.")
 end
+
+-- Group prefixes are CLUE ENTRIES, NEVER MAPS. mini.clue auto-executes only
+-- when exactly one clue matches the query (clue.lua:1507), so mapping `\e`
+-- itself would not merely stall `\eg`/`\et`/`\em` — it would stop `\e` firing
+-- and need a trailing <CR>. The case above catches the reverse mistake (a
+-- live leaf gaining children); this one catches the prefix itself being
+-- bound, which that scan cannot see because a mapped `\e` with `\eg` under it
+-- IS reported by it — but only if someone reads the failure correctly. This
+-- states the rule directly.
+T["lean"]["group prefixes have clues and no mapping"] = new_set({
+  parametrize = { { "d", "+diff pins" }, { "l", "+lemma search" }, { "m", "+module hierarchy" }, { "e", "+examine (text popups)" } },
+}, {
+  test = function(letter, desc)
+    local report = child.lua_get(string.format(
+      [[(function()
+        local clue
+        for _, c in ipairs((vim.b.miniclue_config or {}).clues or {}) do
+          if c.keys == "<LocalLeader>%s" then clue = c.desc end
+        end
+        local mapped = false
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+          if m.lhs == "\\%s" then mapped = true end
+        end
+        local children = 0
+        for _, m in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+          if #m.lhs > 2 and m.lhs:sub(1, 2) == "\\%s" then children = children + 1 end
+        end
+        return { clue = clue or "MISSING", mapped = mapped, children = children }
+      end)()]],
+      letter,
+      letter,
+      letter
+    ))
+    expect.equality(report.clue, desc)
+    expect.equality(report.mapped, false)
+    -- Non-vacuity: a prefix with no children would satisfy "not mapped".
+    expect.equality(report.children > 1, true)
+  end,
+})
 
 -- ── occurrence highlighting ────────────────────────────────────────────
 -- lua/config/lean/document_highlight.lua. The server has advertised

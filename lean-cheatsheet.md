@@ -22,6 +22,25 @@ erroring — a short prefix mid-typing is normally just noise.
 | `\w` / `\W` | Enable / disable widgets |
 | `\s` | Accept the first "Try this" suggestion |
 | `\r` | Restart the Lean server for this file |
+| `\R` | Restart the **server itself** (`:LspRestart leanls`) |
+| `\z` | Fill every open goal with `sorry` (`:LeanSorryFill`) |
+
+`\r` and `\R` are different repairs. `\r` re-elaborates *this file*; `\R`
+bounces the language server, which is what you need when the server itself
+has wedged and every file has gone quiet. `\z` is the one binding here that
+**edits the buffer** — it stubs out the goals still open so the rest of a
+half-finished exercise elaborates.
+
+### Goal and message popups
+
+The infoview is the main surface; these put the same information in a popup
+you can read without moving the cursor into it.
+
+| Keys | Action |
+|------|--------|
+| `\eg` | Goal at the cursor (`:LeanGoal`) |
+| `\et` | Term-mode type information (`:LeanTermGoal`) |
+| `\em` | Messages on this line (`:LeanLineDiagnostics`) |
 
 ### Diff pins
 
@@ -102,6 +121,7 @@ Two rules that are not obvious:
 | `gri` | Implementation |
 | `grt` | Type definition — every constituent type constant of a compound type |
 | `\D` | **Declaration** — Lean also returns the *parser and elaborator* of the symbol, which `gd` does not |
+| `\k` / `\K` | Incoming / outgoing calls (call hierarchy → quickfix) |
 | `\b` | Open this file's book page in the browser (`:LeanBook`) |
 | `\h` | Toggle inlay hints for this buffer (on by default) |
 | `[d` `]d` | Previous / next diagnostic |
@@ -268,12 +288,14 @@ indentation. Every fold starts open.
 
 | Command | Action |
 |---------|--------|
-| `:LeanGoal` | Goal at the cursor, in a popup |
-| `:LeanTermGoal` | Term-mode type information |
-| `:LeanLineDiagnostics` | Diagnostics for the current line |
-| `:LeanRestartFile` | Restart the server for this file |
+| `:LeanGoal` | Goal at the cursor, in a popup (`\eg`) |
+| `:LeanTermGoal` | Term-mode type information (`\et`) |
+| `:LeanLineDiagnostics` | Diagnostics for the current line (`\em`) |
+| `:LeanRestartFile` | Restart the server for this file (`\r`) |
+| `:LspRestart leanls` | Restart the server itself (`\R`) |
 | `:LeanRefreshFileDependencies` | Re-read changed imports |
-| `:LeanSorryFill` | Fill in `sorry` placeholders |
+| `:LeanSorryFill` | Fill in `sorry` placeholders (`\z`) |
+| `:LeanSetupInfo` | Pasteable setup information, for Zulip |
 | `:LeanAbbreviationsReverseLookup` | How do I type the character under the cursor? |
 | `:LeanInfoviewToggle` | Toggle the infoview |
 | `:LeanInfoviewAddPin` / `…ClearPins` | Manage pins |
