@@ -1196,7 +1196,9 @@ function M.open()
 
   -- Snacks.win is what \? and the rest of this config use for floats, and it
   -- already binds `q` to close.
-  local win = Snacks.win({
+  -- `float`, not `win`: the source window is already bound above and the
+  -- report needs it to stay reachable.
+  local float = Snacks.win({
     buf = buf,
     width = 0.9,
     height = 0.9,
@@ -1220,7 +1222,7 @@ function M.open()
   if target then
     vim.keymap.set("n", "e", function()
       pcall(function()
-        win:close()
+        float:close()
       end)
       require("config.lean.palette_picker").open({ group = target })
     end, {

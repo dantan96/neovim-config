@@ -48,6 +48,21 @@ return {
         -- "conceal appears in a file Dan is writing proofs in".
         filetypes = { "markdown", "quarto", "rmd", "typst", "asciidoc" },
       },
+      markdown_inline = {
+        -- NO PADDING CHIPS AROUND INLINE CODE.
+        --
+        -- markview draws `padding_left`/`padding_right` (a space each side) as
+        -- separate virtual-text chunks carrying MarkviewInlineCode's
+        -- background. In a Lean buffer the code text itself is highlighted by
+        -- tree-sitter's `@markup.raw`, which has a DIFFERENT background — so
+        -- every `abs_mul` rendered as a dark chip, a lighter pill, another dark
+        -- chip. Two backgrounds meeting, and it reads as a rendering fault.
+        --
+        -- The mismatch only appeared once the tree-sitter layer was turned on
+        -- for emphasis (config.lean.prose). Dropping the padding leaves the
+        -- span with one background — the one tree-sitter gives it.
+        inline_codes = { padding_left = "", padding_right = "" },
+      },
     },
     keys = {
       {
