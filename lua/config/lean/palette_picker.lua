@@ -1042,10 +1042,756 @@ function M.open()
   })
 end
 
-function M.setup()
-  vim.api.nvim_create_user_command("LeanPalette", function()
+-- ═══════════════════════════════════════════════════════════════════════
+-- THE COMMAND LINE
+-- ═══════════════════════════════════════════════════════════════════════
+--
+-- WHY A `:` COMMAND AND NOT A SHELL SCRIPT. The hard requirement is that a
+-- colour change is live in the RUNNING editor with no restart, which makes
+-- the editor the natural host: `HL.apply` and `HL.repaint` already end in
+-- `refresh_live_buffers()`, so a command gets that for free, where a shell
+-- script would have to find a running instance and RPC into it — a new
+-- failure mode ("which nvim?") bought for nothing, since the thing being
+-- judged is on screen in that instance already. And the actual determinant
+-- of speed is not the syntax but COMPLETION: there are two dozen hue keys
+-- and sixty-odd group names, nobody remembers `@lean.prop.former.imported`,
+-- and only the command line can offer them by <Tab>. A shell wrapper can
+-- still be had for free if it is ever wanted — `nvim --server $NVIM
+-- --remote-send ':LeanPalette ...<CR>'` — but it would be a second door onto
+-- this one.
+--
+-- NO THIRD STATE LAYER. Every subcommand writes the same two layers the
+-- picker writes — `HL.opts` (the generator inputs) and `HL.overrides` — and
+-- persists through the same `HL.save`. `:LeanPalette source` exists so that
+-- "I like this" has an obvious path to `highlights.lua`, because an override
+-- that only ever lives in `lean-palette.json` is how the palette drifts from
+-- its source.
+
+--- Ladder name -> hex, so `:LeanPalette set prop_element sky` works. The
+--- ladder is catppuccin mocha's own ramp; an arbitrary hex is still accepted
+--- and always will be, this is the fast path and not a restriction.
+local LADDER_HEX = {}
+for _, e in ipairs(LADDER) do
+  LADDER_HEX[e[1]] = e[2]
+end
+
+--- Attribute words, as the spec delta each one means. `no<x>` writes
+--- `false` rather than deleting the key: an override saying "explicitly not
+--- bold" is a real thing to want over a generated `bold = true`, and
+--- deleting is what `:LeanPalette reset` is for.
+local ATTR_WORDS = {
+  bold = { bold = true },
+  nobold = { bold = false },
+  italic = { italic = true },
+  noitalic = { italic = false },
+  strikethrough = { strikethrough = true },
+  nostrikethrough = { strikethrough = false },
+  reverse = { reverse = true },
+  noreverse = { reverse = false },
+}
+
+--- Generator channels, split by the shape of their value. These are the
+--- INPUTS the picker's generator mode edits, reachable here by name so that
+--- one keystroke still moves every variant of a thing at once.
+local BOOL_CHANNELS = { former_bold = true, local_italic = true, auto_recolour = true }
+local ENUM_CHANNELS = { imported_underline = true, axiom_underline = true, auto_underline = true }
+
+local SUBCOMMANDS = { "set", "list", "reset", "save", "forget", "source", "help" }
+
+--- What kind of thing a target name is. Order matters: a hue key wins over
+--- the group reading, because `data_element` is a hue and `@lean.data.element`
+--- is the group it feeds, and confusing the two would silently write an
+--- override where an input was meant.
+local function target_kind(name)
+  if HL.opts.hues[name] ~= nil then
+    return "hue"
+  elseif name == "alarm" then
+    return "alarm"
+  elseif BOOL_CHANNELS[name] then
+    return "channel_bool"
+  elseif ENUM_CHANNELS[name] then
+    return "channel_enum"
+  end
+  return "group"
+end
+
+--- A colour word: a `#rrggbb` in either case, or a ladder rung by name.
+--- @return string|nil hex
+local function as_colour(word)
+  if type(word) ~= "string" then
+    return nil
+  end
+  if word:match("^#%x%x%x%x%x%x$") then
+    return word:lower()
+  end
+  return LADDER_HEX[word]
+end
+
+local function is_style(word)
+  for _, s in ipairs(HL.underline_styles) do
+    if s == word then
+      return true
+    end
+  end
+  return false
+end
+
+--- Turn the value words of a `set` on a GROUP into one spec delta.
+--- @return table|nil delta, string|nil error
+local function parse_group_values(words)
+  local delta = {}
+  for _, w in ipairs(words) do
+    local key, rest = w:match("^(%a+)=(.+)$")
+    if key and (key == "fg" or key == "bg" or key == "sp") then
+      local hex = as_colour(rest)
+      if not hex then
+        return nil, ("not a colour: %s (want #rrggbb or a ladder name)"):format(rest)
+      end
+      delta[key] = hex
+    elseif ATTR_WORDS[w] then
+      for k, v in pairs(ATTR_WORDS[w]) do
+        delta[k] = v
+      end
+    elseif w == "nounderline" or (is_style(w) and w == "none") then
+      -- One underline per cell (B4), so "off" is "clear all five".
+      for _, u in ipairs(UNDERLINES) do
+        delta[u] = false
+      end
+    elseif is_style(w) then
+      for _, u in ipairs(UNDERLINES) do
+        delta[u] = false
+      end
+      delta[w] = true
+    elseif as_colour(w) then
+      delta.fg = as_colour(w)
+    else
+      return nil, ("do not understand %q"):format(w)
+    end
+  end
+  if next(delta) == nil then
+    return nil, "nothing to set"
+  end
+  return delta, nil
+end
+
+--- Merge a delta into the override for `name`, dropping the keys the delta
+--- turned off, and clear the override outright if nothing is left. Keeping
+--- an empty entry would make `list` claim a group is hand-set when it is not.
+local function apply_group_delta(name, delta)
+  local _, ov = HL.inspect_group(name)
+  local spec = vim.deepcopy(ov or {})
+  for k, v in pairs(delta) do
+    -- An underline turned off is REMOVED rather than written as `false`:
+    -- `nvim_set_hl` treats the five styles as an enum of one, so a stored
+    -- `underline = false` is noise where an absent key is the answer.
+    if v == false and k:match("^under") then
+      spec[k] = nil
+    else
+      spec[k] = v
+    end
+  end
+  if next(spec) == nil then
+    HL.clear_override(name)
+    return true, {}
+  end
+  return HL.set_override(name, spec)
+end
+
+-- ── reporting ──────────────────────────────────────────────────────────
+
+--- Echo lines, each optionally with a swatch painted in its own colour, so
+--- `list` answers "what did I set" visually and not only in hex.
+--- @param rows { [1]: string, [2]: string|nil }[] text, swatch hex
+local function echo(rows)
+  local chunks = {}
+  for _, r in ipairs(rows) do
+    if r[2] then
+      chunks[#chunks + 1] = { "  " .. BAR .. " ", swatch(r[2]) }
+    else
+      chunks[#chunks + 1] = { "      " }
+    end
+    chunks[#chunks + 1] = { r[1] .. "\n" }
+  end
+  vim.api.nvim_echo(chunks, true, {})
+end
+
+--- Everything that differs from the shipped palette, both layers. NOT every
+--- hue: the question this answers is "what have I changed", and a list of
+--- all twenty-four inputs buries the two that moved.
+--- @param pattern string|nil a Lua pattern to filter names by
+--- @return { [1]: string, [2]: string|nil }[]
+function M.state_rows(pattern)
+  -- `pcall`, because the filter is a Lua PATTERN and a user typing
+  -- `@lean.prop.[` from the command line must get an empty list rather than
+  -- an error out of `string.find`.
+  local function want(name)
+    if pattern == nil or pattern == "" then
+      return true
+    end
+    local ok, at = pcall(string.find, name, pattern)
+    return ok and at ~= nil
+  end
+  local d = HL.defaults()
+  local rows, names = {}, {}
+  for k in pairs(HL.opts.hues) do
+    names[#names + 1] = k
+  end
+  table.sort(names)
+  for _, k in ipairs(names) do
+    if HL.opts.hues[k] ~= d.hues[k] and want(k) then
+      rows[#rows + 1] = {
+        ("hue     %-22s %s   was %s"):format(k, HL.opts.hues[k], d.hues[k] or "(new key)"),
+        HL.opts.hues[k],
+      }
+    end
+  end
+  if HL.opts.alarm ~= d.alarm and want("alarm") then
+    rows[#rows + 1] =
+      { ("hue     %-22s %s   was %s"):format("alarm", HL.opts.alarm, d.alarm), HL.opts.alarm }
+  end
+  local chans = vim.tbl_keys(HL.opts.channels)
+  table.sort(chans)
+  for _, k in ipairs(chans) do
+    if HL.opts.channels[k] ~= d.channels[k] and want(k) then
+      rows[#rows + 1] = {
+        ("channel %-22s %s   was %s"):format(k, tostring(HL.opts.channels[k]), tostring(d.channels[k])),
+      }
+    end
+  end
+  local groups = vim.tbl_keys(HL.overrides)
+  table.sort(groups)
+  for _, g in ipairs(groups) do
+    if want(g) then
+      local spec = HL.overrides[g]
+      local parts = {}
+      for _, k in ipairs({ "fg", "bg", "sp" }) do
+        if spec[k] then
+          parts[#parts + 1] = k .. "=" .. spec[k]
+        end
+      end
+      for k, v in pairs(spec) do
+        if k ~= "fg" and k ~= "bg" and k ~= "sp" then
+          parts[#parts + 1] = (v and "" or "no") .. k
+        end
+      end
+      table.sort(parts)
+      rows[#rows + 1] = { ("group   %-38s %s"):format(g, table.concat(parts, " ")), spec.fg }
+    end
+  end
+  return rows
+end
+
+-- ── the source emitter ─────────────────────────────────────────────────
+-- THE POINT OF THIS, and the reason it is not a nicety: an override that
+-- lives only in `stdpath("data")/lean-palette.json` is invisible from the
+-- config, survives no fresh checkout, and is how the palette drifts from its
+-- source. This prints the exact edit — file, line number, and the line as it
+-- would read — for anything currently set.
+--
+-- AND IT REFUSES TO GUESS. Not every group HAS a home in `highlights.lua`;
+-- the `@lsp.type.*` pins live in themes.lua, the operator and path colours
+-- live in namespace_hl.lua, and a group the user invented lives nowhere at
+-- all. Printing a plausible-looking `highlights.lua` edit for one of those
+-- would be worse than saying so, so the last case says so.
+
+local SRC = {
+  highlights = "lua/config/lean/highlights.lua",
+  themes = "lua/plugins/themes.lua",
+  namespace = "lua/config/lean/namespace_hl.lua",
+}
+
+--- First line of `relpath` matching `pat`, at or after the line `after` hits.
+---
+--- The text comes back as `""` and not `nil` when nothing matched. Every
+--- caller guards on the LINE NUMBER, and a second nillable return would make
+--- each `text:gsub` after that guard a `need-check-nil` that no runtime
+--- check can discharge.
+--- @param relpath string relative to `stdpath("config")`
+--- @param pat string a Lua pattern
+--- @param after string|nil a Lua pattern; start from the line it matches
+--- @return integer|nil lnum
+--- @return string text
+local function find_line(relpath, pat, after)
+  local path = vim.fn.stdpath("config") .. "/" .. relpath
+  if vim.fn.filereadable(path) ~= 1 then
+    return nil, ""
+  end
+  local lines = vim.fn.readfile(path)
+  local from = 1
+  if after then
+    for i, l in ipairs(lines) do
+      if l:find(after) then
+        from = i
+        break
+      end
+    end
+  end
+  for i = from, #lines do
+    if lines[i]:find(pat) then
+      return i, lines[i]
+    end
+  end
+  return nil, ""
+end
+
+--- One `key = "#hex"` edit inside a named table in highlights.lua.
+local function hue_edit(key, hex, after)
+  local pat = "^%s*" .. vim.pesc(key) .. "%s*="
+  local lnum, text = find_line(SRC.highlights, pat, after)
+  if not lnum then
+    return { ("  %s — no `%s =` line found; add one to %s"):format(SRC.highlights, key, after or "?") }
+  end
+  return {
+    ("  %s:%d"):format(SRC.highlights, lnum),
+    "  - " .. text,
+    "  + " .. (text:gsub('"#%x%x%x%x%x%x"', '"' .. hex .. '"', 1)),
+  }
+end
+
+--- Which grid cell, if any, a generated `@lean.*` group belongs to.
+---
+--- THE WORLD AND LEVEL ARE CHECKED AGAINST THE REAL AXES, not merely
+--- pattern-matched. `@lean.op.prop` and `@lean.path.f4` are `@lean.<word>.<word>`
+--- too, and reading them as a grid cell invented a hue key `op_prop` that
+--- nothing has ever defined and sent the user to the wrong file.
+--- @return string|nil cell `prop_element`, string|nil hue key, boolean is_local
+local GRID_WORLDS = { prop = true, data = true, poly = true }
+local GRID_LEVELS = { element = true, sort = true, former = true }
+local function grid_cell(group)
+  local world, level, rest = group:match("^@lean%.(%a+)%.(%a+)(.*)$")
+  if not world or not level or not GRID_WORLDS[world] or not GRID_LEVELS[level] then
+    return nil, nil, false
+  end
+  local is_local = rest:find("%.local") ~= nil
+  local cell = world .. "_" .. level
+  local key = cell .. (is_local and "_local" or "")
+  if HL.opts.hues[key] == nil then
+    key = cell
+  end
+  return cell, key, is_local
+end
+
+--- The exact source edit for one target, as lines. Never guesses a home.
+--- @param name string a hue key, a channel, or a group
+--- @return string[]
+function M.source_for(name)
+  local kind = target_kind(name)
+  local out = { name }
+  if kind == "hue" then
+    vim.list_extend(out, hue_edit(name, HL.opts.hues[name], "DEFAULTS = {"))
+    return out
+  end
+  if kind == "alarm" then
+    vim.list_extend(out, hue_edit("alarm", HL.opts.alarm, "DEFAULTS = {"))
+    return out
+  end
+  if kind == "channel_bool" or kind == "channel_enum" then
+    local v = HL.opts.channels[name]
+    local pat = "^%s*" .. vim.pesc(name) .. "%s*="
+    local lnum, text = find_line(SRC.highlights, pat, "channels = {")
+    if lnum then
+      out[#out + 1] = ("  %s:%d"):format(SRC.highlights, lnum)
+      out[#out + 1] = "  - " .. text
+      out[#out + 1] = ("  + %s%s = %s,"):format(
+        text:match("^(%s*)") or "    ",
+        name,
+        type(v) == "string" and ('"' .. v .. '"') or tostring(v)
+      )
+    else
+      out[#out + 1] = ("  %s — no `%s =` line in `channels`"):format(SRC.highlights, name)
+    end
+    return out
+  end
+
+  -- A GROUP. Everything below routes by where the group is actually defined.
+  local ov = HL.overrides[name]
+  if not ov then
+    out[#out + 1] = "  no override set — nothing to move into source"
+    return out
+  end
+
+  local cell, hue_key = grid_cell(name)
+  if cell and hue_key then
+    -- A grid cell: the fg belongs in `DEFAULTS.hues`, the attributes in
+    -- `CELL_STYLE`. Split rather than lumped, because they are two different
+    -- tables and a hue reaches every variant while a cell style does not.
+    if ov.fg then
+      out[#out + 1] = ("  fg  ->  DEFAULTS.hues.%s  (reaches every variant of this cell)"):format(hue_key)
+      vim.list_extend(out, hue_edit(hue_key, ov.fg, "DEFAULTS = {"))
+    end
+    local styles = {}
+    for k, v in pairs(ov) do
+      if k ~= "fg" and k ~= "bg" and k ~= "sp" then
+        styles[#styles + 1] = ("%s = %s"):format(k, tostring(v))
+      end
+    end
+    if #styles > 0 then
+      table.sort(styles)
+      local lnum = find_line(SRC.highlights, "^%s*" .. vim.pesc(cell) .. "%s*=", "local CELL_STYLE = {")
+      out[#out + 1] = ("  style -> CELL_STYLE.%s in %s%s"):format(
+        cell,
+        SRC.highlights,
+        lnum and (":" .. lnum) or " (no entry yet — add one)"
+      )
+      out[#out + 1] = ("  + %s = { %s },"):format(cell, table.concat(styles, ", "))
+    end
+    if ov.bg or ov.sp then
+      out[#out + 1] = "  bg/sp have no generator input; they are override-only on a grid cell"
+    end
+    return out
+  end
+
+  local file = name:match("^@lsp%.") and SRC.themes
+    or (name:match("^@lean%.") or name:match("^lean%a")) and SRC.namespace
+    or nil
+  if file then
+    local lnum, text = find_line(file, vim.pesc('["' .. name .. '"]'))
+    if lnum then
+      out[#out + 1] = ("  %s:%d"):format(file, lnum)
+      out[#out + 1] = "  - " .. text
+      local parts = {}
+      for _, k in ipairs({ "fg", "bg", "sp" }) do
+        if ov[k] then
+          parts[#parts + 1] = ('%s = "%s"'):format(k, ov[k])
+        end
+      end
+      for k, v in pairs(ov) do
+        if k ~= "fg" and k ~= "bg" and k ~= "sp" and v then
+          parts[#parts + 1] = k .. " = true"
+        end
+      end
+      table.sort(parts)
+      out[#out + 1] = ('  + ["%s"] = { %s },'):format(name, table.concat(parts, ", "))
+      -- ONLY IN namespace_hl. That module paints from named palette entries
+      -- (`{ fg = p.deeppink }`), so the durable edit is usually to the hue
+      -- and not to the group. themes.lua has no such table, and looking for
+      -- one there matched the `type` out of `@lsp.type.keyword.lean` and
+      -- offered a `p.type` that does not exist.
+      local pkey = file == SRC.namespace and text:match("[^%w]p%.(%w+)") or nil
+      if pkey then
+        -- namespace_hl paints from a named palette entry, so the durable edit
+        -- is usually to the PALETTE and not to the group — and that reaches
+        -- every group sharing the hue, which is the point of having one.
+        local plnum, ptext = find_line(file, "^%s*" .. pkey .. "%s*=", "M.palette = {")
+        out[#out + 1] = ("  ...or move the hue itself: `p.%s`%s"):format(
+          pkey,
+          plnum and (" at " .. file .. ":" .. plnum) or ""
+        )
+        if ptext and ov.fg then
+          out[#out + 1] = "  - " .. ptext
+          out[#out + 1] = "  + " .. (ptext:gsub('"#%x%x%x%x%x%x"', '"' .. ov.fg .. '"', 1))
+        end
+      end
+    else
+      -- The one family namespace_hl BUILDS rather than lists: module-path
+      -- components are `@lean.path.c<N>` / `.f<N>`, generated in a loop off
+      -- `M.palette.rainbow`, so there is no `["@lean.path.c4"]` line to find
+      -- and the honest answer is the rainbow slot.
+      local slot = name:match("^@lean%.path%.[cf](%d+)$")
+      if slot then
+        local rlnum, rtext = find_line(file, "^%s*rainbow%s*=", "M.palette = {")
+        out[#out + 1] = ("  path components are generated from `M.palette.rainbow`; this is position %s"):format(slot)
+        if rlnum then
+          out[#out + 1] = ("  %s:%d"):format(file, rlnum)
+          out[#out + 1] = "  - " .. rtext
+          if ov.fg then
+            local n, i = tonumber(slot), 0
+            out[#out + 1] = "  + "
+              .. (rtext:gsub('"#%x%x%x%x%x%x"', function(lit)
+                i = i + 1
+                return i == n and ('"' .. ov.fg .. '"') or lit
+              end))
+          end
+        end
+      else
+        out[#out + 1] = ("  %s defines no `[\"%s\"]` entry; add one"):format(file, name)
+      end
+    end
+    return out
+  end
+
+  -- No home. SAY SO, and print what is actually stored, rather than
+  -- inventing a plausible `highlights.lua` edit for a group that does not
+  -- live there.
+  out[#out + 1] = "  OVERRIDE-ONLY — no source home. It lives in " .. HL.state_path .. ":"
+  out[#out + 1] = ('    "%s": %s'):format(name, vim.json.encode(ov))
+  return out
+end
+
+--- The source edits for everything currently set.
+function M.source_all()
+  local out, targets = {}, {}
+  local d = HL.defaults()
+  for k, v in pairs(HL.opts.hues) do
+    if v ~= d.hues[k] then
+      targets[#targets + 1] = k
+    end
+  end
+  if HL.opts.alarm ~= d.alarm then
+    targets[#targets + 1] = "alarm"
+  end
+  for k, v in pairs(HL.opts.channels) do
+    if v ~= d.channels[k] then
+      targets[#targets + 1] = k
+    end
+  end
+  for g in pairs(HL.overrides) do
+    targets[#targets + 1] = g
+  end
+  table.sort(targets)
+  for _, t in ipairs(targets) do
+    vim.list_extend(out, M.source_for(t))
+    out[#out + 1] = ""
+  end
+  if #out == 0 then
+    out[1] = "nothing is set — the palette is exactly what highlights.lua ships"
+  end
+  return out
+end
+
+-- ── dispatch ───────────────────────────────────────────────────────────
+
+local HELP = {
+  ":LeanPalette                          the picker (j/k h/l, g/G modes)",
+  ":LeanPalette set <target> <value>...  a hue key, a channel, or a group",
+  ":LeanPalette list [pattern]           everything that differs from shipped",
+  ":LeanPalette reset <target>|all       revert one, or the lot",
+  ":LeanPalette source [target]          the exact edit to put it in source",
+  ":LeanPalette save                     persist both layers",
+  ":LeanPalette forget                   delete the saved file",
+  "",
+  "TARGETS   a hue key      prop_element_local, data_sort, alarm ...",
+  "          a channel      former_bold, local_italic, axiom_underline ...",
+  "          a group        @lean.prop.former, @lsp.type.keyword.lean ...",
+  "          <Tab> completes all three.",
+  "",
+  "VALUES    #ff00ff        or a catppuccin ladder name: mauve, sky, peach",
+  "          fg= bg= sp=    a specific channel, same colour syntax",
+  "          bold italic strikethrough reverse, and no<x> for each",
+  "          underline undercurl underdouble underdotted underdashed",
+  "          nounderline    clears whichever one is set (only one fits)",
+  "          on off toggle  for a boolean channel",
+  "",
+  "  :LeanPalette set prop_element_local #ff69b4",
+  "  :LeanPalette set @lean.data.former sky nobold underdotted",
+  "  :LeanPalette set former_bold off",
+  "  :LeanPalette source @lean.data.former",
+  "",
+  "Every change is live at once — no restart, no :colorscheme. It is NOT",
+  "saved until `save`, and `save` does not put it in source: `source` prints",
+  "that edit, because an override that only lives in the JSON is how the",
+  "palette drifts away from highlights.lua.",
+}
+
+--- @return string|nil error
+local function do_set(args)
+  local name = args[1]
+  if not name then
+    return "set what? " .. SUBCOMMANDS[1] .. " <target> <value>..."
+  end
+  local values = vim.list_slice(args, 2)
+  local kind = target_kind(name)
+  if kind == "hue" or kind == "alarm" then
+    local hex = as_colour(values[1] or "")
+    if not hex then
+      return ("%s takes a colour, got %q"):format(name, values[1] or "")
+    end
+    local inputs = vim.deepcopy(HL.opts)
+    if kind == "alarm" then
+      inputs.alarm = hex
+    else
+      inputs.hues[name] = hex
+    end
+    HL.apply(inputs)
+    echo({ { ("%s = %s"):format(name, hex), hex } })
+    return nil
+  end
+  if kind == "channel_bool" then
+    local w = values[1] or "toggle"
+    local v
+    if w == "on" or w == "true" then
+      v = true
+    elseif w == "off" or w == "false" then
+      v = false
+    elseif w == "toggle" then
+      v = not HL.opts.channels[name]
+    else
+      return ("%s takes on|off|toggle, got %q"):format(name, w)
+    end
+    local inputs = vim.deepcopy(HL.opts)
+    inputs.channels[name] = v
+    HL.apply(inputs)
+    echo({ { ("%s = %s"):format(name, tostring(v)) } })
+    return nil
+  end
+  if kind == "channel_enum" then
+    local w = values[1] or ""
+    if not is_style(w) then
+      return ("%s takes %s, got %q"):format(name, table.concat(HL.underline_styles, "|"), w)
+    end
+    local inputs = vim.deepcopy(HL.opts)
+    inputs.channels[name] = w
+    HL.apply(inputs)
+    echo({ { ("%s = %s"):format(name, w) } })
+    return nil
+  end
+  local delta, err = parse_group_values(values)
+  if not delta then
+    return err
+  end
+  local ok, bad = apply_group_delta(name, delta)
+  if not ok then
+    return "rejected: " .. table.concat(bad or {}, ", ")
+  end
+  local rows = M.state_rows("^" .. vim.pesc(name) .. "$")
+  echo(#rows > 0 and rows or { { name .. " — override cleared" } })
+  return nil
+end
+
+--- @return string|nil error
+local function do_reset(args)
+  local name = args[1]
+  if not name then
+    return "reset what? a target, or `all`"
+  end
+  if name == "all" then
+    HL.reset()
+    echo({ { "the shipped palette is back (in memory — `save` to keep it)" } })
+    return nil
+  end
+  local kind = target_kind(name)
+  local d = HL.defaults()
+  if kind == "hue" or kind == "alarm" or kind == "channel_bool" or kind == "channel_enum" then
+    local inputs = vim.deepcopy(HL.opts)
+    if kind == "alarm" then
+      inputs.alarm = d.alarm
+    elseif kind == "hue" then
+      -- A key the shipped defaults never had is DELETED rather than reset:
+      -- there is no shipped value to go back to, and leaving it would make
+      -- "reset" a lie.
+      inputs.hues[name] = d.hues[name]
+    else
+      inputs.channels[name] = d.channels[name]
+    end
+    HL.apply(inputs)
+    echo({ { ("%s back to shipped"):format(name) } })
+    return nil
+  end
+  if HL.clear_override(name) then
+    echo({ { "cleared the override on " .. name } })
+  else
+    echo({ { "no override on " .. name } })
+  end
+  return nil
+end
+
+--- Everything <Tab> can offer, by argument position.
+--- @return string[]
+function M.complete(arglead, cmdline)
+  local words = vim.split(vim.trim(cmdline), "%s+")
+  -- `words[1]` is the command itself. The argument being typed is the last
+  -- word when `arglead` is non-empty, and a new one when it is not.
+  local n = #words - 1 + (arglead == "" and 1 or 0)
+  local pool = {}
+  if n <= 1 then
+    pool = vim.deepcopy(SUBCOMMANDS)
+  elseif n == 2 then
+    local sub = words[2]
+    if sub == "set" or sub == "reset" or sub == "source" or sub == "list" then
+      for k in pairs(HL.opts.hues) do
+        pool[#pool + 1] = k
+      end
+      pool[#pool + 1] = "alarm"
+      for k in pairs(BOOL_CHANNELS) do
+        pool[#pool + 1] = k
+      end
+      for k in pairs(ENUM_CHANNELS) do
+        pool[#pool + 1] = k
+      end
+      HL.warm()
+      for _, e in ipairs(HL.catalogue()) do
+        pool[#pool + 1] = e.name
+      end
+      if sub == "reset" then
+        pool[#pool + 1] = "all"
+      end
+    end
+  elseif words[2] == "set" then
+    local kind = target_kind(words[3] or "")
+    if kind == "channel_bool" then
+      pool = { "on", "off", "toggle" }
+    elseif kind == "channel_enum" then
+      pool = vim.deepcopy(HL.underline_styles)
+    else
+      for name in pairs(LADDER_HEX) do
+        pool[#pool + 1] = name
+      end
+      if kind == "group" then
+        for w in pairs(ATTR_WORDS) do
+          pool[#pool + 1] = w
+        end
+        vim.list_extend(pool, UNDERLINES)
+        pool[#pool + 1] = "nounderline"
+        for _, p in ipairs({ "fg=", "bg=", "sp=" }) do
+          pool[#pool + 1] = p
+        end
+      end
+    end
+  end
+  table.sort(pool)
+  return vim.tbl_filter(function(c)
+    return c:sub(1, #arglead) == arglead
+  end, pool)
+end
+
+--- Run one command line. Split out from the command itself so tests can
+--- drive it without going through `:` parsing.
+--- @param argstr string everything after `:LeanPalette`
+--- @return string|nil error
+function M.run(argstr)
+  local args = vim.split(vim.trim(argstr or ""), "%s+", { trimempty = true })
+  local sub = table.remove(args, 1)
+  if not sub then
     M.open()
-  end, { desc = "Choose the Lean semantic highlight colours" })
+    return nil
+  elseif sub == "help" then
+    echo(vim.tbl_map(function(l)
+      return { l }
+    end, HELP))
+  elseif sub == "set" then
+    return do_set(args)
+  elseif sub == "reset" then
+    return do_reset(args)
+  elseif sub == "list" then
+    local rows = M.state_rows(args[1])
+    echo(#rows > 0 and rows or { { "nothing set — the shipped palette, unmodified" } })
+  elseif sub == "source" then
+    local lines = args[1] and M.source_for(args[1]) or M.source_all()
+    echo(vim.tbl_map(function(l)
+      return { l }
+    end, lines))
+  elseif sub == "save" then
+    local ok, err = HL.save()
+    echo({ { ok and ("saved to " .. HL.state_path) or ("save failed: " .. tostring(err)) } })
+  elseif sub == "forget" then
+    echo({ { HL.forget() and ("deleted " .. HL.state_path) or "could not delete the saved file" } })
+  else
+    return ("unknown subcommand %q — try `:LeanPalette help`"):format(sub)
+  end
+  return nil
+end
+
+function M.setup()
+  vim.api.nvim_create_user_command("LeanPalette", function(o)
+    local err = M.run(o.args)
+    if err then
+      vim.notify("LeanPalette: " .. err, vim.log.levels.ERROR)
+    end
+  end, {
+    nargs = "*",
+    complete = M.complete,
+    desc = "Lean colours: bare = picker; " .. table.concat(SUBCOMMANDS, "|"),
+  })
   return M
 end
 
