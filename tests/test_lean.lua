@@ -1328,6 +1328,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     table.sort(bold)
     table.sort(pink)
     return { bold = bold, pink = pink,
+             hotpink = require("config.lean.namespace_hl").palette.hotpink,
              family = { data_former = M.palette.data_former,
                         data_sort = M.palette.data_sort,
                         data_sort_local = M.palette.data_sort_local,
@@ -1343,7 +1344,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- other half of the retune ("I do love magenta and pink — we're gonna try
   -- to make sure those aren't too rare!").
   expect.equality(got.pink, {
-    "@lean.data.former",           -- #ff5fff  a type constructor  (BOLD, see below)
+    "@lean.data.former",           -- #ff69b4  a type constructor  (4th retune)
     "@lean.data.former.class",     -- #f38ba8  Group, Monoid
     "@lean.data.sort.auto",        -- #f38ba8  the alarm recolour
     "@lean.data.sort.class",       -- #f38ba8
@@ -1379,12 +1380,20 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- data.former / data.sort hue", so all four are magenta and the four are
   -- pinned here because "one family" is exactly the property a later single-
   -- cell edit would break without any other case noticing.
+  -- FOURTH RETUNE: `data_former` left the shared `#ff5fff` for `#ff69b4`, the
+  -- sort-atom HotPink, so `Set` and `Type*` read as one thing. It is still in
+  -- the family — `#ff69b4` satisfies `bright_pink` above and is in `got.pink`
+  -- — but it no longer collides with `data_sort_local`.
   expect.equality(got.family, {
-    data_former = "#ff5fff",
+    data_former = "#ff69b4",
     data_sort = "#cc44cc",
     data_sort_local = "#ff5fff",
     prop_former = "#ffa8ff",
   })
+  -- The instruction was "same hex as `Type*`", so pin the actual identity
+  -- rather than the literal: a later edit to `namespace_hl`'s hotpink that
+  -- left this one behind would silently un-say it.
+  expect.equality(got.family.data_former, got.hotpink)
 end
 
 -- The failure that is invisible in review and fatal in use: a module with a
@@ -1468,7 +1477,12 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
   -- for `h` and `m` in one binder list, which is the distinction this whole
   -- palette exists to draw. data_former_local measures ZERO cells in every
   -- probe file, so the shared hex is never actually rendered twice.
-  expect.equality(got.ndistinct, 15)
+  --
+  -- 15 -> 16 IN THE FOURTH RETUNE, one edit: `data_former` left `#ff5fff`,
+  -- which `data_sort_local` still holds, for `#ff69b4` — the sort-atom
+  -- HotPink, so `Set` and `Type*` read as one thing. Nothing was orphaned
+  -- (`#ff5fff` keeps `α`, `G`), so it is +1 and not a swap.
+  expect.equality(got.ndistinct, 16)
 end
 
 -- ╭──────────────────────────────────────────────────────────────────────╮
@@ -2138,7 +2152,13 @@ T["lean"]["lemma references are highlighted"] = new_set({
     { 2, "def", "leanDeclaration" },
     { 3, "theorem", "leanDeclaration" },
     { 3, "Prop", "leanSort" },
-    { 3, "∨", "leanOp" },
+    -- FOURTH RETUNE: `∨` is no longer lean.nvim's `leanOp`. The connectives
+    -- moved to `leanPropOp` / DeepPink; the details, and the sky half that
+    -- did NOT move, are in tests/test_lean_namespaces.lua.
+    { 3, "∨", "leanPropOp" },
+    -- ...and one that still is, on the same line, so this case keeps saying
+    -- "the stock groups are untouched" rather than becoming a pink sweep.
+    { 3, ":=", "leanOp" },
   },
 }, {
   test = function(lnum, needle, group)

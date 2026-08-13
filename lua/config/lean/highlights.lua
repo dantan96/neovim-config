@@ -289,11 +289,12 @@ local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted",
 -- SO THE TYPE LEVEL IS NOW ONE FAMILY IN FOUR SHADES OF MAGENTA:
 --   #ffa8ff  prop.former       a predicate           lightest
 --   #ff5fff  data.sort.local   a type variable       italic
---   #ff5fff  data.former       a type constructor    bold + underline
+--   #ff69b4  data.former       a type constructor    underline   <- 4th retune
 --   #cc44cc  data.sort         a concrete type       deepest
--- `data.former` and `data.sort.local` share a hex by instruction 5 and are
--- told apart by weight alone — `Set α` puts them adjacent, which is the pair
--- to judge it on.
+-- FOURTH RETUNE moved `data.former` out of the shared `#ff5fff` and onto
+-- `#ff69b4` HotPink, which is `namespace_hl`'s SORT-ATOM colour — so `Set`
+-- and `Type*` are the same colour on purpose, and `Set α` no longer puts two
+-- cells of one hex side by side told apart by weight alone.
 --
 -- ORPHANED BY THIS PASS, recorded because an unused hue is a loose end:
 -- `#ff8c00` DarkOrange and `#b4befe` lavender leave the palette entirely;
@@ -361,7 +362,18 @@ local DEFAULTS = {
     data_sort_local = "#ff5fff", -- magenta   — A TYPE VARIABLE. `α`, `G`
     data_sort = "#cc44cc", -- magenta·deep  — A CONCRETE TYPE. `Interval`
     data_former_local = "#eba0ac", -- maroon    — a local type family (0 cells; see below)
-    data_former = "#ff5fff", -- magenta   — A TYPE CONSTRUCTOR. `Set`, `List`
+    -- FOURTH RETUNE, instructed: "`data_former` (`Set`, `Filter`) takes the
+    -- same hex as `Type*` — `#ff69b4` HotPink, the sort-atom colour. Keep its
+    -- underline, no bold." So `Set` and `Type*` are now ONE colour, which is
+    -- a real statement and not a collision: `Set α : Type*`, and the sort
+    -- atoms `ℕ ℤ ℚ ℝ ℂ` are type constructors' results. It also unsticks
+    -- `data.former` from `data.sort.local` (`α`, `G`), which shared `#ff5fff`
+    -- and were told apart by weight alone.
+    --
+    -- The hex is `namespace_hl.M.palette.hotpink`. A Lua module cannot be
+    -- required from here without a cycle, so it is written out; the two are
+    -- compared by tests/test_lean_namespaces.lua.
+    data_former = "#ff69b4", -- hotpink   — A TYPE CONSTRUCTOR. `Set`, `List`
 
     -- Poly world — genuinely undetermined `Sort u`. A deliberately tight
     -- family, because these are rare and should read as one thing.
@@ -770,7 +782,9 @@ local KIND_HUE = {
 --
 -- `data_former` gained an UNDERLINE here in the third retune, by direct
 -- instruction: "`data_former` → the same colour as `data_sort_local`
--- (`#ff5fff`), bold, underlined, NOT italic." The underline is a per-cell
+-- (`#ff5fff`), bold, underlined, NOT italic." The bold came off later in the
+-- same pass and the FOURTH retune moved the hue to `#ff69b4`; the underline
+-- is the surviving half of that instruction. The underline is a per-cell
 -- style and not a channel, so it does not compete for the FLAGS slot — but
 -- the flags still clear it, because `set_underline` wipes every underline
 -- bit before setting its own. That is the right precedence: an `auto`-bound

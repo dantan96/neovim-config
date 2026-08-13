@@ -163,6 +163,11 @@ M.palette = {
   -- Separators only. spthy-colorscheme.lua `slateGrayPlain`, which does this
   -- same job there for brackets, colons and commas.
   slate = "#708090",
+  -- The ASCRIPTION COLON, fourth retune, instructed by hex. Only the bare
+  -- `:` — `:=` and `::` are named in after/syntax/lean.vim's compound rule
+  -- and keep catppuccin's sky. Deliberately the same `#f9e2af` as rainbow
+  -- position 3 below: paths and proofs never share a line.
+  yellow = "#f9e2af",
   -- The type-level furniture of a statement: `Type*`, `Sort`, and the
   -- blackboard-bold atoms `ℕ ℤ ℚ ℝ ℂ`. All arrive as `keyword` TOKENS
   -- (GOTCHAS B7), which is why they are here and not in the grid. Dan asked
@@ -274,6 +279,28 @@ function M.groups()
     -- DEEPPINK, third retune, by instruction. Was plain mauve, i.e. a visual
     -- no-op; now it is the loudest thing on a proof line. Not bold.
     ["@lean.binder.keyword"] = { fg = p.deeppink },
+    -- FOURTH RETUNE: the same DeepPink, on the operator symbols that bind a
+    -- variable or build a proposition — `∈ ∉ ∧ ∨ ¬ ↔ → ⋂ ⋃ ⨆ ⨅ ∑ ∏ ≠ ≤ < ≥ >
+    -- ∣`. See after/syntax/lean.vim for the membership list and for why the
+    -- meaning is stated as a union of two clauses and not as one phrase.
+    --
+    -- ITS OWN GROUP, sharing `p.deeppink` rather than linking to
+    -- `@lean.binder.keyword`, for two reasons. The name has to be able to say
+    -- what it is — `∧` is not a binder keyword — and the two are reached by
+    -- different layers (that one by the 129 token handler, this one by the
+    -- syntax file at 50), so a future edit to one must not silently move the
+    -- other. They share the hex through `p.deeppink`, so the picker moves both
+    -- together, which is the part that should not drift.
+    --
+    -- `@lean.op.*` and NOT `@lean.prop.*`: highlights.lua generates the whole
+    -- `@lean.<world>.<level>` tree, and a hand-written group inside it would
+    -- collide with the generated names and with the picker's gloss.
+    ["@lean.op.prop"] = { fg = p.deeppink },
+    -- The ascription colon, and only the bare one — `:=` and `::` stay sky.
+    -- Instructed by hex. `#f9e2af` is also rainbow position 3, which costs
+    -- nothing: a module path sits alone at the top of a file and a colon
+    -- never appears in one.
+    ["@lean.op.colon"] = { fg = p.yellow },
     -- `Type*`, `Sort`, `ℕ`, `ℝ`. Not bold: hot pink bold is the shouting the
     -- retune removed, and `Type*` measured 362 occurrences across MIL —
     -- more than `fun`.
@@ -437,6 +464,15 @@ M.LINKS = (function()
     -- ...but `∀ ∃ λ` carry no token ever, so nothing can outrank them and they
     -- get the full treatment.
     leanBinderSymbol = "@lean.binder.keyword",
+    -- Fourth retune. Same case as `leanBinderSymbol`: no token ever reaches
+    -- these columns (M21), so the syntax layer is unopposed and the full
+    -- group is safe. `leanSetOp` goes to catppuccin's `Operator` — the group
+    -- `leanOp` itself links to — so that "these are operators exactly like
+    -- the other operators" is true by construction rather than by two copies
+    -- of `#89dceb`.
+    leanPropOp = "@lean.op.prop",
+    leanTypeColon = "@lean.op.colon",
+    leanSetOp = "Operator",
     -- lean.nvim's own `syn keyword leanSort Sort Prop Type`. Repointed here
     -- so that `Type u` and `Prop`, which carry NO token at all (measured: on
     -- line 25 of HighlightGallery.lean `variable {α : Type u}` produces

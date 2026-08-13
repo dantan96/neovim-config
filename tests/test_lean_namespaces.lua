@@ -258,6 +258,172 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
   expect.no_equality(resolved.fg, resolved.op)
 end
 
+-- ── the syntax layer: operator symbols ─────────────────────────────────
+--
+-- FOURTH RETUNE. Same standing as the `∀ ∃ λ ↦` case above and for the same
+-- measured reason (M21): `lsp_probe.py` against the patched server on
+-- `OperatorSpecimen.lean` returns NO token for any operator symbol at all, so
+-- the syntax layer is unopposed at these columns and `synstack()` is the whole
+-- truth. That is why these cases are honest headless while a semantic-token
+-- case in the same file could only pass vacuously.
+--
+-- Three destinations, and each is asserted BY RESOLVED COLOUR as well as by
+-- group name, because the group name alone cannot tell the two plausible
+-- wrong fixes apart:
+--
+--   * putting a symbol in lean.nvim's `leanOp` character class instead of the
+--     pink group — the group name would be `leanOp` but a reader checking
+--     "is it coloured" would see yes;
+--   * putting a set operator in the pink group instead of leaving it sky.
+--
+-- So pink asserts `#ff1493` AND `~= Operator.fg`; sky asserts `== Operator.fg`
+-- AND `~= #ff1493`; yellow asserts `#f9e2af` and differs from both.
+
+--- Innermost syntax group at every byte column of `line`, in a lean buffer.
+---
+--- The answer is the per-byte group list with CONSECUTIVE DUPLICATES
+--- COLLAPSED, so a single glyph — `∈` is three bytes — reads as one name,
+--- while a compound that split across two rules reads as `leanOp/leanPropOp`
+--- and is visible rather than averaged away. Collapsing rather than sampling
+--- the first byte is the point: sampling would report `=>` as sky on the `=`
+--- and never look at the `>`.
+local function op_groups(line, needles)
+  return child.lua_get(string.format(
+    [[(function()
+      local line = %q
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
+      local was = vim.api.nvim_get_current_buf()
+      vim.api.nvim_set_current_buf(buf)
+      vim.bo[buf].filetype = "lean"
+      local out = {}
+      for _, needle in ipairs(%s) do
+        local at = vim.fn.stridx(line, needle)
+        if at < 0 then
+          out[needle] = "NOT IN LINE"
+        else
+          -- Every BYTE of the needle, joined. A compound kept whole reads as
+          -- "leanOp/leanOp"; one that split reads as "leanOp/leanPropOp".
+          local seen = {}
+          for b = 1, #needle do
+            local st = vim.fn.synstack(1, at + b)
+            local g = #st > 0 and vim.fn.synIDattr(st[#st], "name") or ""
+            if seen[#seen] ~= g then
+              seen[#seen + 1] = g
+            end
+          end
+          out[needle] = table.concat(seen, "/")
+        end
+      end
+      vim.api.nvim_set_current_buf(was)
+      vim.api.nvim_buf_delete(buf, { force = true })
+      return out
+    end)()]],
+    line,
+    vim.inspect(needles):gsub("%s+", " ")
+  ))
+end
+
+--- Resolved foreground of a syntax group, following the link chain.
+local function op_colours()
+  return child.lua_get([[(function()
+    require("config.lean.namespace_hl").define()
+    local function fg(name)
+      local h = vim.api.nvim_get_hl(0, { name = name, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    return { prop = fg("leanPropOp"), set = fg("leanSetOp"), colon = fg("leanTypeColon"),
+             op = fg("leanOp"), binder = fg("leanBinderSymbol"), normal = fg("Normal") }
+  end)()]])
+end
+
+NS["operators: membership, connectives, relations and big binders are DeepPink"] = function()
+  local got = op_groups(
+    "theorem t : s ∩ t ⊆ x ∈ s ∧ n ∣ m ∨ ¬(n ≤ m) ↔ n < m → n ≥ m ∧ n ≠ m ∧ n > m := ⋂ ⋃ ⨆ ⨅ ∑ ∏ sᶜ ∪ s \\ t ∉ q",
+    { "∈", "∉", "∧", "∨", "¬", "↔", "→", "⋂", "⋃", "⨆", "⨅", "∑", "∏",
+      "≠", "≤", "≥", "∣", "<", ">", "∩", "∪", "⊆", "ᶜ", "\\" }
+  )
+  -- The pink set. `∣` is here and not with the set operators by our own call:
+  -- `n ∣ m` is `Dvd.dvd`, a Prop-valued relation in the position `n ≤ m`
+  -- occupies, and it never appears in `s ∩ t ⊆ sᶜ`.
+  for _, ch in ipairs({ "∈", "∉", "∧", "∨", "¬", "↔", "→", "⋂", "⋃", "⨆", "⨅",
+                        "∑", "∏", "≠", "≤", "≥", "∣", "<", ">" }) do
+    expect.equality(ch .. " " .. got[ch], ch .. " leanPropOp")
+  end
+  -- ...and the set algebra, which stays sky and is the other half of the
+  -- decision. Without this half the rule could be "every symbol goes pink".
+  for _, ch in ipairs({ "∩", "∪", "⊆", "ᶜ", "\\" }) do
+    expect.equality(ch .. " " .. got[ch], ch .. " leanSetOp")
+  end
+
+  local c = op_colours()
+  expect.equality(c.prop, "#ff1493")
+  expect.equality(c.prop, c.binder) -- one hue, `p.deeppink`, two groups
+  expect.no_equality(c.prop, c.op) -- NOT the plausible "add it to leanOp" fix
+  expect.equality(c.set, c.op) -- sky BY LINK to Operator, not by a copied hex
+  expect.no_equality(c.set, c.prop)
+  -- A4: `nvim_get_hl` returns {} for an undefined group, so "they differ"
+  -- would pass with both nil. Require every one of them to be a real colour.
+  for _, v in pairs(c) do
+    expect.no_equality(v, "nil")
+  end
+end
+
+NS["operators: the ascription colon is yellow, `:=` and `::` are not"] = function()
+  -- Statement position, and `:=` on the same line so the two cannot be tested
+  -- in separate happy fixtures.
+  local got = op_groups("theorem t : Nat := by exact 1", { ":", ":=" })
+  expect.equality(got[":"], "leanTypeColon")
+  -- Binder position, inside a `leanEncl` region — a `contains=TOP` region is
+  -- exactly where a top-level match can silently fail to reach.
+  local binder = op_groups("example (h : Nat) : Nat := h", { ":" })
+  expect.equality(binder[":"], "leanTypeColon")
+  -- List cons.
+  local cons = op_groups("example : List Nat := 1 :: []", { "::" })
+  expect.equality(cons["::"], "leanOp")
+  -- Dan: "`:=` and `::` are separate tokens; keep them as they are." They fall
+  -- out of the same bare-`:` rule, so they are named in the compound rule in
+  -- after/syntax/lean.vim, which is defined last and wins at that column.
+  -- BOTH BYTES, so a rule that yellowed the `:` and left the `=` sky is
+  -- visible here rather than passing on the first byte.
+  expect.equality(got[":="], "leanOp")
+
+  local c = op_colours()
+  expect.equality(c.colon, "#f9e2af")
+  expect.no_equality(c.colon, c.op) -- it left sky, which is the whole point
+  expect.no_equality(c.colon, c.prop)
+  expect.no_equality(c.colon, c.normal)
+end
+
+NS["operators: `=>` `<;>` `<|>` `->` `<-` `<|` `|>` are never split"] = function()
+  -- `<` and `>` are relations AND half of five compound tokens. Colouring the
+  -- `>` of `=>` pink while its `=` stays sky draws a two-colour ligature,
+  -- which reads as a rendering fault and not as a distinction.
+  -- Ordered so that every needle's FIRST occurrence is the standalone one:
+  -- `<|>` contains `<|` and `|>`, so a lazier line would test the compound
+  -- three times and the two pipes never.
+  local got = op_groups(
+    "example : Unit -> Unit := by intro x ; exact id |> id <| id <|> skip <;> skip ;"
+      .. " rw [<- h] ; exact (fun y => y)",
+    { "->", "|>", "<|", "<|>", "<;>", "<-", "=>" }
+  )
+  expect.equality(got["->"], "leanOp")
+  expect.equality(got["|>"], "leanOp")
+  expect.equality(got["<|"], "leanOp")
+  expect.equality(got["<|>"], "leanOp")
+  expect.equality(got["<;>"], "leanOp")
+  expect.equality(got["<-"], "leanOp")
+  expect.equality(got["=>"], "leanOp")
+  -- NON-VACUITY FOR THIS CASE SPECIFICALLY: a rule that simply returned every
+  -- `<` and `>` to `leanOp` would pass everything above. The relation case
+  -- asserts the opposite on a bare `<` and `>`, and this pins that the two
+  -- coexist on ONE line rather than in two happily separate fixtures.
+  local both = op_groups("example : n > m ∧ (fun x => x) 1 < 9 := by omega", { ">", "<", "=>" })
+  expect.equality(both["<"], "leanPropOp")
+  expect.equality(both[">"], "leanPropOp")
+  expect.equality(both["=>"], "leanOp")
+end
+
 -- ── the token handler: which tokens get split, and which are refused ───
 
 local function marks(token, text)
@@ -537,6 +703,9 @@ NS["the palette is hand-picked, not derived"] = function()
     mauve = "#cba6f7",
     slate = "#708090",
     hotpink = "#ff69b4",
+    -- Fourth retune: the ascription colon. Same hex as rainbow position 3 on
+    -- purpose — a module path has no colon in it.
+    yellow = "#f9e2af",
     -- Third retune: the binder keywords take the DeepPink that
     -- `@lean.prop.former` vacated when the type level became one magenta
     -- family. Instructed by hex.
