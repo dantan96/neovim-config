@@ -162,8 +162,17 @@ end
 ---@param buf_name string
 ---@return { root: string, pairs: table[] }|nil
 function M.section_of(data, index_path, buf_name)
-  local root = vim.fs.dirname(index_path)
-  local rel = buf_name:sub(#root + 2)
+  -- Both sides are resolved before the arithmetic. On macOS `/tmp` is a symlink
+  -- to `/private/tmp`, so the buffer's name and the directory the index was
+  -- found in can spell the same location differently; subtracting one prefix
+  -- from the other then yields a relative path that matches no key, and the
+  -- lookup fails silently for every exercise.
+  local function real(p)
+    return vim.fs.normalize(vim.uv.fs_realpath(p) or p)
+  end
+  local root = real(vim.fs.dirname(index_path))
+  local name = real(buf_name)
+  local rel = name:sub(#root + 2)
   local entry = data[rel]
   if not entry then
     return nil

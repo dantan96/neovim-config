@@ -180,8 +180,13 @@ T["notebook"]["reveals a solution, by statement and by normalised statement"] = 
       vim.fn.mkdir("/tmp/lean-notebook-test/MILbook/C99", "p")
       -- Key off the buffer's actual name: the fixture numbers each case's file
       -- differently, so a hardcoded key would silently test nothing.
-      local name = vim.api.nvim_buf_get_name(0)
-      local rel = name:sub(#"/tmp/lean-notebook-test/MILbook/" + 1)
+      -- Resolve the same way the code does: /tmp is a symlink to /private/tmp
+      -- on macOS, and a hardcoded prefix would make this test pass or fail for
+      -- reasons that have nothing to do with the lookup.
+      local function real(p) return vim.fs.normalize(vim.uv.fs_realpath(p) or p) end
+      local root = real("/tmp/lean-notebook-test/MILbook")
+      local name = real(vim.api.nvim_buf_get_name(0))
+      local rel = name:sub(#root + 2)
       local index = {
         [rel] = {
           { key = "example (a : Nat) : a = a := by",
