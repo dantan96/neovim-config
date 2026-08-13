@@ -52,6 +52,65 @@ local function ensure_registered()
   return true
 end
 
+-- ── the `/-!` and `-/` lines ──────────────────────────────────────────────
+--
+-- markview never sees them: the injection query offsets them out, so markdown
+-- is handed the prose alone. That is right for parsing and leaves two rows of
+-- syntax per block on screen, which is what stops it reading as a page.
+--
+-- `conceal_lines` (Neovim 0.11+) removes the row entirely rather than blanking
+-- it, which is the difference between a hidden delimiter and a gap. markview
+-- already sets `conceallevel = 3` on the windows it attaches, so there is
+-- nothing to configure.
+
+local NS = vim.api.nvim_create_namespace("lean_prose_delimiters")
+
+---Hide the delimiter rows of every module doc comment in the buffer.
+---
+---Driven by the parser rather than by a line scan, so a `/-` inside prose
+---cannot fool it. Only a row that is *nothing but* the delimiter is hidden:
+---Mathlib's one-line `/-! # Title -/` form has content on the same row, and
+---concealing it would take the content with it.
+---@param buf integer
+local function conceal_delimiters(buf)
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
+  if not M.is_on(buf) then
+    return
+  end
+
+  local ok, parser = pcall(vim.treesitter.get_parser, buf, LANG)
+  if not ok or not parser then
+    return
+  end
+  local trees = parser:parse()
+  if not trees or not trees[1] then
+    return
+  end
+
+  local q_ok, query = pcall(vim.treesitter.query.parse, LANG, "((module_doc_comment) @c)")
+  if not q_ok then
+    return
+  end
+
+  local last = vim.api.nvim_buf_line_count(buf)
+  for _, node in query:iter_captures(trees[1]:root(), buf) do
+    local start_row, _, end_row, _ = node:range()
+    for _, row in ipairs({ start_row, end_row }) do
+      if row < last then
+        local line = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
+        if line:match("^%s*/%-!%s*$") or line:match("^%s*%-/%s*$") then
+          vim.api.nvim_buf_set_extmark(buf, NS, row, 0, { conceal_lines = "" })
+        end
+      end
+    end
+  end
+end
+
+M.conceal_delimiters = conceal_delimiters
+
 ---@param buf integer?
 ---@return boolean
 function M.is_on(buf)
@@ -105,6 +164,18 @@ function M.attach(buf)
   -- Call the Lua API directly: :Markview passes its argument as a string and
   -- markview's state.buf_safe() rejects non-number buffer ids silently.
   pcall(mv.attach, buf)
+
+  -- Keep the concealed delimiters in step with edits. Own group per buffer so
+  -- detaching removes exactly these autocmds and nothing else.
+  local group = vim.api.nvim_create_augroup("LeanProse" .. buf, { clear = true })
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "BufWinEnter" }, {
+    group = group,
+    buffer = buf,
+    callback = function()
+      conceal_delimiters(buf)
+    end,
+  })
+  conceal_delimiters(buf)
 end
 
 ---Stop rendering prose in this buffer.
@@ -126,6 +197,10 @@ function M.detach(buf, lazy_only)
     pcall(mv.detach, buf)
   end
   vim.b[buf].lean_prose_on = false
+  pcall(vim.api.nvim_del_augroup_by_name, "LeanProse" .. buf)
+  if vim.api.nvim_buf_is_valid(buf) then
+    vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
+  end
 end
 
 ---@param buf integer?
