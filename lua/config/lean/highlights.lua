@@ -784,7 +784,10 @@ local KIND_HUE = {
 -- nothing renders is machinery bought with nothing.
 local CELL_STYLE = {
   prop_former = { bold = false, italic = true },
-  data_former = { underline = true },
+  -- Underline only. The bold came off on Dan's instruction: magenta plus bold
+  -- plus an underline was three markers on `Set`, louder than the orange it
+  -- replaced, and he has twice rejected bold on a bright hue.
+  data_former = { bold = false, underline = true },
 }
 
 --- Complete spec for one grid cell. Never a delta — see mechanic 1.

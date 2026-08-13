@@ -1355,9 +1355,10 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     -- binder list -- the distinction this palette exists to draw.
     "@lean.prop.former",           -- #ffa8ff  a predicate
   })
-  -- THE ONE EXCEPTION, BY NAME. Instruction 5 of the third retune. Anything
-  -- else appearing here is the regression this case exists to catch.
-  expect.equality(got.bold, { "@lean.data.former #ff5fff" })
+  -- EMPTY, and that is the assertion. Dan has rejected bold-on-bright twice;
+  -- `data.former` was the last holdout and its bold came off, leaving the
+  -- underline as its only extra marker.
+  expect.equality(got.bold, {})
   -- The cells Dan named, spelled out, because the sweep above would also
   -- pass if `prop.former` had quietly stopped being pink at all.
   expect.equality(got.prop_former.fg, tonumber("ffa8ff", 16))
@@ -1368,7 +1369,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- ...and the scope of the exemption: `former` is still a BOLD channel, so
   -- the data-world former keeps it. Without this the CELL_STYLE table could
   -- be widened to every cell and nothing would notice.
-  expect.equality(got.data_former.bold, true)
+  expect.equality(got.data_former.bold, nil)
   expect.equality(got.data_former.italic, nil)
   -- The underline instruction 5 also asked for, and it is a CELL style, not
   -- the `imported` flag — see the precedence case above.
@@ -1402,7 +1403,7 @@ T["lean"]["highlights: synthesised groups survive a colorscheme reload"] = funct
     local before = fg()
     vim.cmd.colorscheme("catppuccin")
     return { before = before, after = fg(), grid_after =
-      (vim.api.nvim_get_hl(0, { name = "@lean.data.former", link = false }).bold == true) }
+      (vim.api.nvim_get_hl(0, { name = "@lean.data.former", link = false }).underline == true) }
   ]])
   expect.no_equality(got.before, "nil")
   expect.equality(got.after, got.before)
