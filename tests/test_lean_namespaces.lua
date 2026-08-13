@@ -346,8 +346,11 @@ NS["operators: membership, connectives, relations and big binders are DeepPink"]
   -- The pink set. `∣` is here and not with the set operators by our own call:
   -- `n ∣ m` is `Dvd.dvd`, a Prop-valued relation in the position `n ≤ m`
   -- occupies, and it never appears in `s ∩ t ⊆ sᶜ`.
+  -- `≠ ≤ ≥ < >` are deliberately NOT here. They were pink briefly and Dan
+  -- reverted it -- relations are furniture, not proposition structure -- so
+  -- they stay sky via lean.nvim's own `leanOp`.
   for _, ch in ipairs({ "∈", "∉", "∧", "∨", "¬", "↔", "→", "⋂", "⋃", "⨆", "⨅",
-                        "∑", "∏", "≠", "≤", "≥", "∣", "<", ">" }) do
+                        "∑", "∏", "∣" }) do
     expect.equality(ch .. " " .. got[ch], ch .. " leanPropOp")
   end
   -- ...and the set algebra, which stays sky and is the other half of the
@@ -414,14 +417,17 @@ NS["operators: `=>` `<;>` `<|>` `->` `<-` `<|` `|>` are never split"] = function
   expect.equality(got["<;>"], "leanOp")
   expect.equality(got["<-"], "leanOp")
   expect.equality(got["=>"], "leanOp")
-  -- NON-VACUITY FOR THIS CASE SPECIFICALLY: a rule that simply returned every
-  -- `<` and `>` to `leanOp` would pass everything above. The relation case
-  -- asserts the opposite on a bare `<` and `>`, and this pins that the two
-  -- coexist on ONE line rather than in two happily separate fixtures.
-  local both = op_groups("example : n > m ∧ (fun x => x) 1 < 9 := by omega", { ">", "<", "=>" })
-  expect.equality(both["<"], "leanPropOp")
-  expect.equality(both[">"], "leanPropOp")
+  -- Bare `<`/`>` are `leanOp` too now: relations were pink briefly and Dan
+  -- reverted it. So this case no longer distinguishes bare from compound by
+  -- GROUP, and asserting that would be vacuous. What still has to hold is
+  -- that the compound is never SPLIT -- the `<` of `=>` must not be a
+  -- separate item from the rest of it -- which the `∧` on the same line
+  -- keeps honest by proving the pink rule is live in this buffer at all.
+  local both = op_groups("example : n > m ∧ (fun x => x) 1 < 9 := by omega", { ">", "<", "=>", "∧" })
+  expect.equality(both["<"], "leanOp")
+  expect.equality(both[">"], "leanOp")
   expect.equality(both["=>"], "leanOp")
+  expect.equality(both["∧"], "leanPropOp")
 end
 
 -- ── the token handler: which tokens get split, and which are refused ───

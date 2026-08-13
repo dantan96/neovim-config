@@ -350,7 +350,7 @@ local DEFAULTS = {
 
     -- Prop world. A proof, a proposition, a predicate.
     prop_element_local = "#eba0ac", -- pink      — A HYPOTHESIS. `h0`, `h1`
-    prop_element = "#00bfff", -- DeepSkyBlue — A CITED LEMMA. `mul_assoc`
+    prop_element = "#f9e2af", -- yellow      — A CITED LEMMA / theorem name. `mul_assoc`
     prop_sort_local = "#ffc0cb", -- pinkPlain — a local `p : Prop` (rare; see below)
     prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
     prop_former_local = "#f5e0dc", -- rosewater — a local predicate `{s t : Set α}`

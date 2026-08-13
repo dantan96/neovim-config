@@ -195,7 +195,10 @@ syn match leanBinderSymbol "[λ∀∃↦]"
 "
 " ASCII `<` and `>` are single-glyph relations here — but they are also HALF
 " OF `=>`, `<;>`, `<|>`, `->` and `<-`. Those are handled below.
-syn match leanPropOp "[∈∉∧∨¬↔→⋂⋃⨆⨅∑∏≠≤≥<>∣]"
+" Relations (`≠ ≤ ≥ < >`) were pink briefly and Dan reverted it: they are
+" furniture, not proposition structure. They stay sky via lean.nvim's own
+" `leanOp`, so they are simply absent from this pattern.
+syn match leanPropOp "[∈∉∧∨¬↔→⋂⋃⨆⨅∑∏∣]"
 
 " ── sky: the set algebra, which is furniture ────────────────────────────
 " Dan: "the set-theoretic operators that are *values* rather than structure".
@@ -256,7 +259,9 @@ hi def link leanPathQual        @lean.path.floor
 " Same reasoning as `leanBinderSymbol`: token-free by measurement, so nothing
 " can outrank them and nothing they set can leak.
 hi def link leanPropOp          @lean.op.prop
-hi def link leanTypeColon       @lean.op.colon
+" Reverted: the colon was yellow briefly. Back to `Operator` like every
+" other piece of punctuation.
+hi def link leanTypeColon       Operator
 hi def link leanSetOp           Operator
 for s:i in range(1, 6)
   execute 'hi def link leanPathC' . s:i . ' @lean.path.c' . s:i
