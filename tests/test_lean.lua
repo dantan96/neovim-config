@@ -982,7 +982,7 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
   -- which Dan named for it.
   --
   -- THIRD RETUNE, AND THE ONE THING IN IT THAT MADE THIS CASE WORSE. `m` was
-  -- `#a6e3a1` green and is now `#f2cdcd` flamingo, by instruction. `h0` next
+  -- green, then flamingo, and is now `#ffa8ff` light magenta. `h0` next
   -- to it is `#f5c2e7`. Those are (245,194,231) and (242,205,205) — the same
   -- pale warm pink to within ~26 in one channel, both italic, and this is
   -- the exact binder list the whole palette exists to disambiguate. The
@@ -991,7 +991,7 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
   -- moving `h0` was not asked for. If it is to be fixed, `prop_element_local`
   -- is the cell to move, not `data_element_local`.
   expect.equality(got.fgs.hyp, "#eba0ac") -- h0, h1 — maroon: separated from flamingo data locals
-  expect.equality(got.fgs.dat, "#f2cdcd") -- m     — flamingo (third retune)
+  expect.equality(got.fgs.dat, "#ffa8ff") -- m     — light magenta
   expect.equality(got.fgs.srt, "#ff5fff") -- G, α  — magenta
   -- ...and pairwise distinct, stated separately so a future recolour that
   -- moves two of them onto one hue fails here and not only on the hexes.
@@ -1344,6 +1344,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- other half of the retune ("I do love magenta and pink — we're gonna try
   -- to make sure those aren't too rare!").
   expect.equality(got.pink, {
+    "@lean.data.element.local",     -- #ffa8ff  a datum you bound
     "@lean.data.former",           -- #ff69b4  a type constructor  (4th retune)
     "@lean.data.former.class",     -- #f38ba8  Group, Monoid
     "@lean.data.sort.auto",        -- #f38ba8  the alarm recolour

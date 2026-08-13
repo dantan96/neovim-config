@@ -353,11 +353,13 @@ local DEFAULTS = {
     prop_element = "#f9e2af", -- yellow      — A CITED LEMMA / theorem name. `mul_assoc`
     prop_sort_local = "#ffc0cb", -- pinkPlain — a local `p : Prop` (rare; see below)
     prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
-    prop_former_local = "#f5e0dc", -- rosewater — a local predicate `{s t : Set α}`
+    prop_former_local = "#00bfff", -- electric blue — a local predicate `{s t : Set α}`.
+    -- Same hex as its global partner; the italic carries locality, as it does
+    -- for `poly` and `prop_sort`. Was rosewater, which read close to uncoloured.
     prop_former = "#00bfff", -- electric blue — A PREDICATE. `Even`, `Prime`, `Antitone`
 
     -- Data world.
-    data_element_local = "#f2cdcd", -- flamingo  — A DATUM YOU BOUND. `m`, `n`
+    data_element_local = "#ffa8ff", -- magenta·light — A DATUM YOU BOUND. `m`, `n`
     data_element = "#fab387", -- peach     — A GLOBAL DATUM. `Nat.factorial`
     data_sort_local = "#ff5fff", -- magenta   — A TYPE VARIABLE. `α`, `G`
     data_sort = "#cc44cc", -- magenta·deep  — A CONCRETE TYPE. `Interval`
