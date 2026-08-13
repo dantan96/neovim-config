@@ -248,7 +248,7 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
   --
   -- ASSERTED AS "FAR FROM THE OPERATOR COLOUR", not as a hex. `~= op` alone
   -- would pass on two shades of the same sky, so it is a measured gap
-  -- (`H.hex_gap`); DeepPink against sky measures 402 today. Which pink Dan
+  -- (`H.hex_gap`); DeepPink against sky measures 406 today. Which pink Dan
   -- wants is his to change without failing a test.
   local resolved = child.lua_get([[(function()
     require("config.lean.namespace_hl").define()
@@ -264,7 +264,7 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
   -- it directly so the failure names the cause.
   expect.no_equality(resolved.fg, "nil")
   expect.no_equality(resolved.op, "nil")
-  expect.equality(H.hex_gap(resolved.fg, resolved.op) >= 60, true)
+  expect.equality(H.hex_gap(resolved.fg, resolved.op) >= 55, true)
 end
 
 -- ── the syntax layer: operator symbols ─────────────────────────────────
@@ -359,8 +359,11 @@ NS["operators: membership, connectives, relations and big binders are DeepPink"]
   -- The pink set. `∣` is here and not with the set operators by our own call:
   -- `n ∣ m` is `Dvd.dvd`, a Prop-valued relation in the position `n ≤ m`
   -- occupies, and it never appears in `s ∩ t ⊆ sᶜ`.
+  -- `≠ ≤ ≥ < >` are deliberately NOT here. They were pink briefly and Dan
+  -- reverted it -- relations are furniture, not proposition structure -- so
+  -- they stay sky via lean.nvim's own `leanOp`.
   for _, ch in ipairs({ "∈", "∉", "∧", "∨", "¬", "↔", "→", "⋂", "⋃", "⨆", "⨅",
-                        "∑", "∏", "≠", "≤", "≥", "∣", "<", ">" }) do
+                        "∑", "∏", "∣" }) do
     expect.equality(ch .. " " .. got[ch], ch .. " leanPropOp")
   end
   -- ...and the set algebra, which stays sky and is the other half of the
@@ -378,10 +381,10 @@ NS["operators: membership, connectives, relations and big binders are DeepPink"]
   end
   expect.equality(c.prop, c.binder) -- one hue, `p.deeppink`, two groups
   -- NOT the plausible "add it to leanOp" fix — and far enough from sky to be
-  -- a different colour rather than a different shade. 402 today.
-  expect.equality(H.hex_gap(c.prop, c.op) >= 60, true)
+  -- a different colour rather than a different shade. 406 today.
+  expect.equality(H.hex_gap(c.prop, c.op) >= 55, true)
   expect.equality(c.set, c.op) -- sky BY LINK to Operator, not by a copied hex
-  expect.equality(H.hex_gap(c.set, c.prop) >= 60, true)
+  expect.equality(H.hex_gap(c.set, c.prop) >= 55, true)
 end
 
 NS["operators: the ascription colon is yellow, `:=` and `::` are not"] = function()
@@ -407,9 +410,10 @@ NS["operators: the ascription colon is yellow, `:=` and `::` are not"] = functio
   -- Three measured gaps rather than a hex. It left sky, which is the whole
   -- point; it is not the proposition pink; and it is not simply Normal, which
   -- is the way "we coloured it" can be true and invisible at the same time.
+  -- 178 from sky, 240 from the proposition pink, 125 from Normal.
   for _, other in ipairs({ "op", "prop", "normal" }) do
     expect.no_equality(c[other], "nil")
-    expect.equality({ other, H.hex_gap(c.colon, c[other]) >= 60 }, { other, true })
+    expect.equality({ other, H.hex_gap(c.colon, c[other]) >= 55 }, { other, true })
   end
 end
 
@@ -432,14 +436,17 @@ NS["operators: `=>` `<;>` `<|>` `->` `<-` `<|` `|>` are never split"] = function
   expect.equality(got["<;>"], "leanOp")
   expect.equality(got["<-"], "leanOp")
   expect.equality(got["=>"], "leanOp")
-  -- NON-VACUITY FOR THIS CASE SPECIFICALLY: a rule that simply returned every
-  -- `<` and `>` to `leanOp` would pass everything above. The relation case
-  -- asserts the opposite on a bare `<` and `>`, and this pins that the two
-  -- coexist on ONE line rather than in two happily separate fixtures.
-  local both = op_groups("example : n > m ∧ (fun x => x) 1 < 9 := by omega", { ">", "<", "=>" })
-  expect.equality(both["<"], "leanPropOp")
-  expect.equality(both[">"], "leanPropOp")
+  -- Bare `<`/`>` are `leanOp` too now: relations were pink briefly and Dan
+  -- reverted it. So this case no longer distinguishes bare from compound by
+  -- GROUP, and asserting that would be vacuous. What still has to hold is
+  -- that the compound is never SPLIT -- the `<` of `=>` must not be a
+  -- separate item from the rest of it -- which the `∧` on the same line
+  -- keeps honest by proving the pink rule is live in this buffer at all.
+  local both = op_groups("example : n > m ∧ (fun x => x) 1 < 9 := by omega", { ">", "<", "=>", "∧" })
+  expect.equality(both["<"], "leanOp")
+  expect.equality(both[">"], "leanOp")
   expect.equality(both["=>"], "leanOp")
+  expect.equality(both["∧"], "leanPropOp")
 end
 
 -- ── the token handler: which tokens get split, and which are refused ───
@@ -791,6 +798,19 @@ NS["@lsp.type.keyword.lean is never touched"] = function()
     return "none"
   end)()]])
   expect.equality(got, "none")
+end
+
+-- lean.nvim gives `(`, `[`, `⦃` and `#[` a `leanEncl` region with
+-- `matchgroup=leanDelim` and omits `{`…`}`, so braces rendered as nothing
+-- while parens rendered as `leanDelim`. Dan noticed on the glass. We add the
+-- missing region in after/syntax/lean.vim; this pins that all four agree,
+-- and would fail if upstream's region were ever removed under us.
+NS["operators: braces are delimiters, exactly like parens"] = function()
+  local got = op_groups("theorem t {a : Nat} (b : Nat) : a = a := rfl",
+    { "{", "}", "(", ")" })
+  for _, ch in ipairs({ "{", "}", "(", ")" }) do
+    expect.equality(ch .. " " .. tostring(got[ch]), ch .. " leanDelim")
+  end
 end
 
 return T

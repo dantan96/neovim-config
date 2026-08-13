@@ -989,14 +989,16 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
   -- day passed anyway, because "unequal" was all they checked. It was found
   -- by looking at the screen, which is not a thing a suite can do.
   --
-  -- MEASURED TODAY, so the floor is a fact and not a guess:
-  --   hyp/dat  85     h0 maroon    vs  m  flamingo   <- the tightest
-  --   hyp/srt 168     h0 maroon    vs  G  magenta
-  --   dat/srt 173     m  flamingo  vs  G  magenta
-  -- 60 sits between the rejected 40 and the tightest live 85. A recolour is
-  -- free above it; a recolour that puts two of these three back into one
-  -- pale pink fails here, by name, with the number.
-  local GAP = 60
+  -- MEASURED, so the floor is a fact and not a guess. After the fifth retune
+  -- put data locals on `#ffa8ff` light magenta:
+  --   hyp/dat 111     h0 maroon         vs  m  light magenta
+  --   hyp/srt 168     h0 maroon         vs  G  magenta
+  --   dat/srt  73     m  light magenta  vs  G  magenta   <- the tightest
+  -- 55 is 15 above the rejected pair's 40 and 18 below the tightest live 73,
+  -- which is about as symmetric as those two facts allow. A recolour is free
+  -- above it; one that puts two of these three back into a single pale pink
+  -- fails here, by name, with the number.
+  local GAP = 55
   for _, pair in ipairs({ { "hyp", "dat" }, { "hyp", "srt" }, { "dat", "srt" } }) do
     local a, b = pair[1], pair[2]
     local gap = H.hex_gap(got.fgs[a], got.fgs[b])
@@ -1221,9 +1223,11 @@ T["lean"]["highlights: tactics are split off the keyword purple"] = function()
   expect.no_equality(got.tac.fg, got.kw.fg)
   -- ...and far enough apart to read as a split rather than as two shades of
   -- one purple, which is what the complaint was. `#89b4fa` blue against
-  -- `#cba6f7` mauve measures 194 today. The hex itself is NOT pinned: which
+  -- `#cba6f7` mauve measures 83 today — the two are close in red and blue and
+  -- separate almost entirely in green, which is why "unequal" was never a
+  -- sufficient statement of the split. The hex itself is NOT pinned: which
   -- colour tactics take is Dan's to change without breaking a test.
-  expect.equality(H.hex_gap(got.tac.fg, got.kw.fg) >= 60, true)
+  expect.equality(H.hex_gap(got.tac.fg, got.kw.fg) >= 55, true)
   -- Bold, and DELIBERATELY exempt from the retune's "no bold on a loud
   -- colour" sweep below. Put to Dan explicitly, because bright-plus-bold on
   -- something this frequent is the shape he had just corrected; he said keep
@@ -1371,8 +1375,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     end
     local family = { data_former = M.palette.data_former,
                      data_sort = M.palette.data_sort,
-                     data_sort_local = M.palette.data_sort_local,
-                     prop_former = M.palette.prop_former }
+                     data_sort_local = M.palette.data_sort_local }
     local family_pink = {}
     for k, hex in pairs(family) do
       family_pink[k] = magenta(hex)
@@ -1392,25 +1395,28 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- says the same thing without the pin.
   --
   -- Today's set, for the record and not as an assertion:
-  --   @lean.data.former        a type constructor   (4th retune)
+  --   @lean.data.element.local a datum you bound     (5th retune)
+  --   @lean.data.former        a type constructor
   --   @lean.data.former.class  Group, Monoid
   --   @lean.data.sort.auto     the alarm recolour
   --   @lean.data.sort.class
   --   @lean.data.sort.local    a type variable
   --   @lean.prop               the world anchor
-  --   @lean.prop.former        a predicate
   -- `@lean.prop.element.local` is deliberately NOT in it: hypotheses left the
-  -- pale pink because it had become near-indistinguishable from flamingo data
-  -- locals for `h` and `m` in one binder list.
+  -- pale pink because it had become near-indistinguishable from the data
+  -- locals for `h` and `m` in one binder list. `@lean.prop.former` left it in
+  -- the FIFTH retune, for electric blue.
   expect.equality(#got.pink >= 3, true)
   -- EMPTY, and that is the assertion. Dan has rejected bold-on-bright twice;
   -- `data.former` was the last holdout and its bold came off, leaving the
   -- underline as its only extra marker.
   expect.equality(got.bold, {})
-  -- The cell Dan named, because the sweep above would also pass if
-  -- `prop.former` had quietly stopped being pink at all. Membership, not the
-  -- hex: WHICH pink is his to change.
-  expect.equality(vim.tbl_contains(got.pink, "@lean.prop.former"), true)
+  -- ONE NAMED MEMBER, so the sweep cannot go vacuous by every cell quietly
+  -- leaving the family. `data.sort.local` is the cell Dan named for magenta
+  -- by name — `α`, `G` — and is the most stable claim in the palette;
+  -- `prop.former` used to be asserted here and is exactly the wrong choice,
+  -- because he then moved predicates to electric blue.
+  expect.equality(vim.tbl_contains(got.pink, "@lean.data.sort.local"), true)
   expect.equality(got.prop_former.italic, true)
   expect.equality(got.prop_former.bold, nil)
   expect.equality(got.cls.italic, true)
@@ -1423,20 +1429,23 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- The underline instruction 5 also asked for, and it is a CELL style, not
   -- the `imported` flag — see the precedence case above.
   expect.equality(got.data_former.underline, true)
-  -- THE TYPE-LEVEL FAMILY: FOUR SHADES OF ONE HUE. Dan withdrew "teal for
-  -- prop.former" in favour of his earlier "a lighter shade of the
-  -- data.former / data.sort hue". "One family" is exactly the property a
-  -- later single-cell edit would break without any other case noticing, so
-  -- it is asserted — but as the property and not as four hexes:
-  --   ONE FAMILY  every member satisfies the `magenta` predicate defined in
-  --               the child above, which is stated there in terms of what it
-  --               accepts and what it rejects;
-  --   FOUR SHADES all four are distinct values.
-  -- FOURTH RETUNE: `data_former` left the shared magenta for the sort-atom
-  -- HotPink, so `Set` and `Type*` read as one thing; it stayed in the family
-  -- and stopped colliding with `data_sort_local`, which is exactly the pair
-  -- of facts the two assertions below state.
-  for _, k in ipairs({ "data_former", "data_sort", "data_sort_local", "prop_former" }) do
+  -- THE DATA-WORLD TYPE LEVEL: THREE SHADES OF ONE HUE. "One family" is
+  -- exactly the property a later single-cell edit would break without any
+  -- other case noticing, so it is asserted — but as the property and not as
+  -- a list of hexes:
+  --   ONE FAMILY   every member satisfies the `magenta` predicate defined in
+  --                the child above, which is stated there in terms of what it
+  --                accepts and what it rejects;
+  --   THREE SHADES all three are distinct values.
+  --
+  -- IT WAS FOUR, AND `prop_former` LEFT — recorded rather than repaired,
+  -- because it was instructed. The family was `data.former` / `data.sort` /
+  -- `data.sort.local` / `prop.former` while a predicate was "a lighter shade
+  -- of the data.former hue"; the fifth retune moved predicates to `#00bfff`
+  -- electric blue, which is not a magenta by any reading. So the invariant is
+  -- now about the DATA world's type level, and `prop.former`'s own style is
+  -- asserted above by attribute rather than by family.
+  for _, k in ipairs({ "data_former", "data_sort", "data_sort_local" }) do
     expect.equality({ k, got.family_pink[k] }, { k, true })
   end
   local seen = {}
