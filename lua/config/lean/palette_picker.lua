@@ -227,7 +227,9 @@ local function clamp01(x)
 end
 
 --- @param hex string `#rrggbb`
---- @return number, number, number each 0..1
+--- @return number r 0..1
+--- @return number g 0..1
+--- @return number b 0..1
 local function hex_rgb(hex)
   local s = tostring(hex):gsub("^#", "")
   if #s ~= 6 then
@@ -246,7 +248,12 @@ local function rgb_hex(r, g, b)
   )
 end
 
---- @return number h 0..1, number s 0..1, number l 0..1
+--- One `@return` PER VALUE. A single line naming three types declares ONE
+--- return, and every `return h, s, l` below is then a `redundant-return-value`
+--- against an annotation that is simply wrong.
+--- @return number h 0..1
+--- @return number s 0..1
+--- @return number l 0..1
 local function rgb_hsl(r, g, b)
   local mx, mn = math.max(r, g, b), math.min(r, g, b)
   local l = (mx + mn) / 2
@@ -1266,7 +1273,7 @@ end
 --- Move a colour by one press.
 --- @param hex string|nil
 --- @param delta integer -1 or 1
---- @param ladder boolean walk the theme ramp instead of nudging lightness
+--- @param ladder boolean|nil walk the theme ramp instead of nudging lightness
 local function step_colour(hex, delta, ladder)
   hex = hex or "#cdd6f4"
   if ladder then
@@ -1694,7 +1701,8 @@ end
 local PREVIEW_W = 78
 local CONTROLS_MAX = 110
 
---- @return table controls config, table|nil preview config
+--- @return table controls the control pane's window config
+--- @return table|nil preview the preview's, or nil when folded away (item 5)
 local function geometry()
   local ui_w, ui_h = vim.o.columns, vim.o.lines
   local avail = ui_w - 6

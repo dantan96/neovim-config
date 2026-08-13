@@ -420,7 +420,13 @@ local function palette_key(spec, known)
 end
 
 --- Every group this module owns, as the picker's catalogue wants them.
----@return { [1]: string, [2]: string }[] name, gloss
+---
+--- ONE `@return` LINE, and the pair is described in prose. LuaCATS reads
+--- everything after the type as free-text description, so `[]  name, gloss`
+--- declares a type ALIAS called `gloss` that does not exist — the same trap
+--- highlights.lua's `M.load` records, arriving through the element names of
+--- a tuple rather than through a second return.
+---@return { [1]: string, [2]: string }[] entries each `{ group name, gloss }`
 function M.catalogue()
   local out = {}
   local names = vim.tbl_keys(M.groups())
