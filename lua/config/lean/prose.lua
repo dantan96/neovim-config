@@ -119,6 +119,68 @@ end
 
 M.conceal_delimiters = conceal_delimiters
 
+---Every prose block in the buffer, as 0-indexed inclusive row ranges.
+---
+---The parser is the source of truth rather than a line scan: prose quotes Lean
+---code, so `/-` and `-/` occur inside blocks and a scan would mis-pair them.
+---Returns an empty list when the parser is unavailable, so callers can treat
+---"no prose" and "no grammar" the same way.
+---@param buf integer?
+---@return { first: integer, last: integer }[]
+function M.blocks(buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+  local out = {}
+  if not ensure_registered() then
+    return out
+  end
+  local ok, parser = pcall(vim.treesitter.get_parser, buf, LANG)
+  if not ok or not parser then
+    return out
+  end
+  local trees = parser:parse()
+  if not trees or not trees[1] then
+    return out
+  end
+  local q_ok, query = pcall(vim.treesitter.query.parse, LANG, "((module_doc_comment) @c)")
+  if not q_ok then
+    return out
+  end
+  for _, node in query:iter_captures(trees[1]:root(), buf) do
+    local first, _, last, last_col = node:range()
+    -- A node ending at column 0 of the next row does not occupy that row.
+    if last_col == 0 and last > first then
+      last = last - 1
+    end
+    out[#out + 1] = { first = first, last = last }
+  end
+  table.sort(out, function(a, b)
+    return a.first < b.first
+  end)
+  return out
+end
+
+---Headings inside the prose, in buffer order.
+---
+---Scanned from the block text rather than queried from the markdown trees: an
+---injected tree per block means a query would have to be run per block anyway,
+---and ATX headings are unambiguous at the start of a line.
+---@param buf integer?
+---@return { row: integer, level: integer, text: string }[]
+function M.headings(buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+  local out = {}
+  for _, block in ipairs(M.blocks(buf)) do
+    local lines = vim.api.nvim_buf_get_lines(buf, block.first, block.last + 1, false)
+    for i, line in ipairs(lines) do
+      local hashes, text = line:match("^(#+)%s+(.+)$")
+      if hashes then
+        out[#out + 1] = { row = block.first + i - 1, level = #hashes, text = text }
+      end
+    end
+  end
+  return out
+end
+
 ---@param buf integer?
 ---@return boolean
 function M.is_on(buf)
