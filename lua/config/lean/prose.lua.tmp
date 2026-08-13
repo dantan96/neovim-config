@@ -90,7 +90,7 @@ function M.define_field_hl()
   -- captures the doc-comment node as `@lean.prose`; this gives it body-text
   -- colour and takes the italic off, because italic is doing other work in this
   -- palette (it means "bound here") and a page of italic paragraphs is tiring.
-  vim.api.nvim_set_hl(0, "@lean.prose", { fg = "#ff0000", italic = false })
+  vim.api.nvim_set_hl(0, "@lean.prose", { fg = "#bac2de", italic = false })
 
   -- ONE BACKGROUND PER PILL. markview draws `padding_left`/`padding_right`
   -- around inline code as separate virtual-text chunks carrying
@@ -107,12 +107,8 @@ function M.define_field_hl()
         -- NOT `default = true`: catppuccin already defines this group, and a
         -- default definition of an existing group is silently a no-op. That is
         -- what made the first attempt at this change nothing at all.
-        -- Through `hl.to_set_spec`: what `nvim_get_hl` returns is a
-        -- DIFFERENT keyset from what `nvim_set_hl` accepts, and feeding one
-        -- to the other is the mismatch lua/config/hl.lua exists to fix.
-        local spec = require("config.hl").to_set_spec(cur)
-        spec.bg = chip.bg
-        vim.api.nvim_set_hl(0, g, spec)
+        cur.bg = chip.bg
+        vim.api.nvim_set_hl(0, g, cur)
       end
     end
   end
