@@ -379,15 +379,35 @@ local GLOSS = {
 --- Reverse-mapped from the hex rather than recorded alongside it: the specs
 --- above are written as `{ fg = p.deeppink }` and there is exactly one table
 --- to keep true that way.
+---
+--- THE REVERSE MAP IS NOT INJECTIVE, and both collisions are deliberate:
+--- `rainbow[3]` is the same `#f9e2af` as `p.yellow` (a path and a proof never
+--- share a line) and `rainbow[6]` is the same `#cba6f7` as `p.mauve`. So a
+--- caller that KNOWS the slot passes it, and the search is only the fallback
+--- — otherwise `@lean.path.f6` reported `p.mauve`, which is true of the hex
+--- and false about where the edit goes. The sorted walk is the second half of
+--- the same point: `pairs` order is not stable, so an ambiguous hex would
+--- otherwise name a different key on different runs.
 ---@param spec vim.api.keyset.highlight
+---@param known string|nil the key the caller already knows
 ---@return string|nil
-local function palette_key(spec)
+local function palette_key(spec, known)
+  if known then
+    return known
+  end
   local want = spec.fg or spec.sp
   if type(want) ~= "string" then
     return nil
   end
+  local keys = {}
   for k, v in pairs(M.palette) do
-    if v == want then
+    if type(v) == "string" then
+      keys[#keys + 1] = k
+    end
+  end
+  table.sort(keys)
+  for _, k in ipairs(keys) do
+    if M.palette[k] == want then
       return k
     end
   end
@@ -407,17 +427,18 @@ function M.catalogue()
   table.sort(names)
   local specs = M.groups()
   for _, name in ipairs(names) do
-    local gloss = GLOSS[name]
-    if not gloss then
-      -- The one family this module BUILDS rather than lists: path components
-      -- are generated in a loop off `M.palette.rainbow`, so there is no entry
-      -- to hang a gloss on and the honest description is the position.
-      local kind, n = name:match("^@lean%.path%.([cf])(%d+)$")
-      if kind then
-        gloss = ("module path component %s%s"):format(n, kind == "f" and ", the final one (bold)" or "")
-      end
+    local gloss, slot = GLOSS[name], nil
+    -- The one family this module BUILDS rather than lists: path components
+    -- are generated in a loop off `M.palette.rainbow`, so there is no entry
+    -- to hang a gloss on and the honest description is the position — which
+    -- is also the palette key, and known here rather than searched for.
+    local kind, n = name:match("^@lean%.path%.([cf])(%d+)$")
+    if kind then
+      gloss = gloss
+        or ("module path component %s%s"):format(n, kind == "f" and ", the final one (bold)" or "")
+      slot = "rainbow[" .. n .. "]"
     end
-    local pkey = palette_key(specs[name])
+    local pkey = palette_key(specs[name], slot)
     out[#out + 1] = { name, (gloss or "") .. (pkey and ("  · via p." .. pkey) or "") }
   end
   -- The syntax groups that LINK here. Listed because they are separately

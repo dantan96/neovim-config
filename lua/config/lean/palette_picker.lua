@@ -701,11 +701,21 @@ end
 
 --- What a row can be matched against by `/` — item 4. Everything visible on
 --- it, so "the pink one" is findable by its gloss and not only by its name.
+--- Built by APPENDING, never as a table literal: `{ row.label, row.target,
+--- … }` leaves a nil HOLE at index 1 for a row with no label, and
+--- `table.concat` raises on it. That raise happens inside `render`, i.e.
+--- inside a redraw, so the symptom is the picker going blank rather than any
+--- message — found by driving the TUI, not by reading this back.
 local function haystack(row)
-  local bits = { row.label, row.target, row.gloss, row.attr }
+  local bits = {}
+  for _, k in ipairs({ "label", "target", "gloss", "attr" }) do
+    if type(row[k]) == "string" then
+      bits[#bits + 1] = row[k]
+    end
+  end
   if row.entry then
-    bits[#bits + 1] = row.entry.name
-    bits[#bits + 1] = row.entry.gloss
+    bits[#bits + 1] = row.entry.name or ""
+    bits[#bits + 1] = row.entry.gloss or ""
   end
   return table.concat(bits, " "):lower()
 end
@@ -789,7 +799,21 @@ end
 
 -- ── rendering ──────────────────────────────────────────────────────────
 
+-- The footers are a HINT, not the legend — item 8. One string long enough to
+-- hold every key overflows the pane and gets centre-clipped at both ends,
+-- which loses keys; splitting it across two footers only made the clip
+-- happen twice, and at 80×24 the second one lost `x/X c` from its middle.
+-- `?` opens the full legend, which is also where every key added since can
+-- be discovered.
+local CONTROLS_FOOTER = " j/k · h/l · ? keys "
+local PREVIEW_FOOTER = " ? for every key "
+
+
 local BAR = "███"
+--- Its DISPLAY width. `#BAR` is 9 — three characters of three bytes each —
+--- and using it in a column budget silently overstated the prefix by six,
+--- which at 80x24 dropped the hex column that would have fitted.
+local BARW = 3
 
 --- Cut `text` to at most `w` display columns, on a character boundary.
 --- Descriptions are the first thing to go when the pane is narrow: a
@@ -887,11 +911,16 @@ local function render_controls()
   end
 
   --- Emit one row: a fixed prefix, then as much description as still fits.
+  --- A gloss needs ROOM TO BE A WORD. Measured at 80x24: two columns were
+  --- left after the prefix, so every description rendered as a single letter
+  --- (`a`, `A`) hanging off the end of the row — which is not a short
+  --- description, it is a rendering artefact that looks like one.
+  local GLOSS_MIN = 6
   local function row_line(prefix, gloss, spans)
     local text = prefix
     if gloss and gloss ~= "" then
       local room = W - vim.fn.strdisplaywidth(prefix) - 1
-      local cut = fit(gloss, room)
+      local cut = room >= GLOSS_MIN and fit(gloss, room) or ""
       if cut ~= "" then
         spans[#spans + 1] = { #prefix + 1, #prefix + 1 + #cut, "Comment" }
         text = prefix .. " " .. cut
@@ -913,6 +942,15 @@ local function render_controls()
   -- push the gloss (item 6) off the pane on its own; anything longer is cut
   -- by `fit`, which is the same treatment the gloss gets.
   local NW = name_width(S.rows, math.max(20, W - 34))
+  -- WHICH COLUMNS FIT. At 80x24 the control pane is 38 and the prefix alone
+  -- is 43, so the row used to be clipped by the window edge mid-word — which
+  -- reads as a broken widget, and which is the narrow half of item 7. The
+  -- optional columns are therefore DROPPED in increasing order of value: the
+  -- ladder name first (it reads `custom` for half the palette now), then the
+  -- hex. What is left always fits.
+  local base = 2 + LW + 1 + BARW + 1
+  local show_hex = W >= base + 8
+  local show_rung = W >= base + 8 + 9
 
   -- Where each row actually landed. The real cursor is parked on the
   -- selected row so Neovim scrolls the list for us, and that used to be
@@ -931,13 +969,18 @@ local function render_controls()
       put(fit("  " .. row.text, W), { { 2, 2 + #row.text, "Title" } })
     elseif row.kind == "colour" then
       local hex = row.get()
-      local prefix, spans = seg({
+      local parts = {
         { cur, 2, selhl },
         { (row.indent and "  " or "") .. row.label, LW + 1, sel and "Title" or nil },
         { BAR .. " ", nil, swatch(hex) },
-        { tostring(hex) .. " ", nil },
-        { ladder_name(hex), 9 },
-      })
+      }
+      if show_hex then
+        parts[#parts + 1] = { tostring(hex) .. " ", nil }
+      end
+      if show_rung then
+        parts[#parts + 1] = { ladder_name(hex), 9 }
+      end
+      local prefix, spans = seg(parts)
       row_line(prefix, row.gloss, spans)
     elseif row.kind == "bool" then
       local v = row.get()
@@ -965,16 +1008,19 @@ local function render_controls()
       local eff = eff_of(e.name)
       local hex = hexof(eff.fg)
       local mark = e.overridden and "●" or "·"
-      local prefix, spans = seg({
+      local gparts = {
         { cur, 2, selhl },
         { mark .. " ", nil, e.overridden and "DiagnosticWarn" or "Comment" },
         -- `@lean.ns.prefix` sets no `fg` ON PURPOSE, so its swatch is blank
         -- and its hex column reads `—`. That is the group being honest about
         -- painting an underline and nothing else, not a missing value.
         { hex and (BAR .. " ") or "    ", nil, hex and swatch(hex) or nil },
-        { hex or "—", 8 },
-        { e.name, NW + 1, sel and "Title" or nil },
-      })
+      }
+      if W >= 6 + 8 + NW then
+        gparts[#gparts + 1] = { hex or "—", 8 }
+      end
+      gparts[#gparts + 1] = { e.name, NW + 1, sel and "Title" or nil }
+      local prefix, spans = seg(gparts)
       row_line(prefix, e.gloss, spans)
     elseif row.kind == "attr" then
       local eff = row.eff or {}
@@ -1014,8 +1060,17 @@ local function render_controls()
   end
 
   put("")
-  if S.status ~= "" then
-    put("  " .. fit(S.status, W - 2), { { 2, 400, "DiagnosticInfo" } })
+
+  -- THE STATUS GOES IN THE FOOTER, not at the bottom of the buffer. Measured
+  -- at 200×50 with the widened palette: the list is 42 rows in a 42-row
+  -- window, so a status line appended after it is BELOW THE FOLD and never
+  -- seen — which would have made item 12's "r again to discard …" pre-flight
+  -- and item 16's gap reading invisible exactly when they matter. The footer
+  -- cannot scroll away. It is centre-clipped when too long (item 8), so it is
+  -- cut to fit first.
+  if S.win.controls and vim.api.nvim_win_is_valid(S.win.controls) then
+    local text = S.status ~= "" and (" " .. fit(S.status, W - 4) .. " ") or CONTROLS_FOOTER
+    pcall(vim.api.nvim_win_set_config, S.win.controls, { footer = text, footer_pos = "center" })
   end
 
   vim.bo[buf].modifiable = true
@@ -1374,9 +1429,21 @@ local function open_grid(title, current, on_pick)
   G.on_pick = on_pick
   G.title = title
 
+  -- Sized from the longest name present rather than fixed: the ladder's
+  -- rungs are short (`rosewater`) and the palette's own keys are not
+  -- (`data_element_local`), and a fixed 12 ran the second section's columns
+  -- into each other. Measured at 200x50 before the fix.
+  G.namew = 10
+  for _, c in ipairs(G.cells) do
+    G.namew = math.max(G.namew, vim.fn.strdisplaywidth(c[2]))
+  end
   G.cols = 4
-  local cellw = 22
+  local cellw = G.namew + 7
   local width = G.cols * cellw
+  while G.cols > 1 and width + 6 > vim.o.columns do
+    G.cols = G.cols - 1
+    width = G.cols * cellw
+  end
   local rows = math.ceil(#G.cells / G.cols) + 4
   local height = math.min(rows, vim.o.lines - 6)
   G.buf = vim.api.nvim_create_buf(false, true)
@@ -1473,7 +1540,7 @@ render_grid = function()
     for i = from, to do
       local hex, name = G.cells[i][1], G.cells[i][2]
       local sel = i == G.idx
-      local piece = (sel and "▸" or " ") .. BAR .. " " .. pad(name, 12) .. " "
+      local piece = (sel and "▸" or " ") .. BAR .. " " .. pad(name, G.namew) .. "  "
       local at = #text
       text = text .. piece
       spans[#spans + 1] = { at + 1, at + 1 + #BAR, swatch(hex) }
@@ -1656,15 +1723,6 @@ local function geometry()
   }
 end
 
--- The footers are a HINT, not the legend — item 8. One string long enough to
--- hold every key overflows the pane and gets centre-clipped at both ends,
--- which loses keys; splitting it across two footers only made the clip
--- happen twice, and at 80×24 the second one lost `x/X c` from its middle.
--- `?` opens the full legend, which is also where every key added since can
--- be discovered.
-local CONTROLS_FOOTER = " j/k · h/l · ? keys "
-local PREVIEW_FOOTER = " ? for every key "
-
 local function open_windows()
   local cfg, pcfg = geometry()
 
@@ -1778,7 +1836,7 @@ local KEYS = {
   { "x", "clear the override on this group" },
   { "X", "clear EVERY override (press twice)" },
   { "r", "restore the shipped palette (press twice)" },
-  { "s", "save both layers to " .. HL.state_path },
+  { "s", "save both layers to the JSON (`y` prints the SOURCE edit instead)" },
   { "y", "the exact edit that would put this row in SOURCE, in a scratch buffer" },
   { "LAYOUT" },
   { "p", "fold the preview away and see the real buffer repaint" },
@@ -1941,13 +1999,57 @@ local function keymaps()
       or ""
     relayout()
   end)
+  -- ITEM 4. A LIVE filter, not a prompt. `vim.ui.input` would have been two
+  -- lines shorter and is what the rest of this config reaches for, but it is
+  -- the wrong shape here twice over: it opens a float OVER the list you are
+  -- narrowing, and it shows you nothing until the whole string is committed.
+  -- `getcharstr` reads from the same typeahead that `feedkeys` writes to, so
+  -- the list narrows as you type AND the key is drivable from a script —
+  -- which is how it is verified.
   map("/", function()
-    vim.ui.input({ prompt = "filter: ", default = S.filter }, function(v)
-      S.filter = vim.trim(v or "")
+    local before, q = S.filter, S.filter
+    local function count()
+      local n = 0
+      for _, r in ipairs(S.rows) do
+        if r.kind ~= "head" then
+          n = n + 1
+        end
+      end
+      return n
+    end
+    while true do
+      S.filter = q
       S.cursor[S.mode] = 1
-      S.status = S.filter == "" and "" or ("filtering on %q — <BS> clears it"):format(S.filter)
       render()
-    end)
+      S.status = ("/%s█   %d row%s · <CR> keep · <Esc> cancel"):format(
+        q,
+        count(),
+        count() == 1 and "" or "s"
+      )
+      render()
+      local ok, ch = pcall(vim.fn.getcharstr)
+      if not ok or ch == "" or ch == "\r" or ch == "\n" then
+        break
+      elseif ch == "\27" then
+        q = before
+        break
+      elseif ch == "\8" or ch == "\127" or ch == vim.keycode("<BS>") then
+        -- One CHARACTER, not one byte. The names are ASCII but the glosses
+        -- are not, and rubbing out a third of a `→` leaves an invalid string
+        -- that matches nothing and reads as the filter having broken.
+        q = vim.fn.strcharpart(q, 0, math.max(0, vim.fn.strchars(q) - 1))
+      elseif #ch == 1 and ch:byte() < 32 then
+        break -- any other control key ends the filter rather than entering it
+      else
+        q = q .. ch
+      end
+    end
+    S.filter = q
+    S.cursor[S.mode] = 1
+    render()
+    S.status = q == "" and ""
+      or ("/%s — %d row%s · <BS> clears it"):format(q, count(), count() == 1 and "" or "s")
+    render()
   end)
   map("y", function()
     local row = S.rows[S.cursor[S.mode]]
@@ -1963,7 +2065,11 @@ local function keymaps()
     -- exact edit, routed by where the group is actually defined — this is
     -- purely the TUI knowing that exists.
     local lines = M.source_for(target)
-    close()
+    -- The picker STAYS OPEN behind this. Closing it first was the obvious
+    -- thing and it is wrong twice: this handler is a mapping on the control
+    -- buffer, so `close`'s `nvim_buf_delete(force)` deletes the buffer whose
+    -- mapping is mid-execution; and the answer to "where does this go in
+    -- source" is something you read and then carry on editing.
     local b = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(b, 0, -1, false, lines)
     vim.bo[b].filetype = "diff"
