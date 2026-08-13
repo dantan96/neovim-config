@@ -3377,4 +3377,69 @@ T["lean"]["multicursor's OperatorOpts fields are still optional"] = function()
   expect.equality(state, "patched")
 end
 
+-- `sorry` gets no underline: the warning is wanted, the squiggle is not,
+-- because the `leanSorryLike` background chip already says it. The filter is
+-- on the underline HANDLER rather than on `DiagnosticUnderlineWarn`, which
+-- would silence every warning in every language.
+T["lean"]["the sorry warning is matched, and only it"] = function()
+  local got = child.lua_get([[(function()
+    local S = require("config.lean.sorry_underline")
+    return {
+      lean      = S._is_sorry("declaration uses 'sorry'"),
+      backtick  = S._is_sorry("declaration uses `sorry`"),
+      unused    = S._is_sorry("unused variable `x`"),
+      mentions  = S._is_sorry("the sorry tactic closes any goal"),
+    }
+  end)()]])
+  expect.equality(got.lean, true)
+  expect.equality(got.backtick, true)   -- wording has moved across versions
+  -- NON-VACUITY: a filter that matched the bare word `sorry` would strip
+  -- underlines from real diagnostics that merely mention it.
+  expect.equality(got.unused, false)
+  expect.equality(got.mentions, false)
+end
+
+-- The wrapper itself: a sorry diagnostic must not reach the real handler,
+-- a real warning must, and the call must happen even when everything was
+-- filtered out -- `show` is also what CLEARS stale extmarks, so an early
+-- return would leave the squiggle painted after the sorry was filled in.
+T["lean"]["the underline handler drops sorries and still clears"] = function()
+  local got = child.lua_get([[(function()
+    require("config.lean.sorry_underline").setup()
+    local wrapped = vim.diagnostic.handlers.underline.show
+    local calls = {}
+    local sentinel = function(_, _, d) calls[#calls + 1] = d end
+
+    -- Re-point the INNER handler by wrapping the wrapper's target: stash the
+    -- real one, install the spy underneath, run, restore.
+    local real = vim.diagnostic.handlers.underline.show
+    vim.diagnostic.handlers.underline.show = wrapped
+    local saved = real
+    -- call the wrapper with a mixed list, spying via a replaced inner
+    package.loaded["config.lean.sorry_underline"] = nil
+    local S = require("config.lean.sorry_underline")
+    vim.diagnostic.handlers.underline.show = sentinel
+    S.setup()
+    vim.diagnostic.handlers.underline.show(1, 0, {
+      { message = "declaration uses 'sorry'" },
+      { message = "unused variable `x`" },
+    }, {})
+    vim.diagnostic.handlers.underline.show(1, 0, {
+      { message = "declaration uses 'sorry'" },
+    }, {})
+    vim.diagnostic.handlers.underline.show = saved
+
+    local first = calls[1] or {}
+    return {
+      kept = #first == 1 and first[1].message or "WRONG",
+      cleared_call_happened = #calls == 2,
+      cleared_empty = calls[2] ~= nil and #calls[2] == 0,
+    }
+  end)()]])
+  expect.equality(got.kept, "unused variable `x`")
+  -- The clearing call: filtered to nothing, but STILL forwarded.
+  expect.equality(got.cleared_call_happened, true)
+  expect.equality(got.cleared_empty, true)
+end
+
 return T

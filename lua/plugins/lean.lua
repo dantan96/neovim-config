@@ -155,6 +155,11 @@ local spec = {
     -- define none. It must also exist before the first Lean file is drawn,
     -- because after/syntax/lean.vim links into the groups it owns.
     require("config.lean.namespace_hl").setup()
+
+    -- No squiggle under `sorry`. The warning stays (it is what `\q` counts
+    -- and what satellite plots); only the underline goes, because the
+    -- `leanSorryLike` background chip already says it louder.
+    require("config.lean.sorry_underline").setup()
   end,
 
   config = function()
