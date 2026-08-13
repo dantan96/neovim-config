@@ -113,6 +113,10 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>a", desc = "Code action" },
     { mode = "n", keys = "<LocalLeader>f", desc = "References" },
     { mode = "n", keys = "<LocalLeader>b", desc = "Open book page" },
+    { mode = "n", keys = "<LocalLeader>p", desc = "Toggle prose rendering" },
+    { mode = "n", keys = "<LocalLeader>P", desc = "Cycle prose/code view" },
+    { mode = "n", keys = "<LocalLeader>o", desc = "Pick from the contents" },
+    { mode = "n", keys = "<LocalLeader>x", desc = "Reveal this exercise's solution" },
     { mode = "n", keys = "<LocalLeader>h", desc = "Toggle inlay hints" },
     { mode = "n", keys = "<LocalLeader>D", desc = "Declaration (parser/elaborator)" },
     { mode = "n", keys = "<LocalLeader>m", desc = "+module hierarchy" },
@@ -213,6 +217,89 @@ map("<LocalLeader>b", book.open, "Open book page")
 vim.api.nvim_buf_create_user_command(0, "LeanBook", book.open, {
   desc = "Open the rendered book page for this Lean file",
 })
+
+-- ── \p · render the prose inside `/-! -/` blocks ──────────────────────────
+-- The other half of \b: instead of sending the book to a browser, draw it in
+-- the buffer. See config.lean.prose for why this uses an 8.8 KB
+-- comments-only grammar and never turns on tree-sitter highlighting.
+local prose = require("config.lean.prose")
+map("<LocalLeader>p", prose.toggle, "Toggle prose rendering")
+vim.api.nvim_buf_create_user_command(0, "LeanProse", prose.toggle, {
+  desc = "Toggle Markdown rendering inside /-! -/ blocks",
+})
+-- The band behind each prose block is a proposal, not a decision: this
+-- re-colours every rendered buffer immediately, so values can be tried.
+vim.api.nvim_buf_create_user_command(0, "LeanProseField", function(opts)
+  prose.set_field(opts.args)
+end, {
+  nargs = "?",
+  complete = function()
+    return { "off", "#1a1a27", "#1c1c2b", "#11111a" }
+  end,
+  desc = "Re-colour or remove the prose background band",
+})
+local prose_buf = vim.api.nvim_get_current_buf()
+if prose.should_auto(prose_buf) then
+  -- Deferred: markview attaches extmarks, and doing that during ftplugin
+  -- sourcing races the first draw. The buffer id is captured rather than
+  -- passed as 0, which by then would mean whatever buffer is current.
+  vim.schedule(function()
+    if vim.api.nvim_buf_is_valid(prose_buf) then
+      prose.attach(prose_buf)
+    end
+  end)
+end
+
+-- ── notebook navigation over the prose blocks ─────────────────────────────
+local notebook = require("config.lean.notebook")
+map("]]", function()
+  notebook.jump_block(1)
+end, "Next prose block")
+map("[[", function()
+  notebook.jump_block(-1)
+end, "Previous prose block")
+map("gO", notebook.outline, "Contents of this section")
+map("<LocalLeader>o", notebook.pick_heading, "Pick from the contents")
+map("<LocalLeader>P", notebook.cycle_view, "Cycle prose/code view")
+vim.api.nvim_buf_create_user_command(0, "LeanNotebookView", function(opts)
+  notebook.set_view(opts.args ~= "" and opts.args or "both")
+end, {
+  nargs = "?",
+  complete = function()
+    return { "both", "code", "prose" }
+  end,
+  desc = "Show both prose and code, code only, or prose only",
+})
+
+-- ── exercises ─────────────────────────────────────────────────────────────
+-- Live from the server's `declaration uses `sorry`` warnings, so an exercise
+-- stops counting the moment its proof elaborates.
+local exercises = require("config.lean.exercises")
+map("]x", function()
+  exercises.jump(1)
+end, "Next unsolved exercise")
+map("[x", function()
+  exercises.jump(-1)
+end, "Previous unsolved exercise")
+map("<LocalLeader>x", exercises.reveal, "Reveal this exercise's solution")
+vim.api.nvim_buf_create_user_command(0, "LeanExercises", function()
+  vim.notify(exercises.status(0) or "lean exercises: nothing elaborated yet", vim.log.levels.INFO)
+end, { desc = "How many exercises remain in this file" })
+exercises.attach(prose_buf)
+
+-- Keep the cell view in step with edits.
+vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+  group = vim.api.nvim_create_augroup("LeanNotebook" .. prose_buf, { clear = true }),
+  buffer = prose_buf,
+  callback = function()
+    notebook.refresh(prose_buf)
+  end,
+})
+
+-- No `else` branch: markview's preview.condition (lua/plugins/markview.lua)
+-- gates attach AND refresh on `vim.b.lean_prose_on`, so a buffer that never
+-- asked is never serviced. A detach here instead of that gate was measured to
+-- lose the race — Mathlib docstrings drew 154 extmarks while the flag read off.
 
 -- ── \y · yank this file's module name ─────────────────────────────────────
 -- VS Code's `lean4.copyModuleName` (parity audit #10). `\y` rather than `\c`
