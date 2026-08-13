@@ -253,12 +253,21 @@ local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted",
 -- rule is not deleted — it is overruled where he overruled it, and the
 -- overrules are listed so nobody "fixes" them back:
 --
---   prop_element  #b4befe lavender -> #00b7ff ELECTRIC BLUE. His word, and
---                 his instruction to pick it by looking at a Mathlib screen
---                 rather than off a hex table. It is off-theme and it lands
---                 on ~32% of a Mathlib proof screen, which the rule above
---                 forbids. He asked for it anyway: "gross" was his verdict
---                 on the lavender. NOT BOLD.
+--   prop_element  #b4befe lavender -> #00bfff DeepSkyBlue. His word was
+--                 "eye-catching ELECTRIC BLUE, not bold", and his
+--                 instruction was to pick it by looking at a Mathlib screen
+--                 rather than off a hex table, because it lands on ~32% of a
+--                 Filter screen. Four candidates were rendered in one window
+--                 at font 13 and read off the glass: #1e90ff DodgerBlue sits
+--                 in `#89b4fa`'s family (the tactic blue, one word away on
+--                 every `rw [...]` line), #33ccff drifts toward `#89dceb`
+--                 sky, which is catppuccin's Operator and 118 cells of the
+--                 same screen. #00bfff is the one that separates from BOTH:
+--                 its red channel is 0 against sky's 137, and it is fully
+--                 saturated where the tactic blue is not. It is off-theme on
+--                 a frequent cell, which the rule above forbids; he asked
+--                 for it anyway ("gross" was his verdict on the lavender).
+--                 NOT BOLD.
 --   data_element_local  #a6e3a1 green -> #f2cdcd flamingo. Instructed. This
 --                 is the single commonest cell in the language, and flamingo
 --                 is catppuccin's own `Identifier`, i.e. the colour
@@ -340,7 +349,7 @@ local DEFAULTS = {
 
     -- Prop world. A proof, a proposition, a predicate.
     prop_element_local = "#f5c2e7", -- pink      — A HYPOTHESIS. `h0`, `h1`
-    prop_element = "#00b7ff", -- ELECTRIC BLUE — A CITED LEMMA. `mul_assoc`
+    prop_element = "#00bfff", -- DeepSkyBlue — A CITED LEMMA. `mul_assoc`
     prop_sort_local = "#ffc0cb", -- pinkPlain — a local `p : Prop` (rare; see below)
     prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
     prop_former_local = "#f5e0dc", -- rosewater — a local predicate `{s t : Set α}`
