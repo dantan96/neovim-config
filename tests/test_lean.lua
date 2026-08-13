@@ -1354,7 +1354,8 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     -- from `#f5c2e7` to `#eba0ac` maroon, because the pale pink had become
     -- near-indistinguishable from flamingo data locals for `h` and `m` in one
     -- binder list -- the distinction this palette exists to draw.
-    "@lean.prop.former",           -- #ffa8ff  a predicate
+    -- `@lean.prop.former` left this set: predicates took the electric blue
+    -- `#00bfff` that cited lemmas vacated when yellow moved onto them.
   })
   -- EMPTY, and that is the assertion. Dan has rejected bold-on-bright twice;
   -- `data.former` was the last holdout and its bold came off, leaving the
@@ -1362,7 +1363,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   expect.equality(got.bold, {})
   -- The cells Dan named, spelled out, because the sweep above would also
   -- pass if `prop.former` had quietly stopped being pink at all.
-  expect.equality(got.prop_former.fg, tonumber("ffa8ff", 16))
+  expect.equality(got.prop_former.fg, tonumber("00bfff", 16))
   expect.equality(got.prop_former.italic, true)
   expect.equality(got.prop_former.bold, nil)
   expect.equality(got.cls.italic, true)
@@ -1388,7 +1389,7 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     data_former = "#ff69b4",
     data_sort = "#cc44cc",
     data_sort_local = "#ff5fff",
-    prop_former = "#ffa8ff",
+    prop_former = "#00bfff",
   })
   -- The instruction was "same hex as `Type*`", so pin the actual identity
   -- rather than the literal: a later edit to `namespace_hl`'s hotpink that
@@ -1469,7 +1470,8 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
   -- mistake. OUT: `#b4befe` lavender (cited lemma -> electric blue),
   -- `#ff8c00` DarkOrange and `#a6e3a1` green (both cells moved into other
   -- families; green survives as rainbow position 3+1 in namespace_hl.lua).
-  -- IN: `#00b7ff` electric blue, `#f2cdcd` flamingo, `#ffa8ff` light magenta
+  -- IN: `#00bfff` electric blue on PREDICATES (it was on cited lemmas until
+  -- yellow took those), `#f2cdcd` flamingo on data locals
   -- and `#cc44cc` deep magenta. -3 +4 = 16.
   -- 15, not 16: `prop_element_local` moved onto `#eba0ac` maroon, which
   -- `data_former_local` already held. That was a deliberate merge -- the two

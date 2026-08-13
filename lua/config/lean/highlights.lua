@@ -354,7 +354,7 @@ local DEFAULTS = {
     prop_sort_local = "#ffc0cb", -- pinkPlain — a local `p : Prop` (rare; see below)
     prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
     prop_former_local = "#f5e0dc", -- rosewater — a local predicate `{s t : Set α}`
-    prop_former = "#ffa8ff", -- magenta·light — A PREDICATE. `Even`, `Antitone`
+    prop_former = "#00bfff", -- electric blue — A PREDICATE. `Even`, `Prime`, `Antitone`
 
     -- Data world.
     data_element_local = "#f2cdcd", -- flamingo  — A DATUM YOU BOUND. `m`, `n`
