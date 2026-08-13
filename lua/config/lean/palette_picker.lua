@@ -1782,8 +1782,8 @@ function M.run(argstr)
 end
 
 function M.setup()
-  vim.api.nvim_create_user_command("LeanPalette", function(o)
-    local err = M.run(o.args)
+  vim.api.nvim_create_user_command("LeanPalette", function(cmd)
+    local err = M.run(cmd.args)
     if err then
       vim.notify("LeanPalette: " .. err, vim.log.levels.ERROR)
     end
