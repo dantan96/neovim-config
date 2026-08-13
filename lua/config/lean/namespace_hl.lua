@@ -134,11 +134,32 @@ local M = {}
 --            is kept rather than deleted because `∀ ∃ λ` carry no token and
 --            are reached only from here, and because it stays one editable
 --            place if the distinction is ever wanted back.
+--
+-- ── THIRD RETUNE, 2026-08-13 (late) — TWO INSTRUCTIONS, BOTH LITERAL ────
+--
+--   BINDER KEYWORDS TAKE `#ff1493` DEEPPINK. Dan named the hex: it is what
+--   `@lean.prop.former` had, and that cell moved into the magenta family, so
+--   DeepPink was free. This is the SECOND time in two passes that a
+--   saturated off-theme hue has been put on `fun` / `have` / `with`
+--   (300/278/209 occurrences across MIL) after the previous pass took olive
+--   OFF them for being too frequent for exactly that. The difference is that
+--   this one was asked for by name; the olive was ours. Recorded rather than
+--   argued: if it reads as too much, it is one hex.
+--
+--   MODULE KEYWORDS ARE NO LONGER BOLD. Dan asked why they ever were, and
+--   there is no good answer — bold was invented in the last pass as the only
+--   thing separating them from `theorem` / `def` once both went mauve, which
+--   is a reason for the bold to exist and not a reason for anyone to want
+--   it. They are now indistinguishable from a declaration keyword, which is
+--   fine: `import` and `theorem` are never confused.
 M.palette = {
-  -- Every keyword. Module keywords take it BOLD (`import`, `namespace`,
-  -- `section`, `variable`), binder keywords plain — that is the whole
-  -- remaining split, and it is the one Dan asked for.
+  -- Every module and declaration keyword. No longer bold — see above.
   mauve = "#cba6f7",
+  -- The binder keywords: `fun`, `have`, `show`, `match`, and (through
+  -- after/syntax/lean.vim, because the server emits no token for them)
+  -- `∀ ∃ λ ↦`. Not bold: the standing rule is no bold on a bright hue and
+  -- this is the brightest hue in the file.
+  deeppink = "#ff1493",
   -- Separators only. spthy-colorscheme.lua `slateGrayPlain`, which does this
   -- same job there for brackets, colons and commas.
   slate = "#708090",
@@ -241,17 +262,18 @@ function M.groups()
   local p = M.palette
   local out = {
     -- Applied by THIS module at 129, to a token whose text is in M.KEYWORDS.
-    -- Bold is safe here: nothing sits above 129 to leak it under.
     --
-    -- Bold is also the ONLY thing separating a module keyword from a
-    -- declaration keyword now that both are mauve. Kept deliberately: Dan
-    -- asked for `import`/`section`/`variable`/`namespace` to be purple, not
-    -- for them to become indistinguishable from `theorem`.
-    ["@lean.path.keyword"] = { fg = p.mauve, bold = true },
-    -- NOT bold, and identical to `@lsp.type.keyword.lean` on purpose — see
-    -- the note on `olive` above. The mark this group paints is a visual
-    -- no-op today; it exists so the category stays addressable.
-    ["@lean.binder.keyword"] = { fg = p.mauve },
+    -- NO LONGER BOLD, third retune. Dan asked why it ever was; the honest
+    -- answer is that the previous pass invented the bold to keep `import`
+    -- distinguishable from `theorem` after moving both to mauve, which is
+    -- not a reason he ever asked for. `@lean.path.keyword` and
+    -- `@lean.path.floor` are now the same spec; both are kept because the
+    -- floor exists to carry NO attribute bits by contract (see below) and
+    -- collapsing them would re-open that trap the next time one gains one.
+    ["@lean.path.keyword"] = { fg = p.mauve },
+    -- DEEPPINK, third retune, by instruction. Was plain mauve, i.e. a visual
+    -- no-op; now it is the loudest thing on a proof line. Not bold.
+    ["@lean.binder.keyword"] = { fg = p.deeppink },
     -- `Type*`, `Sort`, `ℕ`, `ℝ`. Not bold: hot pink bold is the shouting the
     -- retune removed, and `Type*` measured 362 occurrences across MIL —
     -- more than `fun`.
@@ -268,7 +290,10 @@ function M.groups()
     -- module deliberately leaves alone. Setting only `fg` means a token that
     -- outranks us takes the whole appearance and we contribute nothing.
     ["@lean.path.floor"] = { fg = p.mauve },
-    ["@lean.binder.floor"] = { fg = p.mauve },
+    -- The binder floor follows the 129 group's HUE, or `fun` renders mauve
+    -- for the second or so before the server answers and then jumps to pink,
+    -- and renders mauve forever in a .lean file outside a Lake project.
+    ["@lean.binder.floor"] = { fg = p.deeppink },
 
     -- Token-free by measurement, so their attributes cannot leak: the server
     -- emits nothing at these columns at all.

@@ -117,10 +117,10 @@ local SPECIMEN = {
 local WHY = {
   ["{s t : Set α}"] = "α is a data sort; s and t are Prop formers — `Set α` IS `α → Prop`",
   ["def Evens"] = "a Set-valued definition: a former in the Prop world",
-  ["@[simp] theorem"] = "a simp lemma — the underline says simp already knows it",
+  ["@[simp] theorem"] = "@[simp] is deliberately UNMARKED — the tint was deleted",
   ["subset_antisymm"] = "h1 and h2 are proofs; s and t beside them are not",
   ["inv_eq_of_mul"] = "the binder list the palette exists for: G, a, b, h — three worlds",
-  ["mul_one"] = "cited lemmas: some are @[simp], some are not",
+  ["mul_one"] = "cited lemmas — the underline says Mathlib's, not yours",
   ["idPoly"] = "Sort u — genuinely undetermined, the third world",
   ["propext"] = "an axiom reference: it rests on nothing",
   ["sorry"] = "the one thing that must be impossible to miss",
@@ -355,12 +355,10 @@ local function generator_rows()
   end
   local rest = {
     head("ATTRIBUTE COLOURS · what the flags paint with"),
-    colour_row("simp bg", { "simp_bg" }, "'the automation knows about this'"),
     colour_row("alarm", { "alarm" }, "axioms and auto-bound implicits"),
     head("CHANNELS · one question each, so they decode independently"),
     bool_row("former → bold", { "channels", "former_bold" }, "the head of a type expression"),
     bool_row("local → italic", { "channels", "local_italic" }, "bound here, not imported"),
-    bool_row("simp → bg tint", { "channels", "simp_marker" }, "carries @[simp]"),
     enum_row(
       "imported → ",
       { "channels", "imported_underline" },

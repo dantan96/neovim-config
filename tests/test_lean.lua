@@ -980,8 +980,18 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
   -- onto the rare ones. A hypothesis is the single most frequent identifier
   -- in a proof and now takes a CALM pink; magenta went to the type variable,
   -- which Dan named for it.
+  --
+  -- THIRD RETUNE, AND THE ONE THING IN IT THAT MADE THIS CASE WORSE. `m` was
+  -- `#a6e3a1` green and is now `#f2cdcd` flamingo, by instruction. `h0` next
+  -- to it is `#f5c2e7`. Those are (245,194,231) and (242,205,205) — the same
+  -- pale warm pink to within ~26 in one channel, both italic, and this is
+  -- the exact binder list the whole palette exists to disambiguate. The
+  -- assertions below still pass, because "unequal" is all they ever checked.
+  -- Measured on rendered cells and reported; NOT quietly repaired, because
+  -- moving `h0` was not asked for. If it is to be fixed, `prop_element_local`
+  -- is the cell to move, not `data_element_local`.
   expect.equality(got.fgs.hyp, "#f5c2e7") -- h0, h1 — pink, calm
-  expect.equality(got.fgs.dat, "#a6e3a1") -- m     — green
+  expect.equality(got.fgs.dat, "#f2cdcd") -- m     — flamingo (third retune)
   expect.equality(got.fgs.srt, "#ff5fff") -- G, α  — magenta
   -- ...and pairwise distinct, stated separately so a future recolour that
   -- moves two of them onto one hue fails here and not only on the hexes.
@@ -1246,6 +1256,18 @@ T["lean"]["highlights: the underline precedence is imported < axiom < auto"] = f
       -- things nobody asked to distinguish.
       imported_former = styles(spec("function",
         { dataWorld = true, former = true, defaultLibrary = true })),
+      -- THE SCOPE PROOF MOVED CELLS IN THE THIRD RETUNE. `data.former` now
+      -- carries a straight underline of its OWN (CELL_STYLE — Dan asked for
+      -- "bold, underlined"), so an underline on it no longer proves anything
+      -- about the imported flag: widening the flag to every cell would leave
+      -- that reading unchanged. `data.sort` has no cell underline, so it is
+      -- the cell that can still fail. `Nat`, `Filter α` — imported, and must
+      -- come back bare.
+      imported_sort = styles(spec("type",
+        { dataWorld = true, sort = true, defaultLibrary = true })),
+      -- ...and `data.former` without the import, to show the underline it
+      -- does have is the CELL's and not the flag's.
+      local_former = styles(spec("function", { dataWorld = true, former = true })),
       axiom_only = styles(spec("axiom", prop)),
       imported_axiom = styles(spec("axiom", both)),
       imported_auto = styles(spec("variable",
@@ -1257,7 +1279,13 @@ T["lean"]["highlights: the underline precedence is imported < axiom < auto"] = f
   -- lost" and "nothing ever sets an underline" are the same observation.
   expect.equality(got.plain, "sp=nil")
   expect.equality(got.imported, "underline+sp=nil")
-  expect.equality(got.imported_former, "sp=nil")
+  -- THE SCOPE. An imported `data.sort` must be BARE — that is the assertion
+  -- that fails if `imported` is ever widened past `prop.element`.
+  expect.equality(got.imported_sort, "sp=nil")
+  -- `data.former` is underlined either way, and identically, because the
+  -- underline is the cell's own (third retune, instruction 5).
+  expect.equality(got.imported_former, "underline+sp=nil")
+  expect.equality(got.imported_former, got.local_former)
   expect.equality(got.axiom_only, "underdouble+sp=#f38ba8")
   -- ...and the collision. `Classical.choice` keeps "rests on nothing".
   expect.equality(got.imported_axiom, "underdouble+sp=#f38ba8")
@@ -1300,6 +1328,10 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     table.sort(bold)
     table.sort(pink)
     return { bold = bold, pink = pink,
+             family = { data_former = M.palette.data_former,
+                        data_sort = M.palette.data_sort,
+                        data_sort_local = M.palette.data_sort_local,
+                        prop_former = M.palette.prop_former },
              prop_former = vim.api.nvim_get_hl(0, { name = "@lean.prop.former", link = false }),
              data_former = vim.api.nvim_get_hl(0, { name = "@lean.data.former", link = false }),
              cls = vim.api.nvim_get_hl(0, { name = "@lean.data.former.class", link = false }) }
@@ -1311,18 +1343,21 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- other half of the retune ("I do love magenta and pink — we're gonna try
   -- to make sure those aren't too rare!").
   expect.equality(got.pink, {
+    "@lean.data.former",           -- #ff5fff  a type constructor  (BOLD, see below)
     "@lean.data.former.class",     -- #f38ba8  Group, Monoid
     "@lean.data.sort.auto",        -- #f38ba8  the alarm recolour
     "@lean.data.sort.class",       -- #f38ba8
     "@lean.data.sort.local",       -- #ff5fff  a type variable
     "@lean.prop",                  -- #ff1493  the world anchor
     "@lean.prop.element.local",    -- #f5c2e7  a hypothesis
-    "@lean.prop.former",           -- #ff1493  a predicate
+    "@lean.prop.former",           -- #ffa8ff  a predicate
   })
-  expect.equality(got.bold, {})
-  -- The two cells Dan named, spelled out, because the sweep above would also
+  -- THE ONE EXCEPTION, BY NAME. Instruction 5 of the third retune. Anything
+  -- else appearing here is the regression this case exists to catch.
+  expect.equality(got.bold, { "@lean.data.former #ff5fff" })
+  -- The cells Dan named, spelled out, because the sweep above would also
   -- pass if `prop.former` had quietly stopped being pink at all.
-  expect.equality(got.prop_former.fg, tonumber("ff1493", 16))
+  expect.equality(got.prop_former.fg, tonumber("ffa8ff", 16))
   expect.equality(got.prop_former.italic, true)
   expect.equality(got.prop_former.bold, nil)
   expect.equality(got.cls.italic, true)
@@ -1332,6 +1367,20 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
   -- be widened to every cell and nothing would notice.
   expect.equality(got.data_former.bold, true)
   expect.equality(got.data_former.italic, nil)
+  -- The underline instruction 5 also asked for, and it is a CELL style, not
+  -- the `imported` flag — see the precedence case above.
+  expect.equality(got.data_former.underline, true)
+  -- THE TYPE-LEVEL FAMILY, in four shades of one hue. Dan withdrew "teal for
+  -- prop.former" in favour of his earlier "a lighter shade of the
+  -- data.former / data.sort hue", so all four are magenta and the four are
+  -- pinned here because "one family" is exactly the property a later single-
+  -- cell edit would break without any other case noticing.
+  expect.equality(got.family, {
+    data_former = "#ff5fff",
+    data_sort = "#cc44cc",
+    data_sort_local = "#ff5fff",
+    prop_former = "#ffa8ff",
+  })
 end
 
 -- The failure that is invisible in review and fatal in use: a module with a
@@ -1387,7 +1436,7 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
       if not M.palette[k] then table.insert(missing, k) end
     end
     for k, v in pairs(M.palette) do
-      if k ~= "alarm" and k ~= "simp_bg" then distinct[v] = true end
+      if k ~= "alarm" then distinct[v] = true end
     end
     table.sort(bad); table.sort(missing)
     return { bad = bad, n = n, missing = missing, ndistinct = vim.tbl_count(distinct) }
@@ -1401,7 +1450,15 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
   -- variant repeats its partner wherever the two are not confusable), but a
   -- table that collapsed back toward a handful would be the rejected
   -- palette wearing more keys, and nothing else in the suite would notice.
-  expect.equality(got.ndistinct, 15)
+  --
+  -- 15 -> 16 IN THE THIRD RETUNE, and the arithmetic is written out because
+  -- a moved headline number with no explanation is indistinguishable from a
+  -- mistake. OUT: `#b4befe` lavender (cited lemma -> electric blue),
+  -- `#ff8c00` DarkOrange and `#a6e3a1` green (both cells moved into other
+  -- families; green survives as rainbow position 3+1 in namespace_hl.lua).
+  -- IN: `#00b7ff` electric blue, `#f2cdcd` flamingo, `#ffa8ff` light magenta
+  -- and `#cc44cc` deep magenta. -3 +4 = 16.
+  expect.equality(got.ndistinct, 16)
 end
 
 -- ╭──────────────────────────────────────────────────────────────────────╮
