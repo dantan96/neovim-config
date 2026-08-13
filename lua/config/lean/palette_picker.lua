@@ -58,14 +58,18 @@
 --     REFERENCE to one does, which is why the specimen cites `propext`.
 --
 -- ─────────────────────────────────────────────────────────────────────────
--- KEYS
+-- KEYS — `?` inside the picker is the authoritative list (see `KEYS`)
 -- ─────────────────────────────────────────────────────────────────────────
---   j / k      move          h / l      adjust value under cursor
---   <Space>    toggle        <CR>       type an exact value (hex, etc.)
+--   j / k      move                     /   filter the list
+--   h / l      LIGHTNESS ∓ 4%           H / L   walk catppuccin's ladder
+--   <Space>    toggle                   <CR>    swatch grid (or edit a group)
+--   u          undo                     <C-r>   redo
 --   g          generator mode           G   groups mode
---   x          clear this override      X   clear every override
+--   x          clear this override      X   clear every override (twice)
 --   s          save (persists to stdpath("data")/lean-palette.json)
---   r          restore defaults         q / <Esc>  close
+--   y          the source edit for this row, in a scratch buffer
+--   p          fold the preview away and watch the real buffer repaint
+--   r          restore defaults (twice) q / <Esc>  close      ?  every key
 --
 -- Saving writes both layers; lua/plugins/themes.lua reads them back on the
 -- next start via `highlights.setup({ load_saved = true })`.
@@ -181,7 +185,140 @@ local function ladder_name(hex)
   return "custom"
 end
 
-local function ladder_step(hex, delta)
+-- ── how far apart two colours are ──────────────────────────────────────
+-- Sum of the three channel deltas, the same metric tests/helpers.lua
+-- `H.hex_gap` uses, for the same reasons: no colour-space library, monotone
+-- in the thing being asked about, and every number reproducible by hand.
+
+--- @return integer 0 identical, 765 black-to-white
+local function hex_gap(a, b)
+  local function ch(s, i)
+    return tonumber(tostring(s):sub(i, i + 1), 16) or 0
+  end
+  local d = 0
+  for _, i in ipairs({ 2, 4, 6 }) do
+    d = d + math.abs(ch(a, i) - ch(b, i))
+  end
+  return d
+end
+
+-- ── HSL, because `h`/`l` used to DESTROY an off-ladder colour ───────────
+-- MEASURED, and this is the bug the whole key layout below exists to fix:
+-- with the cursor on `data_element_local` (`#ffa8ff`), one `l` produced
+-- `#f5e0dc` — rosewater, LADDER[1] — and one further `h` produced `#11111b`.
+-- The old `ladder_step` had to FIND the current hex among the rungs to walk
+-- from it, and half the palette is now off the ladder, so its `not idx`
+-- fallback returned an end of the list. The loss was silent, instant, on the
+-- primary adjust key, and unrecoverable.
+--
+-- So the two jobs are split and neither can lose a value:
+--
+--   h / l   lightness ∓/± 4% in HSL. Defined for ANY hex, on or off the
+--           ladder, and reversible: it is "a bit lighter", which is the
+--           commonest thing to want and was previously impossible.
+--   H / L   the ladder walk, from the NEAREST rung. An off-ladder hex now
+--           steps to the neighbour of the rung it most resembles rather
+--           than to the top of the list. (Before this, `H`/`L` were silent
+--           duplicates of `h`/`l` — `adjust`'s `big` argument was only ever
+--           read by a `number` row kind that no longer exists.)
+
+local function clamp01(x)
+  return math.max(0, math.min(1, x))
+end
+
+--- @param hex string `#rrggbb`
+--- @return number, number, number each 0..1
+local function hex_rgb(hex)
+  local s = tostring(hex):gsub("^#", "")
+  if #s ~= 6 then
+    return 0, 0, 0
+  end
+  return (tonumber(s:sub(1, 2), 16) or 0) / 255,
+    (tonumber(s:sub(3, 4), 16) or 0) / 255,
+    (tonumber(s:sub(5, 6), 16) or 0) / 255
+end
+
+local function rgb_hex(r, g, b)
+  return ("#%02x%02x%02x"):format(
+    math.floor(clamp01(r) * 255 + 0.5),
+    math.floor(clamp01(g) * 255 + 0.5),
+    math.floor(clamp01(b) * 255 + 0.5)
+  )
+end
+
+--- @return number h 0..1, number s 0..1, number l 0..1
+local function rgb_hsl(r, g, b)
+  local mx, mn = math.max(r, g, b), math.min(r, g, b)
+  local l = (mx + mn) / 2
+  if mx == mn then
+    return 0, 0, l -- grey: hue is undefined, and 0 is as good as any
+  end
+  local d = mx - mn
+  local s = l > 0.5 and d / (2 - mx - mn) or d / (mx + mn)
+  local h
+  if mx == r then
+    h = (g - b) / d + (g < b and 6 or 0)
+  elseif mx == g then
+    h = (b - r) / d + 2
+  else
+    h = (r - g) / d + 4
+  end
+  return h / 6, s, l
+end
+
+local function hsl_rgb(h, s, l)
+  if s == 0 then
+    return l, l, l
+  end
+  local function hue(p, q, t)
+    t = t % 1
+    if t < 1 / 6 then
+      return p + (q - p) * 6 * t
+    elseif t < 1 / 2 then
+      return q
+    elseif t < 2 / 3 then
+      return p + (q - p) * (2 / 3 - t) * 6
+    end
+    return p
+  end
+  local q = l < 0.5 and l * (1 + s) or l + s - l * s
+  local p = 2 * l - q
+  return hue(p, q, h + 1 / 3), hue(p, q, h), hue(p, q, h - 1 / 3)
+end
+
+--- Lightness ± `delta` (a fraction of the full 0..1 range), preserving hue
+--- and saturation. Exposed for the tests: this is the function that must
+--- never turn a hand-picked colour into a different one.
+--- @param hex string `#rrggbb`
+--- @param delta number e.g. 0.04
+--- @return string `#rrggbb`
+function M.nudge(hex, delta)
+  if type(hex) ~= "string" or not hex:match("^#%x%x%x%x%x%x$") then
+    return hex
+  end
+  local h, s, l = rgb_hsl(hex_rgb(hex))
+  return rgb_hex(hsl_rgb(h, s, clamp01(l + delta)))
+end
+
+--- The ladder rung a hex most resembles. Total: every hex has a nearest
+--- rung, so the walk always has somewhere honest to start.
+--- @return integer index into LADDER
+function M.nearest_rung(hex)
+  local best, bestd = 1, math.huge
+  for i, e in ipairs(LADDER) do
+    local d = hex_gap(hex, e[2])
+    if d < bestd then
+      best, bestd = i, d
+    end
+  end
+  return best
+end
+
+--- Walk the ladder. An exact rung moves one place; anything else moves to
+--- the neighbour of the rung it is CLOSEST to, so the first press of a walk
+--- costs at most the distance to that rung and never the whole list.
+--- @return string `#rrggbb`
+function M.ladder_step(hex, delta)
   local idx
   for i, e in ipairs(LADDER) do
     if e[2]:lower() == tostring(hex):lower() then
@@ -190,10 +327,19 @@ local function ladder_step(hex, delta)
     end
   end
   if not idx then
-    return LADDER[delta > 0 and 1 or #LADDER][2]
+    -- NOT `LADDER[1]`: that was the data loss. Land on the nearest rung
+    -- first, then step, so `l` on `#ffa8ff` reaches pink's neighbour.
+    idx = M.nearest_rung(hex)
+    return LADDER[(idx - 1 + delta) % #LADDER + 1][2]
   end
   return LADDER[(idx - 1 + delta) % #LADDER + 1][2]
 end
+
+local ladder_step = M.ladder_step
+
+--- The lightness step `h`/`l` takes. 4% of the full range: small enough that
+--- a press is a nudge and not a decision, large enough to be visible.
+local NUDGE = 0.04
 
 -- ── swatch groups ──────────────────────────────────────────────────────
 
@@ -231,6 +377,9 @@ local S = {
   win = {},
   ns = vim.api.nvim_create_namespace("LeanPalettePicker"),
   status = "",
+  filter = "", -- item 4: `/` narrows the list
+  compact = false, -- item 5: preview folded away, the real buffer visible
+  pending = nil, -- item 12: which destructive key is armed
 }
 
 local function o()
@@ -246,7 +395,60 @@ local function get_path(p)
   return cur
 end
 
+-- ── undo ───────────────────────────────────────────────────────────────
+-- The other half of item 1's wound: before this, nothing in the picker could
+-- take back the last thing you did, so a colour lost to a stray keypress was
+-- lost. Both layers are snapshotted — the generator inputs and the override
+-- table — because that is exactly the pair `save` writes, so the ring needs
+-- no state model of its own.
+--
+-- THE RESTORE GOES THROUGH THE MODULE'S OWN MUTATORS, and that is not
+-- ceremony. Assigning `HL.overrides = snap` and repainting would bypass
+-- `restore_baseline`, so a group whose override the undo removes would keep
+-- the hand-set colour instead of falling back to the theme's own — a wrong
+-- undo, which is worse than no undo. Clear-then-set is the only shape that
+-- gets the baseline machinery to run.
+
+local RING = 40 -- entries; a snapshot is two small tables
+
+local undo_ring, redo_ring = {}, {}
+
+local function snapshot()
+  return { inputs = vim.deepcopy(HL.opts), overrides = vim.deepcopy(HL.overrides) }
+end
+
+local function restore(snap)
+  for _, name in ipairs(vim.tbl_keys(HL.overrides)) do
+    if snap.overrides[name] == nil then
+      HL.clear_override(name)
+    end
+  end
+  for name, spec in pairs(snap.overrides) do
+    HL.set_override(name, vim.deepcopy(spec))
+  end
+  HL.apply(vim.deepcopy(snap.inputs))
+end
+
+--- Record the state a mutation is about to leave behind. Called from the
+--- few choke points every mutation passes through, NOT from the key
+--- handlers: `x`, `X`, `r` and `<CR>` do not go through `adjust`, and an
+--- undo that covers only the arrow keys would leave exactly the destructive
+--- ones unrecoverable.
+local function checkpoint()
+  undo_ring[#undo_ring + 1] = snapshot()
+  if #undo_ring > RING then
+    table.remove(undo_ring, 1)
+  end
+  redo_ring = {}
+end
+
+--- @return integer, integer how many steps back and forward are available
+function M._rings()
+  return #undo_ring, #redo_ring
+end
+
 local function set_path(p, v)
+  checkpoint()
   local inputs = vim.deepcopy(o())
   local cur = inputs
   for i = 1, #p - 1 do
@@ -265,11 +467,18 @@ local function head(text)
   return { kind = "head", text = text }
 end
 
-local function colour_row(label, path, gloss)
+--- `target` is the name `:LeanPalette set|source` knows this row by. It is
+--- the last path component and not the label, because a channel's label is
+--- prose (`local → italic`) and its target is an identifier
+--- (`local_italic`) — `y` (item 13) has to hand the second one to
+--- `M.source_for`, and guessing it back out of the label is not possible.
+local function colour_row(label, path, gloss, indent)
   return {
     kind = "colour",
     label = label,
     gloss = gloss,
+    indent = indent,
+    target = path[#path],
     get = function()
       return get_path(path)
     end,
@@ -284,6 +493,7 @@ local function bool_row(label, path, gloss)
     kind = "bool",
     label = label,
     gloss = gloss,
+    target = path[#path],
     get = function()
       return get_path(path)
     end,
@@ -299,6 +509,7 @@ local function enum_row(label, path, choices, gloss)
     label = label,
     gloss = gloss,
     choices = choices,
+    target = path[#path],
     get = function()
       return get_path(path)
     end,
@@ -344,14 +555,94 @@ local HUE_GLOSS = {
   kind_class = "a class — Group, Monoid, Ring",
 }
 
+-- ── the order the hues are shown in ────────────────────────────────────
+-- ALPHABETICAL DESTROYED THE GRID IT IS A VIEW OF (item 15). The palette is
+-- organised as world × level × locality, and sorting by name put
+-- `prop_element_local` (a hypothesis) sixteen rows away from
+-- `data_element_local` (a datum) — the two cells the whole palette exists to
+-- separate, and the pair you most need to see side by side.
+--
+-- FALLS BACK RATHER THAN DROPS. `hues` is arbitrary-keyed on purpose: a key
+-- this version has never heard of must still get a row, so anything the
+-- layout does not claim lands under OTHER, in sorted order.
+local WORLD_ORDER = { "prop", "data", "poly" }
+local LEVEL_ORDER = { "element", "sort", "former" }
+local WORLD_HEAD = {
+  prop = "PROP · proofs, statements and predicates",
+  data = "DATA · values, types and type formers",
+  poly = "POLY · sort-polymorphic — genuinely undetermined",
+}
+
 local function generator_rows()
-  local rows = { head("HUES · which question does colour answer?") }
-  -- Sorted, so the list does not reshuffle between renders when a hue is
-  -- added: Lua's pairs() order is not stable across tables.
-  local names = vim.tbl_keys(o().hues)
-  table.sort(names)
-  for _, n in ipairs(names) do
-    rows[#rows + 1] = colour_row(n, { "hues", n }, HUE_GLOSS[n] or "")
+  local rows = {}
+  local hues = o().hues
+  local left = {}
+  for k in pairs(hues) do
+    left[k] = true
+  end
+  local function take(k, indent)
+    if left[k] then
+      left[k] = nil
+      rows[#rows + 1] = colour_row(k, { "hues", k }, HUE_GLOSS[k] or "", indent)
+    end
+  end
+  for _, w in ipairs(WORLD_ORDER) do
+    local before = #rows
+    rows[#rows + 1] = head(WORLD_HEAD[w])
+    for _, lv in ipairs(LEVEL_ORDER) do
+      take(w .. "_" .. lv)
+      -- The `_local` variant indented under its partner: "the imported one
+      -- and the one you bound" is a pair, and reading it as a pair is the
+      -- point of the indent.
+      take(w .. "_" .. lv .. "_local", true)
+    end
+    if #rows == before + 1 then
+      rows[before + 1] = nil -- a world with no cells gets no heading
+    end
+  end
+  local kinds = {}
+  for k in pairs(left) do
+    if k:match("^kind_") then
+      kinds[#kinds + 1] = k
+    end
+  end
+  table.sort(kinds)
+  if #kinds > 0 then
+    rows[#rows + 1] = head("KINDS · what a declaration IS, across all worlds")
+    for _, k in ipairs(kinds) do
+      take(k)
+    end
+  end
+  -- ANCHORS last and under their own heading (item 10). They are not
+  -- parents of anything: `data` names `@lean.data` and feeds nothing else,
+  -- and sitting at the top of a flat list directly above `data_element` it
+  -- read as the parent of the twenty-one cells below it. They must stay
+  -- DEFINED — `define_grid` paints them and a group with no `fg` renders
+  -- colourless (B1) — so they are moved, not dropped.
+  local anchors = {}
+  for _, w in ipairs(WORLD_ORDER) do
+    if left[w] then
+      anchors[#anchors + 1] = w
+    end
+  end
+  local other = {}
+  for k in pairs(left) do
+    if not vim.tbl_contains(anchors, k) then
+      other[#other + 1] = k
+    end
+  end
+  table.sort(other)
+  if #other > 0 then
+    rows[#rows + 1] = head("OTHER · hue keys this layout does not know")
+    for _, k in ipairs(other) do
+      take(k)
+    end
+  end
+  if #anchors > 0 then
+    rows[#rows + 1] = head("ANCHORS · name @lean.<world> and feed nothing else")
+    for _, k in ipairs(anchors) do
+      take(k)
+    end
   end
   local rest = {
     head("ATTRIBUTE COLOURS · what the flags paint with"),
@@ -378,7 +669,7 @@ end
 local function groups_rows()
   local rows = { head("EVERY GROUP · ● overridden   · generated   <CR> to edit") }
   for _, e in ipairs(HL.catalogue()) do
-    rows[#rows + 1] = { kind = "group", entry = e }
+    rows[#rows + 1] = { kind = "group", entry = e, target = e.name }
   end
   return rows
 end
@@ -408,14 +699,62 @@ local function group_rows()
   return rows
 end
 
+--- What a row can be matched against by `/` — item 4. Everything visible on
+--- it, so "the pink one" is findable by its gloss and not only by its name.
+local function haystack(row)
+  local bits = { row.label, row.target, row.gloss, row.attr }
+  if row.entry then
+    bits[#bits + 1] = row.entry.name
+    bits[#bits + 1] = row.entry.gloss
+  end
+  return table.concat(bits, " "):lower()
+end
+
+--- Keep only rows matching `S.filter`.
+---
+--- HEADINGS ARE DROPPED rather than kept-if-their-section-survives: a
+--- filtered list is a flat answer to a question, and a heading above a
+--- section whose other rows are hidden claims a structure that is not on
+--- screen. The filter's own heading says how many matched.
+local function apply_filter(rows)
+  if S.filter == "" then
+    return rows
+  end
+  local needle = S.filter:lower()
+  local out = {}
+  for _, r in ipairs(rows) do
+    if r.kind ~= "head" and haystack(r):find(needle, 1, true) then
+      out[#out + 1] = r
+    end
+  end
+  table.insert(out, 1, head(("/%s · %d match%s · / again to change, <BS> to clear"):format(S.filter, #out, #out == 1 and "" or "es")))
+  return out
+end
+
 local function build_rows()
   if S.mode == "generator" then
-    S.rows = generator_rows()
+    S.rows = apply_filter(generator_rows())
   elseif S.mode == "groups" then
-    S.rows = groups_rows()
+    S.rows = apply_filter(groups_rows())
   else
-    S.rows = group_rows()
+    S.rows = group_rows() -- eight attributes; nothing to search
   end
+  -- The cursor can be left past the end by anything that shortens the list —
+  -- `r` dropping a hue key, a filter, a mode with fewer rows. Clamped here
+  -- rather than at each of those sites, because a stale index does not error:
+  -- `S.rows[i]` is nil, `adjust` returns silently, and the picker reads as a
+  -- widget whose keys have stopped working.
+  local i = S.cursor[S.mode] or 1
+  if i > #S.rows then
+    i = #S.rows
+  end
+  while i >= 1 and S.rows[i] and S.rows[i].kind == "head" do
+    i = i + 1
+  end
+  if i > #S.rows then
+    i = #S.rows
+  end
+  S.cursor[S.mode] = math.max(1, i)
 end
 
 -- ── the effective spec for a group, as text ────────────────────────────
@@ -470,6 +809,60 @@ local function fit(text, w)
   return out
 end
 
+--- Pad to a DISPLAY width, not a byte count.
+---
+--- `("%-18s"):format("local → italic")` pads to eighteen BYTES, and `→` is
+--- three of them, so that row came out two columns short of every other one.
+--- The same trap in reverse is item 7: `%-10s` against a nineteen-character
+--- key does not truncate, it overflows, and every column after the label
+--- shifts right by nine.
+local function pad(s, w)
+  local n = vim.fn.strdisplaywidth(s)
+  return s .. string.rep(" ", math.max(0, w - n))
+end
+
+--- Assemble a row from `{ text, width, hl }` segments, returning the line
+--- and the BYTE spans its extmarks need. Written as a builder because the
+--- two indices genuinely differ — display columns decide the layout, byte
+--- offsets decide the marks — and every hand-computed `#cur + 18 + 1` in the
+--- old code was one multi-byte label away from painting the wrong span.
+local function seg(parts)
+  local text, spans = "", {}
+  for _, p in ipairs(parts) do
+    local s = p[2] and pad(p[1], p[2]) or p[1]
+    local from = #text
+    text = text .. s
+    if p[3] then
+      spans[#spans + 1] = { from, #text, p[3] }
+    end
+  end
+  return text, spans
+end
+
+--- The width the label column needs, computed from the longest label
+--- actually present rather than fixed at ten. `hues` is arbitrary-keyed, so
+--- a hardcoded width is wrong the moment the palette widens — which is
+--- exactly how it broke: the shipped keys are already nineteen characters.
+local function label_width(rows)
+  local w = 10
+  for _, r in ipairs(rows) do
+    if r.label then
+      w = math.max(w, vim.fn.strdisplaywidth(r.label) + (r.indent and 2 or 0))
+    end
+  end
+  return w
+end
+
+local function name_width(rows, cap)
+  local w = 12
+  for _, r in ipairs(rows) do
+    if r.entry then
+      w = math.max(w, vim.fn.strdisplaywidth(r.entry.name))
+    end
+  end
+  return math.min(w, cap)
+end
+
 local function render_controls()
   local buf = S.buf.controls
   if not (buf and vim.api.nvim_buf_is_valid(buf)) then
@@ -515,56 +908,74 @@ local function render_controls()
   )
   put("")
 
+  local LW = label_width(S.rows)
+  -- The name column is capped so that a long `@lsp.typemod.…` name cannot
+  -- push the gloss (item 6) off the pane on its own; anything longer is cut
+  -- by `fit`, which is the same treatment the gloss gets.
+  local NW = name_width(S.rows, math.max(20, W - 34))
+
+  -- Where each row actually landed. The real cursor is parked on the
+  -- selected row so Neovim scrolls the list for us, and that used to be
+  -- `S.cursor + 3` — a hardcoded count of the header lines above. Any row
+  -- added above the list (the filter's heading, a section heading) desyncs
+  -- it, and a desynced cursor does not error: the window scrolls to the
+  -- wrong place and the selection appears stuck.
+  S.rowline = {}
+
   for i, row in ipairs(S.rows) do
     local sel = (i == S.cursor[S.mode])
     local cur = sel and "▸ " or "  "
     local selhl = sel and "Special" or nil
+    S.rowline[i] = #lines + 1
     if row.kind == "head" then
       put(fit("  " .. row.text, W), { { 2, 2 + #row.text, "Title" } })
     elseif row.kind == "colour" then
       local hex = row.get()
-      local prefix = ("%s%-10s %s %s %-9s"):format(cur, row.label, BAR, hex, ladder_name(hex))
-      row_line(prefix, row.gloss, {
-        { 0, 2, selhl },
-        { 2, 12, sel and "Title" or nil },
-        { 13, 13 + #BAR, swatch(hex) },
+      local prefix, spans = seg({
+        { cur, 2, selhl },
+        { (row.indent and "  " or "") .. row.label, LW + 1, sel and "Title" or nil },
+        { BAR .. " ", nil, swatch(hex) },
+        { tostring(hex) .. " ", nil },
+        { ladder_name(hex), 9 },
       })
-    elseif row.kind == "number" then
-      local v = row.get()
-      local filled = math.floor(v * 16 + 0.5)
-      local bar = ("▓"):rep(filled) .. ("░"):rep(16 - filled)
-      local prefix = ("%s%-10s %s %.2f"):format(cur, row.label, bar, v)
-      row_line(prefix, row.gloss, { { 0, 2, selhl }, { 2, 12, sel and "Title" or nil } })
+      row_line(prefix, row.gloss, spans)
     elseif row.kind == "bool" then
       local v = row.get()
-      local prefix = ("%s%-18s %s"):format(cur, row.label, v and "[on] " or "[off]")
-      local at = #cur + 18 + 1
-      row_line(prefix, row.gloss, {
-        { 0, 2, selhl },
-        { 2, 20, sel and "Title" or nil },
-        { at, at + 5, v and "DiagnosticOk" or "Comment" },
+      local prefix, spans = seg({
+        { cur, 2, selhl },
+        { row.label, LW + 1, sel and "Title" or nil },
+        { v and "[on] " or "[off]", nil, v and "DiagnosticOk" or "Comment" },
       })
+      row_line(prefix, row.gloss, spans)
     elseif row.kind == "enum" then
       local v = row.get()
-      local prefix = ("%s%-18s %-13s"):format(cur, row.label, "[" .. v .. "]")
-      local at = #cur + 18 + 1
-      row_line(prefix, row.gloss, {
-        { 0, 2, selhl },
-        { 2, 20, sel and "Title" or nil },
-        { at, at + 13, v == "none" and "Comment" or "DiagnosticOk" },
+      local prefix, spans = seg({
+        { cur, 2, selhl },
+        { row.label, LW + 1, sel and "Title" or nil },
+        { "[" .. v .. "]", 13, v == "none" and "Comment" or "DiagnosticOk" },
       })
+      row_line(prefix, row.gloss, spans)
     elseif row.kind == "group" then
+      -- ITEM 6: the hex and the gloss were COMPUTED AND DISCARDED. Every
+      -- catalogue entry carries a gloss and `FOREIGN` carries hand-written
+      -- English for all of its groups, and a group row showed neither — so
+      -- the one mode that can reach every group was the one that told you
+      -- least about them.
       local e = row.entry
       local eff = eff_of(e.name)
       local hex = hexof(eff.fg)
       local mark = e.overridden and "●" or "·"
-      local prefix = ("%s%s %s %s"):format(cur, mark, hex and BAR or "   ", e.name)
-      put(fit(prefix, W), {
-        { 0, 2, selhl },
-        { 2, 2 + #mark, e.overridden and "DiagnosticWarn" or "Comment" },
-        { 3 + #mark, 3 + #mark + #BAR, hex and swatch(hex) or nil },
-        { 4 + #mark + #BAR, 400, sel and "Title" or nil },
+      local prefix, spans = seg({
+        { cur, 2, selhl },
+        { mark .. " ", nil, e.overridden and "DiagnosticWarn" or "Comment" },
+        -- `@lean.ns.prefix` sets no `fg` ON PURPOSE, so its swatch is blank
+        -- and its hex column reads `—`. That is the group being honest about
+        -- painting an underline and nothing else, not a missing value.
+        { hex and (BAR .. " ") or "    ", nil, hex and swatch(hex) or nil },
+        { hex or "—", 8 },
+        { e.name, NW + 1, sel and "Title" or nil },
       })
+      row_line(prefix, e.gloss, spans)
     elseif row.kind == "attr" then
       local eff = row.eff or {}
       local ovset = row.ov
@@ -589,12 +1000,13 @@ local function render_controls()
         val = eff[row.attr] and "[on] " or "[off]"
       end
       local sw = row.atype == "colour" and hexof(eff[row.attr]) or nil
-      local prefix = ("%s%-16s %s %-12s"):format(cur, row.attr, sw and BAR or "   ", val)
-      row_line(prefix, ovset and "set here" or "", {
-        { 0, 2, selhl },
-        { 2, 18, sel and "Title" or nil },
-        { 19, 19 + #BAR, sw and swatch(sw) or nil },
+      local prefix, spans = seg({
+        { cur, 2, selhl },
+        { row.attr, 17, sel and "Title" or nil },
+        { sw and (BAR .. " ") or "    ", nil, sw and swatch(sw) or nil },
+        { val, 12 },
       })
+      row_line(prefix, ovset and "set here" or "", spans)
       if ovset then
         marks[#marks + 1] = { #lines - 1, #prefix + 1, 400, "DiagnosticWarn" }
       end
@@ -694,9 +1106,9 @@ local function render()
   -- Keep the real cursor on the selected row so scrolling follows it.
   local win = S.win.controls
   if win and vim.api.nvim_win_is_valid(win) then
-    local target = S.cursor[S.mode] + 3
+    local target = (S.rowline or {})[S.cursor[S.mode]] or 1
     local n = vim.api.nvim_buf_line_count(S.buf.controls)
-    pcall(vim.api.nvim_win_set_cursor, win, { math.min(target, n), 0 })
+    pcall(vim.api.nvim_win_set_cursor, win, { math.max(1, math.min(target, n)), 0 })
   end
 end
 
@@ -705,6 +1117,50 @@ end
 local function selectable(i)
   local r = S.rows[i]
   return r and r.kind ~= "head"
+end
+
+--- ITEM 16 — the one question a palette editor is FOR: *are these two things
+--- far enough apart?* Answered for the row under the cursor, on the status
+--- line, without asking: the collisions in the shipped palette are
+--- deliberate and you should be able to see which ones you are standing on.
+---
+--- The gap is `tests/helpers.lua H.hex_gap`'s metric, deliberately, so the
+--- number on screen is the number the `two_le` floor is written against.
+--- Neighbours are the adjacent COLOUR rows, which after item 15 means the
+--- cells the grouping puts beside each other rather than whatever sorted
+--- next alphabetically.
+--- @return string
+local function colour_note(i)
+  local row = S.rows[i]
+  if not row or row.kind ~= "colour" then
+    return ""
+  end
+  local hex = tostring(row.get())
+  local same = {}
+  for j, r in ipairs(S.rows) do
+    if j ~= i and r.kind == "colour" and tostring(r.get()):lower() == hex:lower() then
+      same[#same + 1] = r.label
+    end
+  end
+  local function neighbour(dir)
+    local j = i + dir
+    while S.rows[j] do
+      if S.rows[j].kind == "colour" then
+        return hex_gap(hex, tostring(S.rows[j].get()))
+      end
+      j = j + dir
+    end
+    return nil
+  end
+  local up, down = neighbour(-1), neighbour(1)
+  local parts = {}
+  if up or down then
+    parts[#parts + 1] = ("gap %s↑ %s↓"):format(up or "—", down or "—")
+  end
+  if #same > 0 then
+    parts[#parts + 1] = "also " .. table.concat(same, ", ")
+  end
+  return table.concat(parts, " · ")
 end
 
 local function move(delta)
@@ -722,12 +1178,13 @@ local function move(delta)
     end
   end
   S.cursor[S.mode] = i
-  S.status = ""
+  S.status = colour_note(i)
   render()
 end
 
 --- Write one attribute of an override, preserving the rest of it.
 local function patch_override(name, key, value)
+  checkpoint()
   local _, ov = HL.inspect_group(name)
   local spec = vim.deepcopy(ov or {})
   if key == "underline style" then
@@ -751,16 +1208,31 @@ local function patch_override(name, key, value)
   end
 end
 
-local function adjust(delta, big)
+--- Move a colour by one press.
+--- @param hex string|nil
+--- @param delta integer -1 or 1
+--- @param ladder boolean walk the theme ramp instead of nudging lightness
+local function step_colour(hex, delta, ladder)
+  hex = hex or "#cdd6f4"
+  if ladder then
+    return ladder_step(hex, delta)
+  end
+  return M.nudge(hex, delta * NUDGE)
+end
+
+--- @param delta integer -1 or 1
+--- @param ladder boolean|nil `H`/`L`: walk the ladder rather than nudge.
+---   Named for what it does. Its predecessor was called `big` and was read
+---   by exactly one row kind, `number`, which had already been deleted with
+---   the blend — so `H`/`L` silently did what `h`/`l` did (item 14).
+local function adjust(delta, ladder)
   local row = S.rows[S.cursor[S.mode]]
   if not row then
     return
   end
+  S.status = ""
   if row.kind == "colour" then
-    row.set(ladder_step(row.get(), delta))
-  elseif row.kind == "number" then
-    local step = big and row.big or row.step
-    row.set(math.max(0, math.min(1, row.get() + delta * step)))
+    row.set(step_colour(row.get(), delta, ladder))
   elseif row.kind == "bool" then
     row.set(not row.get())
   elseif row.kind == "enum" then
@@ -774,12 +1246,12 @@ local function adjust(delta, big)
   elseif row.kind == "group" then
     -- h/l on the list is a shortcut for nudging that group's fg.
     local eff = eff_of(row.entry.name)
-    patch_override(row.entry.name, "fg", ladder_step(hexof(eff.fg) or "#cdd6f4", delta))
+    patch_override(row.entry.name, "fg", step_colour(hexof(eff.fg), delta, ladder))
   elseif row.kind == "attr" then
     local name = S.group_name
     local eff = row.eff or {}
     if row.atype == "colour" then
-      patch_override(name, row.attr, ladder_step(hexof(eff[row.attr]) or "#cdd6f4", delta))
+      patch_override(name, row.attr, step_colour(hexof(eff[row.attr]), delta, ladder))
     elseif row.atype == "bool" then
       patch_override(name, row.attr, not eff[row.attr])
     else
@@ -793,8 +1265,259 @@ local function adjust(delta, big)
       patch_override(name, "underline style", styles[(idx - 1 + delta) % #styles + 1])
     end
   end
-  S.status = ""
+  if S.status == "" then
+    S.status = colour_note(S.cursor[S.mode])
+  end
   render()
+end
+
+-- ── choosing a colour by looking at it ─────────────────────────────────
+-- ITEM 9. `<CR>` used to open `vim.ui.input` expecting `#rrggbb`, which is
+-- the worst possible input method for a visual decision. What replaces it is
+-- a grid of swatches: the 26 rungs of the theme's own ramp, and — more
+-- useful, and free — THE COLOURS ALREADY IN THIS PALETTE, which are the ones
+-- a new choice actually has to sit beside. `i` still types a hex, because
+-- that is literally how `#00bfff` was chosen and it must stay one key away.
+
+local G = {
+  open = false,
+  buf = nil,
+  win = nil,
+  cells = {}, -- { hex, name }
+  idx = 1,
+  cols = 1,
+  on_pick = nil,
+  title = "",
+  ns = vim.api.nvim_create_namespace("LeanPaletteSwatches"),
+}
+
+--- Every distinct colour currently in the palette, with what uses it. The
+--- second half of the grid, and the half that answers "what have I already
+--- got?" rather than "what does catppuccin have?".
+local function palette_cells()
+  local order, by_hex = {}, {}
+  local function note(hex, label)
+    if type(hex) ~= "string" or not hex:match("^#%x%x%x%x%x%x$") then
+      return
+    end
+    hex = hex:lower()
+    if not by_hex[hex] then
+      by_hex[hex] = label
+      order[#order + 1] = hex
+    end
+  end
+  local names = vim.tbl_keys(HL.opts.hues)
+  table.sort(names)
+  for _, k in ipairs(names) do
+    note(HL.opts.hues[k], k)
+  end
+  note(HL.opts.alarm, "alarm")
+  local ok, ns = pcall(require, "config.lean.namespace_hl")
+  if ok and type(ns) == "table" and type(ns.palette) == "table" then
+    local pnames = vim.tbl_keys(ns.palette)
+    table.sort(pnames)
+    for _, k in ipairs(pnames) do
+      note(ns.palette[k], "p." .. k)
+    end
+    for i, hex in ipairs(ns.palette.rainbow or {}) do
+      note(hex, "rainbow" .. i)
+    end
+  end
+  local out = {}
+  for _, hex in ipairs(order) do
+    out[#out + 1] = { hex, by_hex[hex] }
+  end
+  return out
+end
+
+local function close_grid()
+  G.open = false
+  if G.win and vim.api.nvim_win_is_valid(G.win) then
+    pcall(vim.api.nvim_win_close, G.win, true)
+  end
+  if G.buf and vim.api.nvim_buf_is_valid(G.buf) then
+    pcall(vim.api.nvim_buf_delete, G.buf, { force = true })
+  end
+  G.win, G.buf = nil, nil
+end
+
+local render_grid
+
+--- @param title string
+--- @param current string|nil the colour being replaced, so the grid opens on it
+--- @param on_pick fun(hex: string)
+local function open_grid(title, current, on_pick)
+  G.cells = {}
+  for _, e in ipairs(LADDER) do
+    G.cells[#G.cells + 1] = { e[2], e[1] }
+  end
+  local seen = {}
+  for _, c in ipairs(G.cells) do
+    seen[c[1]:lower()] = true
+  end
+  local extra = {}
+  for _, c in ipairs(palette_cells()) do
+    if not seen[c[1]] then
+      seen[c[1]] = true
+      extra[#extra + 1] = c
+    end
+  end
+  G.split = #G.cells -- where the ladder ends and the palette's own begins
+  vim.list_extend(G.cells, extra)
+  G.idx = 1
+  for i, c in ipairs(G.cells) do
+    if current and c[1]:lower() == tostring(current):lower() then
+      G.idx = i
+      break
+    end
+  end
+  G.on_pick = on_pick
+  G.title = title
+
+  G.cols = 4
+  local cellw = 22
+  local width = G.cols * cellw
+  local rows = math.ceil(#G.cells / G.cols) + 4
+  local height = math.min(rows, vim.o.lines - 6)
+  G.buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[G.buf].bufhidden = "wipe"
+  G.win = vim.api.nvim_open_win(G.buf, true, {
+    relative = "editor",
+    width = math.min(width, vim.o.columns - 4),
+    height = math.max(6, height),
+    row = math.max(1, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.max(1, math.floor((vim.o.columns - width) / 2)),
+    style = "minimal",
+    border = "rounded",
+    title = " " .. title .. " ",
+    title_pos = "center",
+    footer = " hjkl move · <CR> pick · i type a hex · q cancel ",
+    footer_pos = "center",
+  })
+  vim.wo[G.win].wrap = false
+  G.open = true
+
+  local function map(lhs, fn)
+    vim.keymap.set("n", lhs, fn, { buffer = G.buf, nowait = true, silent = true })
+  end
+  local function shift(d)
+    G.idx = math.max(1, math.min(#G.cells, G.idx + d))
+    render_grid()
+  end
+  map("h", function()
+    shift(-1)
+  end)
+  map("l", function()
+    shift(1)
+  end)
+  map("k", function()
+    shift(-G.cols)
+  end)
+  map("j", function()
+    shift(G.cols)
+  end)
+  map("<Left>", function()
+    shift(-1)
+  end)
+  map("<Right>", function()
+    shift(1)
+  end)
+  map("<Up>", function()
+    shift(-G.cols)
+  end)
+  map("<Down>", function()
+    shift(G.cols)
+  end)
+  map("<CR>", function()
+    local hex = G.cells[G.idx] and G.cells[G.idx][1]
+    close_grid()
+    if hex then
+      on_pick(hex)
+    end
+  end)
+  map("i", function()
+    local start = G.cells[G.idx] and G.cells[G.idx][1] or "#"
+    close_grid()
+    vim.ui.input({ prompt = title .. " hex: ", default = start }, function(v)
+      if v and v:match("^#%x%x%x%x%x%x$") then
+        on_pick(v:lower())
+      elseif v and v ~= "" then
+        S.status = "not a hex colour: " .. v
+        render()
+      else
+        render()
+      end
+    end)
+  end)
+  map("q", function()
+    close_grid()
+    render()
+  end)
+  map("<Esc>", function()
+    close_grid()
+    render()
+  end)
+  render_grid()
+end
+
+render_grid = function()
+  if not (G.buf and vim.api.nvim_buf_is_valid(G.buf)) then
+    return
+  end
+  local lines, marks = {}, {}
+  local function flush(from, to, heading)
+    lines[#lines + 1] = "  " .. heading
+    marks[#marks + 1] = { #lines - 1, 0, 400, "Title" }
+    local text, spans = "", {}
+    local n = 0
+    for i = from, to do
+      local hex, name = G.cells[i][1], G.cells[i][2]
+      local sel = i == G.idx
+      local piece = (sel and "▸" or " ") .. BAR .. " " .. pad(name, 12) .. " "
+      local at = #text
+      text = text .. piece
+      spans[#spans + 1] = { at + 1, at + 1 + #BAR, swatch(hex) }
+      if sel then
+        spans[#spans + 1] = { at, at + 1, "Special" }
+        spans[#spans + 1] = { at + 1 + #BAR + 1, #text, "Title" }
+      end
+      n = n + 1
+      if n % G.cols == 0 or i == to then
+        lines[#lines + 1] = text
+        for _, s in ipairs(spans) do
+          marks[#marks + 1] = { #lines - 1, s[1], s[2], s[3] }
+        end
+        text, spans = "", {}
+      end
+    end
+  end
+  flush(1, G.split, "THE THEME'S LADDER")
+  if #G.cells > G.split then
+    lines[#lines + 1] = ""
+    flush(G.split + 1, #G.cells, "ALREADY IN THIS PALETTE")
+  end
+  lines[#lines + 1] = ""
+  local cur = G.cells[G.idx]
+  lines[#lines + 1] = ("  %s  %s"):format(cur and cur[1] or "", cur and cur[2] or "")
+  vim.bo[G.buf].modifiable = true
+  vim.api.nvim_buf_set_lines(G.buf, 0, -1, false, lines)
+  vim.bo[G.buf].modifiable = false
+  vim.api.nvim_buf_clear_namespace(G.buf, G.ns, 0, -1)
+  for _, m in ipairs(marks) do
+    if m[4] then
+      pcall(vim.api.nvim_buf_set_extmark, G.buf, G.ns, m[1], m[2], {
+        end_col = math.min(m[3], #(lines[m[1] + 1] or "")),
+        hl_group = m[4],
+      })
+    end
+  end
+  -- Keep the selected cell on screen.
+  for i, l in ipairs(lines) do
+    if l:find("▸", 1, true) then
+      pcall(vim.api.nvim_win_set_cursor, G.win, { i, 0 })
+      break
+    end
+  end
 end
 
 local function enter()
@@ -810,37 +1533,17 @@ local function enter()
     return
   end
   if row.kind == "colour" then
-    vim.ui.input({ prompt = row.label .. " hex: ", default = row.get() }, function(v)
-      if v and v:match("^#%x%x%x%x%x%x$") then
-        row.set(v)
-      elseif v then
-        S.status = "not a hex colour: " .. v
-      end
-      render()
-    end)
-    return
-  end
-  if row.kind == "number" then
-    vim.ui.input({ prompt = row.label .. ": ", default = tostring(row.get()) }, function(v)
-      local n = tonumber(v)
-      if n then
-        row.set(math.max(0, math.min(1, n)))
-      end
+    open_grid(row.label, row.get(), function(v)
+      row.set(v)
       render()
     end)
     return
   end
   if row.kind == "attr" and row.atype == "colour" then
     local eff = row.eff or {}
-    vim.ui.input({
-      prompt = S.group_name .. " " .. row.attr .. " hex: ",
-      default = hexof(eff[row.attr]) or "#",
-    }, function(v)
-      if v and v:match("^#%x%x%x%x%x%x$") then
-        patch_override(S.group_name, row.attr, v)
-      elseif v and v ~= "" then
-        S.status = "not a hex colour: " .. v
-      end
+    local name = S.group_name
+    open_grid(name .. " " .. row.attr, hexof(eff[row.attr]), function(v)
+      patch_override(name, row.attr, v)
       render()
     end)
     return
@@ -851,16 +1554,29 @@ end
 local function clear_one()
   local row = S.rows[S.cursor[S.mode]]
   local name = (row and row.kind == "group" and row.entry.name) or S.group_name
+  if name and HL.overrides[name] ~= nil then
+    checkpoint()
+  end
   if name and HL.clear_override(name) then
-    S.status = "cleared override on " .. name
+    S.status = "cleared override on " .. name .. " — u to undo"
   else
     S.status = "no override there"
   end
   render()
 end
 
+-- Defined further down, with the legend it closes; forward-declared because
+-- `close` must be able to take the overlay down with the picker and a stray
+-- float outliving its owner is how a "closed" picker keeps painting.
+local close_help
+
 local function close()
   S.open = false
+  S.pending = nil
+  close_grid()
+  if close_help then
+    close_help()
+  end
   for _, w in pairs(S.win) do
     if w and vim.api.nvim_win_is_valid(w) then
       pcall(vim.api.nvim_win_close, w, true)
@@ -883,52 +1599,104 @@ local function scratch()
   return b
 end
 
-local function open_windows()
-  local ui_w = vim.o.columns
-  local ui_h = vim.o.lines
-  local total = math.min(146, ui_w - 6)
-  -- The preview gets first claim on the width: it is the thing being judged,
-  -- and the longest specimen line is 73 columns. The control pane shrinks to
-  -- 38 before the preview gives anything up, and its descriptions are
-  -- truncated to fit rather than clipped mid-word by the window edge.
-  local left = math.max(38, math.min(66, total - 76))
-  local right = total - left - 2
-  local height = math.min(34, ui_h - 8)
-  local row = math.max(1, math.floor((ui_h - height) / 2) - 1)
-  local col = math.max(1, math.floor((ui_w - total) / 2))
+-- ── geometry ───────────────────────────────────────────────────────────
+-- ITEM 17. The caps were `min(146, columns - 6)` and `min(34, lines - 8)`,
+-- which on a 200×50 terminal drew a 146×34 dialog with a 49-row list
+-- scrolling inside 34 rows of it and 55 rows of screen unused. The caps
+-- existed because the preview's longest specimen line is 73 columns and more
+-- width buys the PREVIEW nothing — true, and the wrong conclusion: the extra
+-- width buys the CONTROL PANE the gloss back (items 6 and 7) and the extra
+-- height buys the list its missing rows. So the preview keeps its 78 and the
+-- control pane takes the rest, up to a width past which a line of prose
+-- stops being comfortable to read.
+--
+-- ITEM 5, the compact layout: the two floats covered columns 27–145 of a
+-- 200-column screen, i.e. the Mathlib buffer actually being judged was
+-- underneath them. `p` folds the preview away and parks the control pane
+-- against the right edge, so `h`/`l` repaints the real file in the open —
+-- `HL.apply` already ends in `refresh_live_buffers()`, so that repaint is
+-- free. The specimen is not thrown away: it is honest about being canned and
+-- it exercises the real generator, which is worth keeping for the times the
+-- picker is opened from a buffer that is not Lean at all.
+local PREVIEW_W = 78
+local CONTROLS_MAX = 110
 
-  S.buf.controls = scratch()
-  S.buf.preview = scratch()
-
-  S.win.controls = vim.api.nvim_open_win(S.buf.controls, true, {
+--- @return table controls config, table|nil preview config
+local function geometry()
+  local ui_w, ui_h = vim.o.columns, vim.o.lines
+  local avail = ui_w - 6
+  local height = math.max(6, ui_h - 8)
+  local row = math.max(0, math.floor((ui_h - height) / 2) - 1)
+  if S.compact then
+    local w = math.max(30, math.min(CONTROLS_MAX, math.floor(avail / 2)))
+    return {
+      relative = "editor",
+      width = w,
+      height = height,
+      row = row,
+      col = math.max(0, ui_w - w - 3),
+    }, nil
+  end
+  local left = math.max(38, math.min(CONTROLS_MAX, avail - PREVIEW_W - 2))
+  local right = math.max(20, math.min(PREVIEW_W, avail - left - 2))
+  local total = left + right + 2
+  local col = math.max(0, math.floor((ui_w - total) / 2))
+  return {
     relative = "editor",
     width = left,
     height = height,
     row = row,
     col = col,
-    style = "minimal",
-    border = "rounded",
-    title = " Lean palette ",
-    title_pos = "center",
-    footer = " j/k move · h/l adjust · <CR> exact ",
-    footer_pos = "center",
-  })
-  S.win.preview = vim.api.nvim_open_win(S.buf.preview, false, {
+  }, {
     relative = "editor",
     width = right,
     height = height,
     row = row,
     col = col + left + 2,
-    style = "minimal",
-    border = "rounded",
-    title = " preview ",
-    title_pos = "center",
-    -- Split across the two footers: one help string long enough to hold
-    -- every key overflows the pane and gets centre-clipped at BOTH ends,
-    -- which loses keys rather than merely crowding them.
-    footer = " g/G mode · x/X clear · s save · r reset · q quit ",
-    footer_pos = "center",
-  })
+  }
+end
+
+-- The footers are a HINT, not the legend — item 8. One string long enough to
+-- hold every key overflows the pane and gets centre-clipped at both ends,
+-- which loses keys; splitting it across two footers only made the clip
+-- happen twice, and at 80×24 the second one lost `x/X c` from its middle.
+-- `?` opens the full legend, which is also where every key added since can
+-- be discovered.
+local CONTROLS_FOOTER = " j/k · h/l · ? keys "
+local PREVIEW_FOOTER = " ? for every key "
+
+local function open_windows()
+  local cfg, pcfg = geometry()
+
+  S.buf.controls = scratch()
+  S.buf.preview = scratch()
+
+  S.win.controls = vim.api.nvim_open_win(
+    S.buf.controls,
+    true,
+    vim.tbl_extend("force", cfg, {
+      style = "minimal",
+      border = "rounded",
+      title = " Lean palette ",
+      title_pos = "center",
+      footer = CONTROLS_FOOTER,
+      footer_pos = "center",
+    })
+  )
+  if pcfg then
+    S.win.preview = vim.api.nvim_open_win(
+      S.buf.preview,
+      false,
+      vim.tbl_extend("force", pcfg, {
+        style = "minimal",
+        border = "rounded",
+        title = " preview ",
+        title_pos = "center",
+        footer = PREVIEW_FOOTER,
+        footer_pos = "center",
+      })
+    )
+  end
 
   for _, w in pairs(S.win) do
     vim.wo[w].wrap = false
@@ -938,8 +1706,10 @@ local function open_windows()
   -- rather than hiding its tail. Extmarks travel with the text when it
   -- wraps, so a token keeps its colour either way; a clipped line would
   -- silently drop tokens from view and make the preview a partial answer.
-  vim.wo[S.win.preview].wrap = true
-  vim.wo[S.win.preview].linebreak = true
+  if S.win.preview then
+    vim.wo[S.win.preview].wrap = true
+    vim.wo[S.win.preview].linebreak = true
+  end
   -- The control list is longer than the window once the palette widens past
   -- a handful of hues. Nothing else is needed to scroll it: `render()` puts
   -- the real cursor on the selected row, so Neovim keeps it in view — and
@@ -947,11 +1717,270 @@ local function open_windows()
   vim.wo[S.win.controls].scrolloff = 3
 end
 
+--- Move between the two layouts without tearing the picker down: the
+--- control window keeps its buffer, its keymaps and its cursor, so `p` is a
+--- view change and not a restart.
+local function relayout()
+  local cfg, pcfg = geometry()
+  if S.win.controls and vim.api.nvim_win_is_valid(S.win.controls) then
+    pcall(vim.api.nvim_win_set_config, S.win.controls, cfg)
+  end
+  if pcfg then
+    if not (S.win.preview and vim.api.nvim_win_is_valid(S.win.preview)) then
+      S.buf.preview = scratch()
+      S.win.preview = vim.api.nvim_open_win(
+        S.buf.preview,
+        false,
+        vim.tbl_extend("force", pcfg, {
+          style = "minimal",
+          border = "rounded",
+          title = " preview ",
+          title_pos = "center",
+          footer = PREVIEW_FOOTER,
+          footer_pos = "center",
+        })
+      )
+      vim.wo[S.win.preview].wrap = true
+      vim.wo[S.win.preview].linebreak = true
+      vim.wo[S.win.preview].cursorline = false
+    else
+      pcall(vim.api.nvim_win_set_config, S.win.preview, pcfg)
+    end
+  elseif S.win.preview and vim.api.nvim_win_is_valid(S.win.preview) then
+    pcall(vim.api.nvim_win_close, S.win.preview, true)
+    S.win.preview = nil
+    S.buf.preview = nil
+  end
+  render()
+end
+
+-- ── the legend ─────────────────────────────────────────────────────────
+-- ITEM 8. Every key, in one place, reachable from either pane.
+
+local KEYS = {
+  { "MOVE" },
+  { "j / k", "next / previous row" },
+  { "/", "filter the list; `/` with an empty answer clears it" },
+  { "<BS>", "clear the filter, or leave the attribute editor" },
+  { "MODES" },
+  { "g", "GENERATOR — the inputs the palette is assembled from" },
+  { "G", "GROUPS — every highlight group, including the ones outside the grid" },
+  { "<CR>", "on a group: edit its attributes.  on a colour: the swatch grid" },
+  { "CHANGE A COLOUR" },
+  { "h / l", "LIGHTNESS ∓ 4% — works on any colour, on the ladder or off it" },
+  { "H / L", "walk catppuccin's ladder, starting from the nearest rung" },
+  { "<CR>", "the swatch grid: the 26 rungs, then this palette's own colours" },
+  { "<Space>", "toggle a boolean, cycle an underline style" },
+  { "UNDO" },
+  { "u", "step back — covers h/l, <CR>, x, X and r alike" },
+  { "<C-r>", "step forward again" },
+  { "CLEAR AND SAVE" },
+  { "x", "clear the override on this group" },
+  { "X", "clear EVERY override (press twice)" },
+  { "r", "restore the shipped palette (press twice)" },
+  { "s", "save both layers to " .. HL.state_path },
+  { "y", "the exact edit that would put this row in SOURCE, in a scratch buffer" },
+  { "LAYOUT" },
+  { "p", "fold the preview away and see the real buffer repaint" },
+  { "?", "this" },
+  { "q / <Esc>", "close" },
+}
+
+local Hlp = { win = nil, buf = nil }
+
+-- Assignment, not `local function`: the name is declared up beside `close`,
+-- and a second `local` here would shadow it and leave that one nil forever.
+close_help = function()
+  if Hlp.win and vim.api.nvim_win_is_valid(Hlp.win) then
+    pcall(vim.api.nvim_win_close, Hlp.win, true)
+  end
+  Hlp.win, Hlp.buf = nil, nil
+end
+
+local function open_help()
+  if Hlp.win and vim.api.nvim_win_is_valid(Hlp.win) then
+    close_help()
+    return
+  end
+  local lines, marks = {}, {}
+  local width = 12
+  for _, k in ipairs(KEYS) do
+    width = math.max(width, vim.fn.strdisplaywidth(k[1]))
+  end
+  for _, k in ipairs(KEYS) do
+    if not k[2] then
+      if #lines > 0 then
+        lines[#lines + 1] = ""
+      end
+      lines[#lines + 1] = "  " .. k[1]
+      marks[#marks + 1] = { #lines - 1, 0, 400, "Title" }
+    else
+      local left = "  " .. pad(k[1], width + 2)
+      lines[#lines + 1] = left .. k[2]
+      marks[#marks + 1] = { #lines - 1, 2, #("  " .. k[1]), "Special" }
+      marks[#marks + 1] = { #lines - 1, #left, 400, "Comment" }
+    end
+  end
+  local w = 12
+  for _, l in ipairs(lines) do
+    w = math.max(w, vim.fn.strdisplaywidth(l) + 2)
+  end
+  w = math.min(w, vim.o.columns - 4)
+  local h = math.min(#lines, vim.o.lines - 4)
+  Hlp.buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(Hlp.buf, 0, -1, false, lines)
+  vim.bo[Hlp.buf].modifiable = false
+  vim.bo[Hlp.buf].bufhidden = "wipe"
+  Hlp.win = vim.api.nvim_open_win(Hlp.buf, true, {
+    relative = "editor",
+    width = w,
+    height = math.max(4, h),
+    row = math.max(0, math.floor((vim.o.lines - h) / 2) - 1),
+    col = math.max(0, math.floor((vim.o.columns - w) / 2)),
+    style = "minimal",
+    border = "rounded",
+    title = " :LeanPalette keys ",
+    title_pos = "center",
+  })
+  vim.wo[Hlp.win].wrap = false
+  local ns = vim.api.nvim_create_namespace("LeanPaletteHelp")
+  for _, m in ipairs(marks) do
+    pcall(vim.api.nvim_buf_set_extmark, Hlp.buf, ns, m[1], m[2], {
+      end_col = math.min(m[3], #(lines[m[1] + 1] or "")),
+      hl_group = m[4],
+    })
+  end
+  for _, lhs in ipairs({ "q", "<Esc>", "?", "<CR>" }) do
+    vim.keymap.set("n", lhs, close_help, { buffer = Hlp.buf, nowait = true, silent = true })
+  end
+end
+
+--- @return string[] the legend, for a test that every mapped key is in it
+function M._keys()
+  return vim.tbl_map(function(k)
+    return k[1]
+  end, KEYS)
+end
+
+-- ── undo, redo, and the two-press guard ────────────────────────────────
+
+local function undo()
+  local snap = table.remove(undo_ring)
+  if not snap then
+    S.status = "nothing to undo"
+    render()
+    return
+  end
+  redo_ring[#redo_ring + 1] = snapshot()
+  restore(snap)
+  S.status = ("undone — %d step%s back, %d forward"):format(
+    #undo_ring,
+    #undo_ring == 1 and "" or "s",
+    #redo_ring
+  )
+  render()
+end
+
+local function redo()
+  local snap = table.remove(redo_ring)
+  if not snap then
+    S.status = "nothing to redo"
+    render()
+    return
+  end
+  undo_ring[#undo_ring + 1] = snapshot()
+  restore(snap)
+  S.status = ("redone — %d back, %d forward"):format(#undo_ring, #redo_ring)
+  render()
+end
+
+--- What `r` and `X` are about to take, counted before they take it.
+--- @return integer hues, integer channels, integer overrides
+local function dirty()
+  local d = HL.defaults()
+  local hues, chans = 0, 0
+  for k, v in pairs(HL.opts.hues) do
+    if v ~= d.hues[k] then
+      hues = hues + 1
+    end
+  end
+  if HL.opts.alarm ~= d.alarm then
+    hues = hues + 1
+  end
+  for k, v in pairs(HL.opts.channels) do
+    if v ~= d.channels[k] then
+      chans = chans + 1
+    end
+  end
+  return hues, chans, vim.tbl_count(HL.overrides)
+end
+
+local function plural(n, word)
+  return ("%d %s%s"):format(n, word, n == 1 and "" or "s")
+end
+
 local function keymaps()
   local buf = S.buf.controls
+  --- Every key clears whatever the last one armed (item 12), so a `r` you
+  --- thought better of is disarmed by the next thing you press rather than
+  --- lying in wait. The handler receives what WAS armed, which is how the
+  --- two-press keys recognise their own second press.
   local function map(lhs, fn)
-    vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true })
+    vim.keymap.set("n", lhs, function()
+      local armed = S.pending
+      S.pending = nil
+      fn(armed)
+    end, { buffer = buf, nowait = true, silent = true })
   end
+  map("u", undo)
+  map("<C-r>", redo)
+  map("?", open_help)
+  map("p", function()
+    S.compact = not S.compact
+    S.status = S.compact and "preview folded — h/l repaints the real buffer; p to bring it back"
+      or ""
+    relayout()
+  end)
+  map("/", function()
+    vim.ui.input({ prompt = "filter: ", default = S.filter }, function(v)
+      S.filter = vim.trim(v or "")
+      S.cursor[S.mode] = 1
+      S.status = S.filter == "" and "" or ("filtering on %q — <BS> clears it"):format(S.filter)
+      render()
+    end)
+  end)
+  map("y", function()
+    local row = S.rows[S.cursor[S.mode]]
+    local target = (row and row.target) or S.group_name
+    if not target then
+      S.status = "no source edit for this row"
+      render()
+      return
+    end
+    -- ITEM 13. `s` writes JSON, and an override that only lives in
+    -- `lean-palette.json` is invisible from the config and how the palette
+    -- drifts from its source. `:LeanPalette source` already computes the
+    -- exact edit, routed by where the group is actually defined — this is
+    -- purely the TUI knowing that exists.
+    local lines = M.source_for(target)
+    close()
+    local b = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(b, 0, -1, false, lines)
+    vim.bo[b].filetype = "diff"
+    vim.bo[b].bufhidden = "wipe"
+    vim.api.nvim_open_win(b, true, {
+      relative = "editor",
+      width = math.min(100, vim.o.columns - 4),
+      height = math.min(#lines + 1, vim.o.lines - 6),
+      row = math.max(0, math.floor(vim.o.lines / 4)),
+      col = math.max(0, math.floor((vim.o.columns - math.min(100, vim.o.columns - 4)) / 2)),
+      style = "minimal",
+      border = "rounded",
+      title = " source edit for " .. target .. " — yank it ",
+      title_pos = "center",
+    })
+    vim.keymap.set("n", "q", "<Cmd>close<CR>", { buffer = b, nowait = true, silent = true })
+  end)
   map("j", function()
     move(1)
   end)
@@ -997,13 +2026,40 @@ local function keymaps()
     render()
   end)
   map("<BS>", function()
-    S.mode = S.mode == "group" and "groups" or S.mode
+    -- The filter is the innermost thing `<BS>` can back out of, so it goes
+    -- first: pressing it in a filtered attribute editor should not drop you
+    -- into a list that is still narrowed to one row.
+    if S.filter ~= "" then
+      S.filter = ""
+      S.status = "filter cleared"
+    else
+      S.mode = S.mode == "group" and "groups" or S.mode
+    end
     render()
   end)
   map("x", clear_one)
-  map("X", function()
-    local n = HL.clear_all_overrides()
-    S.status = ("cleared %d override%s"):format(n, n == 1 and "" or "s")
+  -- ITEM 12: `r` and `X` were unconfirmed, unrecoverable, and did not say
+  -- what they would take. Measured: `r` from a state with one hue moved and
+  -- one override set restored every hue and dropped the override, silently,
+  -- and the status line said so afterwards — true, and too late. Undo (item
+  -- 2) now covers both, so the pre-flight is the cheap half of a belt and
+  -- braces rather than the only recourse.
+  map("X", function(armed)
+    local n = vim.tbl_count(HL.overrides)
+    if n == 0 then
+      S.status = "no overrides to clear"
+      render()
+      return
+    end
+    if armed ~= "X" then
+      S.pending = "X"
+      S.status = ("X again to clear %s"):format(plural(n, "override"))
+      render()
+      return
+    end
+    checkpoint()
+    local cleared = HL.clear_all_overrides()
+    S.status = ("cleared %s — u to undo"):format(plural(cleared, "override"))
     render()
   end)
   map("s", function()
@@ -1011,9 +2067,26 @@ local function keymaps()
     S.status = ok and ("saved to " .. HL.state_path) or ("save failed: " .. tostring(err))
     render()
   end)
-  map("r", function()
+  map("r", function(armed)
+    local hues, chans, ovs = dirty()
+    if hues + chans + ovs == 0 then
+      S.status = "already the shipped palette"
+      render()
+      return
+    end
+    if armed ~= "r" then
+      S.pending = "r"
+      S.status = ("r again to discard %s, %s and %s"):format(
+        plural(hues, "hue change"),
+        plural(chans, "channel change"),
+        plural(ovs, "override")
+      )
+      render()
+      return
+    end
+    checkpoint()
     HL.reset()
-    S.status = "restored the shipped defaults (not yet saved — press s)"
+    S.status = "restored the shipped defaults — u to undo, s to save"
     render()
   end)
   map("q", close)
@@ -1021,14 +2094,41 @@ local function keymaps()
 end
 
 --- Open the picker.
-function M.open()
+---
+--- ITEM 11 — the bridge from "what is this token?" to the row that controls
+--- it. `inspect_token` already answers the hard half: it names the winning
+--- group. Before `opts.group`, the workflow was to read that name, close the
+--- report, open the picker, press `G` and hunt for the name by eye among
+--- sixty-odd rows.
+--- @param opts { group: string|nil }|nil
+function M.open(opts)
+  local group = opts and opts.group
+  -- MUST WORK WHEN ALREADY OPEN. The early return on `S.open` would
+  -- otherwise make the bridge a no-op precisely when the picker is up, which
+  -- is the likeliest state for someone comparing two groups.
   if S.open then
+    if group then
+      S.mode = "group"
+      S.group_name = group
+      S.cursor.group = 4
+      S.filter = ""
+      render()
+      vim.api.nvim_set_current_win(S.win.controls)
+    end
     return
   end
   S.open = true
   S.status = ""
-  S.mode = "generator"
+  S.filter = ""
+  S.pending = nil
   HL.warm() -- so GROUPS mode lists the flag variants without a Lean buffer
+  if group then
+    S.mode = "group"
+    S.group_name = group
+    S.cursor.group = 4
+  else
+    S.mode = "generator"
+  end
   open_windows()
   keymaps()
   render()

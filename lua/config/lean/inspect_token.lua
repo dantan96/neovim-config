@@ -1055,6 +1055,10 @@ function M.render(R)
     put("       that tie by mark order, which `vim.inspect_pos` does not expose —")
     put("       so ★ is this tool's pick, not a derived fact. Section 3 is.")
   end
+  if R.winner then
+    put()
+    put(("  e  edit ★ %s in :LeanPalette"):format(R.winner.group))
+  end
   put()
 
   -- ── 3 · the cell ─────────────────────────────────────────────────────
@@ -1192,7 +1196,7 @@ function M.open()
 
   -- Snacks.win is what \? and the rest of this config use for floats, and it
   -- already binds `q` to close.
-  Snacks.win({
+  local win = Snacks.win({
     buf = buf,
     width = 0.9,
     height = 0.9,
@@ -1202,6 +1206,30 @@ function M.open()
     wo = { wrap = false, number = false, signcolumn = "no", cursorline = false },
     bo = { bufhidden = "wipe" },
   })
+
+  -- ── the bridge to the picker ─────────────────────────────────────────
+  -- This report answers "what is painting this token" and names the winning
+  -- group. Until this key, getting from that answer to the row that CONTROLS
+  -- it meant reading the name, closing the report, opening `:LeanPalette`,
+  -- pressing `G`, and hunting for the name by eye among sixty-odd rows.
+  --
+  -- IT CLOSES ITSELF FIRST, and that is not tidiness: this float is
+  -- 90% × 90% and the picker's are smaller and centred, so leaving it up
+  -- would open the picker directly underneath it.
+  local target = R.winner and R.winner.group
+  if target then
+    vim.keymap.set("n", "e", function()
+      pcall(function()
+        win:close()
+      end)
+      require("config.lean.palette_picker").open({ group = target })
+    end, {
+      buffer = buf,
+      nowait = true,
+      silent = true,
+      desc = "Lean: edit " .. target .. " in :LeanPalette",
+    })
+  end
   return R
 end
 

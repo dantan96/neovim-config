@@ -1634,6 +1634,24 @@ function M.catalogue()
   for _, f in ipairs(FOREIGN) do
     add(f[1], f[2])
   end
+  -- namespace_hl's own groups — the operators, the ascription colon, the
+  -- sort atoms, the rainbow module path, the namespace underline. A third of
+  -- what is coloured on a Lean screen, and until this line none of it was in
+  -- the picker (see that module's `M.catalogue`).
+  --
+  -- REQUIRED LAZILY AND UNDER pcall. This module is loaded from inside
+  -- catppuccin's `config` function, and an error on that path leaves the
+  -- editor with no colorscheme at all — the same reasoning as `M.load`. A
+  -- missing sibling should cost the picker some rows, never the theme.
+  local ok, ns = pcall(require, "config.lean.namespace_hl")
+  if ok and type(ns) == "table" and type(ns.catalogue) == "function" then
+    local ok2, entries = pcall(ns.catalogue)
+    if ok2 then
+      for _, e in ipairs(entries) do
+        add(e[1], e[2])
+      end
+    end
+  end
   local extra = {}
   for name in pairs(M.overrides) do
     if not seen[name] then

@@ -346,6 +346,97 @@ function M.groups()
   return out
 end
 
+-- ── what the picker needs to list these ────────────────────────────────
+-- MEASURED ABSENCE, and the reason this exists: `:LeanPalette`'s GROUPS mode
+-- lists `highlights.lua`'s `catalogue()`, and not one of the groups above was
+-- in it. The DeepPink operators, the ascription colon, the HotPink `ℕ ℤ ℚ ℝ
+-- ℂ`, the rainbow module path and the namespace underline — a large fraction
+-- of what is coloured on a Lean screen — could be reached by
+-- `:LeanPalette set @lean.op.prop …` from the command line and by nothing at
+-- all in the TUI whose job is reaching them.
+--
+-- EVERY ROW NAMES ITS PALETTE KEY. That is the mitigation for the one thing
+-- that would have argued against listing them: these groups paint from a
+-- NAMED HUE (`{ fg = p.deeppink }`), so a per-group override splits a family
+-- that exists on purpose. Saying `via p.deeppink` on the row means the split
+-- is a choice and not a surprise, and `:LeanPalette source` already prints
+-- the palette edit that would move the whole family instead.
+
+local GLOSS = {
+  ["@lean.path.keyword"] = "import / open / namespace / end / section / variable",
+  ["@lean.binder.keyword"] = "fun, let, have, show, match — the binder keywords",
+  ["@lean.op.prop"] = "∈ ∧ ∨ ¬ ↔ → ≠ ≤ ⋂ ∑ — binds a variable or builds a proposition",
+  ["@lean.op.colon"] = "the ascription colon, and only the bare one (`:=` stays sky)",
+  ["@lean.sort.atom"] = "Type*, Sort, and the atoms ℕ ℤ ℚ ℝ ℂ — keyword TOKENS (B7)",
+  ["@lean.path.floor"] = "cold-start floor under the module keywords; carries no attribute bits",
+  ["@lean.binder.floor"] = "cold-start floor under the binder keywords, so `fun` never flashes mauve",
+  ["@lean.path.dot"] = "the separators inside a module path",
+  ["@lean.ns.prefix"] = "the namespace prefix of a dotted reference — UNDERLINE ONLY, no fg on purpose",
+  ["@lean.ns.dot"] = "the separators inside a dotted reference",
+}
+
+--- Which `M.palette` key a spec's colour came from, so a row can say so.
+--- Reverse-mapped from the hex rather than recorded alongside it: the specs
+--- above are written as `{ fg = p.deeppink }` and there is exactly one table
+--- to keep true that way.
+---@param spec vim.api.keyset.highlight
+---@return string|nil
+local function palette_key(spec)
+  local want = spec.fg or spec.sp
+  if type(want) ~= "string" then
+    return nil
+  end
+  for k, v in pairs(M.palette) do
+    if v == want then
+      return k
+    end
+  end
+  for i, v in ipairs(M.palette.rainbow) do
+    if v == want then
+      return "rainbow[" .. i .. "]"
+    end
+  end
+  return nil
+end
+
+--- Every group this module owns, as the picker's catalogue wants them.
+---@return { [1]: string, [2]: string }[] name, gloss
+function M.catalogue()
+  local out = {}
+  local names = vim.tbl_keys(M.groups())
+  table.sort(names)
+  local specs = M.groups()
+  for _, name in ipairs(names) do
+    local gloss = GLOSS[name]
+    if not gloss then
+      -- The one family this module BUILDS rather than lists: path components
+      -- are generated in a loop off `M.palette.rainbow`, so there is no entry
+      -- to hang a gloss on and the honest description is the position.
+      local kind, n = name:match("^@lean%.path%.([cf])(%d+)$")
+      if kind then
+        gloss = ("module path component %s%s"):format(n, kind == "f" and ", the final one (bold)" or "")
+      end
+    end
+    local pkey = palette_key(specs[name])
+    out[#out + 1] = { name, (gloss or "") .. (pkey and ("  · via p." .. pkey) or "") }
+  end
+  -- The syntax groups that LINK here. Listed because they are separately
+  -- overridable and a user may want `∀` to differ from `∈`; the gloss says
+  -- where the colour actually comes from so that editing the wrong one is a
+  -- decision rather than an accident.
+  local linked = {
+    { "leanBinderSymbol", "∀ ∃ λ ↦ — no token ever reaches these columns" },
+    { "leanPropOp", "the operator symbols, from after/syntax/lean.vim" },
+    { "leanTypeColon", "the ascription colon, from after/syntax/lean.vim" },
+    { "leanSort", "lean.nvim's `Sort Prop Type` keywords" },
+  }
+  for _, l in ipairs(linked) do
+    local target = M.LINKS[l[1]]
+    out[#out + 1] = { l[1], l[2] .. (target and ("  · links to " .. target) or "") }
+  end
+  return out
+end
+
 --- Priority of every mark this module sets.
 ---
 --- 129 = `vim.hl.priorities.semantic_tokens + 4`. Neovim's own three marks are
