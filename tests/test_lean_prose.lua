@@ -147,17 +147,46 @@ T["lean prose"]["auto-starts only in the generated book"] = function()
   expect.equality(r.mathlib, false)
 end
 
-T["lean prose"]["markview knows about the lean filetype"] = function()
-  -- Without this markview's refresh autocmds bail out on a lean buffer, so an
-  -- attached buffer would draw once and then never update.
-  local fts = child.lua_get([[
+-- Attach is decided per buffer by `preview.condition`, and `lean` is kept OUT
+-- of `preview.filetypes` on purpose: markview evaluates the condition through a
+-- guarded call, so any error inside it yields nil, which it reads as "no
+-- condition" and falls through to the filetype list. Measured with `lean`
+-- listed, a Mathlib buffer whose condition returned false was attached anyway
+-- and drew 154 extmarks. Absent, the fallback can only decline.
+T["lean prose"]["markview attaches per buffer, and the fallback fails safe"] = function()
+  local r = child.lua_get([[
     (function()
       local ok, spec = pcall(require, "markview.spec")
-      if not ok then return {} end
-      return spec.get({ "preview", "filetypes" }, { fallback = {}, ignore_enable = true })
+      if not ok then return { loaded = false } end
+      local fts = spec.get({ "preview", "filetypes" }, { fallback = {}, ignore_enable = true })
+      local cond = spec.get({ "preview", "condition" }, { ignore_enable = true })
+      if type(cond) ~= "function" then return { loaded = true, cond = false } end
+
+      local function lean_buf(flag)
+        local b = vim.api.nvim_create_buf(false, true)
+        vim.bo[b].filetype = "lean"
+        if flag ~= nil then vim.b[b].lean_prose_on = flag end
+        return cond(b)
+      end
+      return {
+        loaded = true,
+        cond = true,
+        lists_lean = vim.list_contains(fts, "lean"),
+        off = lean_buf(nil),
+        on = lean_buf(true),
+        explicitly_off = lean_buf(false),
+      }
     end)()
   ]])
-  expect.equality(vim.tbl_contains(fts, "lean"), true)
+  expect.equality(r.loaded, true)
+  expect.equality(r.cond, true)
+  -- The safety net: the filetype fallback must not be able to attach a Lean buffer.
+  expect.equality(r.lists_lean, false)
+  -- And the condition itself must return an explicit boolean, never nil --
+  -- markview treats nil as "no condition set".
+  expect.equality(r.off, false)
+  expect.equality(r.explicitly_off, false)
+  expect.equality(r.on, true)
 end
 
 return T

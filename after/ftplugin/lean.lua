@@ -234,17 +234,11 @@ if prose.should_auto(prose_buf) then
       prose.attach(prose_buf)
     end
   end)
-else
-  -- `lean` is in markview's preview.filetypes so its refresh autocmds will
-  -- service an attached buffer; the cost is that markview would also attach
-  -- to every other Lean buffer of its own accord once loaded. Undo that here,
-  -- so a Mathlib file's `/--` docstrings render only when \p asks them to.
-  vim.schedule(function()
-    if vim.api.nvim_buf_is_valid(prose_buf) then
-      prose.detach(prose_buf, true)
-    end
-  end)
 end
+-- No `else` branch: markview's preview.condition (lua/plugins/markview.lua)
+-- gates attach AND refresh on `vim.b.lean_prose_on`, so a buffer that never
+-- asked is never serviced. A detach here instead of that gate was measured to
+-- lose the race — Mathlib docstrings drew 154 extmarks while the flag read off.
 
 -- ── \y · yank this file's module name ─────────────────────────────────────
 -- VS Code's `lean4.copyModuleName` (parity audit #10). `\y` rather than `\c`

@@ -98,10 +98,13 @@ function M.attach(buf)
     vim.notify("lean prose: markview.nvim is not available", vim.log.levels.WARN)
     return
   end
+  -- The flag goes up FIRST: markview's preview.condition reads it to decide
+  -- whether this buffer may be attached and refreshed at all, so setting it
+  -- afterwards would have the attach evaluate against `false`.
+  vim.b[buf].lean_prose_on = true
   -- Call the Lua API directly: :Markview passes its argument as a string and
   -- markview's state.buf_safe() rejects non-number buffer ids silently.
   pcall(mv.attach, buf)
-  vim.b[buf].lean_prose_on = true
 end
 
 ---Stop rendering prose in this buffer.
