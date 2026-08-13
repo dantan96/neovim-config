@@ -18,11 +18,19 @@
 -- opaque token — recovers 99.6%, parses 8311/8311 Mathlib files clean, and is
 -- 8.8 KB against 7.5 MB. research/08-treesitter-ceiling.md, Results 0 and 6.
 --
--- WHAT THIS DOES NOT DO: it never calls vim.treesitter.start(), so no
--- tree-sitter highlight group is ever applied to a Lean buffer and the palette
--- is untouched. The parser exists solely so the injection query can hand
--- markview a `markdown` tree. Verify with <leader>K on a code cell: the winning
--- group must still be the LSP one at priority 125/129.
+-- WHAT IT DOES TO THE PALETTE: nothing, and that is measured rather than
+-- asserted. leantiny ships no highlights.scm, so the only captures that can
+-- fire come from the injected markdown trees and none of them can reach code.
+-- The highlighter is started (for emphasis, headings and spell regions, which
+-- markview does not draw) and the vim syntax layer is switched back on
+-- immediately afterwards, so all three layers coexist:
+--
+--   prose cell   treesitter=[spell(markdown)]              syntax=[leanBlockComment]
+--   code col 0   semantic=[@lsp.type.keyword.lean@125]     syntax=[leanCommand]
+--   code col 10                                            syntax=[leanBinderSymbol]
+--
+-- Verify with <leader>K on a code cell: the winning group must still be the LSP
+-- one at priority 125/129.
 
 local M = {}
 
@@ -136,21 +144,26 @@ function M.attach(buf)
     return
   end
 
-  -- DELIBERATELY NOT vim.treesitter.start().
+  -- Highlight the injected markdown, then put the syntax layer back.
   --
-  -- It looked like a free win — leantiny ships no highlights.scm, so the only
-  -- captures that could fire come from the injected markdown trees, and prose
-  -- would gain headings, code spans and spell/nospell regions while code gained
-  -- nothing. Measured, it is a net loss: starting the tree-sitter highlighter
-  -- disables the vim syntax layer for the WHOLE buffer, and Lean's syntax file
-  -- is what colours everything the server does not tokenise. On
-  -- `example : ∃ x : ℝ, ...` the cell at column 10 went from
-  -- `syntax=[leanBinderSymbol]` to nothing, while prose gained only
-  -- `treesitter=[spell(markdown)]`.
+  -- markview has no emphasis renderer, so `*converge*` can only be italicised
+  -- by tree-sitter, and the same pass is what supplies heading colours and the
+  -- spell/nospell split that turns the checker off inside `inner_mul_self_le`.
+  -- The first attempt at this was abandoned because starting the highlighter
+  -- blanks the vim syntax layer for the WHOLE buffer, and Lean's syntax file is
+  -- what colours everything the server does not tokenise: column 10 of
+  -- `example : ∃ x : ℝ, ...` lost `leanBinderSymbol` outright.
   --
-  -- So the parser stays parse-only. markview draws the prose structure from
-  -- extmarks either way (315 of them on C03S02), which is the part that
-  -- matters, and code keeps both the LSP tokens at 125 and the syntax fallback.
+  -- But that is a single assignment inside TSHighlighter.new
+  -- ($VIMRUNTIME/lua/vim/treesitter/highlighter.lua: `vim.bo[bufnr].syntax = ''`),
+  -- not a structural exclusion. Setting it back gives both layers: syntax
+  -- underneath, tree-sitter captures at priority 100 on top, LSP above at 125.
+  -- Nothing tree-sitter draws can reach code anyway, because leantiny ships no
+  -- highlights.scm and only the injected markdown trees can capture.
+  pcall(vim.treesitter.start, buf, LANG)
+  if vim.bo[buf].syntax ~= "lean" then
+    vim.bo[buf].syntax = "lean"
+  end
 
   local mv_ok, mv = pcall(require, "markview.actions")
   if not mv_ok then
@@ -197,6 +210,10 @@ function M.detach(buf, lazy_only)
     pcall(mv.detach, buf)
   end
   vim.b[buf].lean_prose_on = false
+  pcall(vim.treesitter.stop, buf)
+  if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].syntax ~= "lean" then
+    vim.bo[buf].syntax = "lean"
+  end
   pcall(vim.api.nvim_del_augroup_by_name, "LeanProse" .. buf)
   if vim.api.nvim_buf_is_valid(buf) then
     vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
