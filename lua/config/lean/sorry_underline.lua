@@ -42,6 +42,11 @@ function M.setup()
 
   local underline = vim.diagnostic.handlers.underline
   local show = underline.show
+  -- Nothing to wrap if Neovim ever ships without this handler. Bail rather
+  -- than install a wrapper that would call nil on the first diagnostic.
+  if type(show) ~= "function" then
+    return M
+  end
 
   --- @param ns integer
   --- @param bufnr integer
