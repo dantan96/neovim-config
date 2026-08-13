@@ -154,7 +154,96 @@ syn keyword leanBinderKeyword fun let have show suffices match with do from
 " already sky via `leanOp`, so the arrows are now split across two colours by
 " which of them happened to be in a 2015 regex. `⇒` (i.e. the `=>` ligature)
 " stays sky for the same reason.
+"
+" FOURTH RETUNE: `→` is no longer sky — it is in `leanPropOp` below, so the
+" arrow split is now deliberate and `←` is the only sky arrow left. See the
+" cost note there.
 syn match leanBinderSymbol "[λ∀∃↦]"
+
+" ── the operator symbols ────────────────────────────────────────────────
+" FOURTH RETUNE, and the whole of it is a syntax-layer change because there is
+" nothing else at these columns. Measured (M21, `lsp_probe.py` on
+" `OperatorSpecimen.lean`): THE SERVER EMITS NO SEMANTIC TOKEN FOR ANY
+" OPERATOR SYMBOL WHATSOEVER — not for `∈`, `∩`, `→`, `≤`, `ᶜ`, `∣`, any of
+" them. So unlike `ℕ` (B7), which is a `keyword` token and has to be fought
+" for at priority 129, these columns belong to whoever defines the last
+" matching syntax item. This file is sourced after lean.nvim's, so these win
+" over `leanOp` by the "last defined wins" rule — the same mechanism
+" `leanBinderSymbol` above already relies on and which is verified on the
+" glass, not assumed.
+"
+" ── DeepPink: "binds a variable, or builds a proposition" ───────────────
+" `#ff1493` already meant "binds a name" — `fun`, `have`, `∀`, `∃`, `↦`. Dan
+" widened it, and the honest statement of what it now means is the UNION of
+" two things rather than one phrase, because neither half covers his list:
+"
+"   * it BINDS A VARIABLE          — `fun ∀ ∃ ↦`, and `⋂ ⋃ ⨆ ⨅ ∑ ∏`, which
+"                                    are binders too (`⋂ i, s i`);
+"   * it BUILDS A PROPOSITION      — `∈ ∉`, the connectives `∧ ∨ ¬ ↔ →`, and
+"                                    the relations `≠ ≤ < ≥ >` and `∣`.
+"
+" `∑` and `∏` produce a value, not a proposition; `∧` binds nothing. Writing
+" the union is the point — a colour whose meaning nobody can state drifts, and
+" a phrase that covers only half the set is how it starts.
+"
+" `∣` IS OURS TO PLACE and it went here, not to sky. Dan listed it with the
+" set operators but left the call open ("if it reads as a relation rather than
+" a set op"). `n ∣ m` is `Dvd.dvd`, a Prop-valued relation between numbers in
+" exactly the position `n ≤ m` occupies; it is not set-theoretic notation and
+" it never appears in `s ∩ t ⊆ sᶜ`. It is one character in one class if that
+" reads wrong.
+"
+" ASCII `<` and `>` are single-glyph relations here — but they are also HALF
+" OF `=>`, `<;>`, `<|>`, `->` and `<-`. Those are handled below.
+" Relations (`≠ ≤ ≥ < >`) were pink briefly and Dan reverted it: they are
+" furniture, not proposition structure. They stay sky via lean.nvim's own
+" `leanOp`, so they are simply absent from this pattern.
+syn match leanPropOp "[∈∉∧∨¬↔→⋂⋃⨆⨅∑∏∣]"
+
+" ── sky: the set algebra, which is furniture ────────────────────────────
+" Dan: "the set-theoretic operators that are *values* rather than structure".
+" Three of these (`⊆ ⊂`) are Prop-valued and not values at all, so the line
+" being drawn is not value-vs-proposition — it is that `s ∩ t ⊆ sᶜ ∪ u` reads
+" as ONE gesture in one colour, with `∈` in pink as the bridge down to the
+" element level. Recorded that way rather than reconciled, because the
+" reconciliation would be wrong.
+"
+" These link to `Operator`, not to a hex: they are operators exactly like the
+" ones lean.nvim already claims, and that should be true by construction and
+" not by two copies of `#89dceb` agreeing.
+syn match leanSetOp "[∩∪⊆⊂ᶜ]"
+" Set difference, on its own line: `\` is special inside a `[]` collection
+" unless `cpoptions` contains `l`, and getting that wrong fails silently.
+" Single-quoted so the pattern really is `\\`, i.e. one literal backslash.
+syn match leanSetOp '\\'
+
+" ── yellow: the ascription colon ────────────────────────────────────────
+" Instructed: *"make `:` yellow — `#f9e2af`"*. It is sky today, i.e. one of
+" the 118 `leanOp` cells on a Filter screen, and it is the single most
+" structural mark in Lean source — `(h : P)`, `theorem t : P`, `∀ x : α`. It
+" is the character that says "the thing on the left has the type on the
+" right", which is the one relation the whole palette is built to expose.
+"
+" `:=` AND `::` ARE NOT THIS. Dan: "keep them as they are unless they fall out
+" of the same rule". They do fall out of it — a bare `:` match starts at the
+" `:` of `:=` too — so they are named explicitly in the compound rule below,
+" which is defined last and therefore wins at that column. `:=` is a
+" definition and `::` is a list cons; neither is an ascription.
+syn match leanTypeColon ":"
+
+" ── the compound ASCII operators, kept whole ────────────────────────────
+" DEFINED LAST, so it beats `leanPropOp` at the `<` or the `>`, and
+" `leanTypeColon` at the `:` of `:=` and `::`.
+"
+" `=>` is `fun x => …`, and with a ligature font it draws as `⇒` across two
+" cells. `<;>` is the tactic combinator, `<|>` is `orElse`, `<|` and `|>` are
+" the pipes, `->` and `<-` are the ASCII arrows. None of them is a relation,
+" and colouring the `>` of `=>` pink while its `=` stays sky is a two-colour
+" ligature — which reads as a rendering fault, not as a distinction. They keep
+" lean.nvim's own operator group so that they are furniture, whole.
+"
+" Vim's alternation is FIRST match, not longest, so `<|>` must precede `<|`.
+syn match leanOp ":=\|::\|=>\|<;>\|<|>\|<|\||>\|->\|<-"
 
 hi def link leanConstant        Function
 " The keyword rules link to the ATTRIBUTE-FREE floor groups, not to the ones
@@ -167,9 +256,32 @@ hi def link leanModuleKeyword   @lean.path.floor
 hi def link leanBinderKeyword   @lean.binder.floor
 hi def link leanBinderSymbol    @lean.binder.keyword
 hi def link leanPathQual        @lean.path.floor
+" Same reasoning as `leanBinderSymbol`: token-free by measurement, so nothing
+" can outrank them and nothing they set can leak.
+hi def link leanPropOp          @lean.op.prop
+" Reverted: the colon was yellow briefly. Back to `Operator` like every
+" other piece of punctuation.
+hi def link leanTypeColon       Operator
+hi def link leanSetOp           Operator
 for s:i in range(1, 6)
   execute 'hi def link leanPathC' . s:i . ' @lean.path.c' . s:i
   execute 'hi def link leanPathF' . s:i . ' @lean.path.f' . s:i
   execute 'hi def link leanPathDot' . s:i . ' @lean.path.dot'
 endfor
 unlet s:i
+
+" ── curly braces are delimiters too ─────────────────────────────────────
+" lean.nvim declares a `leanEncl` region with `matchgroup=leanDelim` for
+" `(`…`)`, `[`…`]`, `⦃`…`⦄` and `#[`…`]` (its syntax/lean.vim:64-67) and
+" simply omits `{`…`}`. So parens rendered as `leanDelim` and braces as
+" nothing at all — measured, not guessed:
+"
+"   theorem t {a : Nat} (b : Nat)
+"   {  -> NONE        (  -> leanDelim
+"
+" Implicit binders `{α : Type*}`, structure instances and set-builder
+" notation are all brace-delimited, so this is not a rare shape. Declared
+" exactly as upstream declares its siblings, so the two stay in step if
+" upstream ever adds it: this becomes a harmless duplicate rather than a
+" conflicting rule.
+syn region leanEncl matchgroup=leanDelim start="{" end="}" contains=TOP

@@ -1027,4 +1027,344 @@ end
 -- complete" and required to carry an `fg` by "every generated group carries
 -- its own fg after a re-apply", both in tests/test_lean.lua.
 
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ BEGIN: `:LeanPalette <subcommand>` — the colour CLI                  │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+--
+-- WHAT THESE CASES CAN SEE. The same limit as the rest of the file: headless
+-- Neovim applies no semantic tokens, so nothing here may claim that a BUFFER
+-- repainted. What it can and does check is the layer under that — that
+-- `nvim_get_hl` returns the new colour in the same session, with no restart
+-- and no `:colorscheme`, which is the mechanism the live repaint rides on.
+-- (`HL.apply` and `HL.repaint` both end in `refresh_live_buffers()`, which
+-- is what carries it the last step; that step is verified out of band.)
+
+--- Fresh modules, throwaway persistence, and `nvim_api_echo` captured so a
+--- case can assert on what the command SAID as well as what it did.
+--- `%s` is a body that may call `P.run(...)` and `cap(...)`.
+local function cli(body)
+  return child.lua_get(([==[(function()
+    package.loaded["config.lean.highlights"] = nil
+    package.loaded["config.lean.palette_picker"] = nil
+    local HL = require("config.lean.highlights")
+    HL.state_path = vim.fn.tempname() .. "/lean-palette.json"
+    HL.setup()
+    local P = require("config.lean.palette_picker")
+    local function cap(f)
+      local msgs = {}
+      local orig = vim.api.nvim_echo
+      vim.api.nvim_echo = function(chunks)
+        for _, c in ipairs(chunks) do msgs[#msgs+1] = c[1] end
+      end
+      local ok, err = pcall(f)
+      vim.api.nvim_echo = orig
+      if not ok then return "THREW: " .. tostring(err) end
+      return table.concat(msgs)
+    end
+    local function fg(name)
+      local h = vim.api.nvim_get_hl(0, { name = name, link = false })
+      return h.fg and string.format("#%%06x", h.fg) or "nil"
+    end
+    local function hl(name)
+      return vim.api.nvim_get_hl(0, { name = name, link = false })
+    end
+    %s
+  end)()]==]):format(body))
+end
+
+T["palette"]["cli: a hue key is live in the same session"] = function()
+  local got = cli([==[
+    local before = fg("@lean.prop.element")
+    -- A ladder name, not a hex: the fast path, and the one a hex-only
+    -- parser would silently reject.
+    local err = P.run("set prop_element sky")
+    return { before = before, after = fg("@lean.prop.element"),
+             input = HL.opts.hues.prop_element, err = tostring(err),
+             -- ...and it reached the LOCAL variant's sibling too, i.e. the
+             -- generator really re-ran rather than one group being poked.
+             lemma_variant = fg("@lean.prop.element") }
+  ]==])
+  expect.equality(got.err, "nil")
+  expect.equality(got.input, "#89dceb")
+  expect.equality(got.after, "#89dceb")
+  expect.no_equality(got.after, got.before)
+end
+
+T["palette"]["cli: a group takes a colour and attributes at once"] = function()
+  local got = cli([==[
+    P.run("set @lean.data.former #00ff00 nobold underdotted")
+    local h = hl("@lean.data.former")
+    -- ...and again, on top of the override that now exists. This is the half
+    -- highlights.lua's `resolve` does NOT cover: it clears the GENERATED
+    -- underline when an override names one, but two styles written into the
+    -- same override are the picker's own problem.
+    P.run("set @lean.data.former underdouble")
+    local h2 = hl("@lean.data.former")
+    local n2 = 0
+    for _, u in ipairs({ "underline", "undercurl", "underdouble",
+                         "underdotted", "underdashed" }) do
+      if h2[u] then n2 = n2 + 1 end
+    end
+    -- B4: one underline style per cell. `data.former` ships with a straight
+    -- underline from CELL_STYLE, so this also proves the new style REPLACED
+    -- it rather than stacking.
+    local n = 0
+    for _, u in ipairs({ "underline", "undercurl", "underdouble",
+                         "underdotted", "underdashed" }) do
+      if h[u] then n = n + 1 end
+    end
+    return { fg = fg("@lean.data.former"), underdotted = h.underdotted or false,
+             underline = h.underline or false, bold = h.bold or false, nstyles = n,
+             nstyles2 = n2, underdouble2 = h2.underdouble or false,
+             underdotted2 = h2.underdotted or false,
+             -- The colour set in the first call must survive the second: an
+             -- override is PATCHED, not replaced.
+             fg2 = fg("@lean.data.former") }
+  ]==])
+  expect.equality(got.fg, "#00ff00")
+  expect.equality(got.underdotted, true)
+  expect.equality(got.underline, false)
+  expect.equality(got.bold, false)
+  expect.equality(got.nstyles, 1)
+  expect.equality(got.nstyles2, 1)
+  expect.equality(got.underdouble2, true)
+  expect.equality(got.underdotted2, false)
+  expect.equality(got.fg2, "#00ff00")
+end
+
+T["palette"]["cli: a channel switch reaches every variant"] = function()
+  local got = cli([==[
+    HL.warm()
+    local g = HL.group("variable", { propWorld = true, element = true, ["local"] = true })
+    local before = hl(g).italic or false
+    P.run("set local_italic off")
+    return { before = before, after = hl(g).italic or false,
+             opt = HL.opts.channels.local_italic }
+  ]==])
+  expect.equality(got.before, true)
+  expect.equality(got.opt, false)
+  expect.equality(got.after, false)
+end
+
+T["palette"]["cli: list shows only what differs, and reset puts it back"] = function()
+  local got = cli([==[
+    local clean = cap(function() P.run("list") end)
+    P.run("set data_sort mauve")
+    P.run("set @lean.prop.former italic bg=#101010")
+    local dirty = cap(function() P.run("list") end)
+    -- A `set` that EMPTIES an override must delete it, not leave an entry
+    -- saying nothing: `list` would otherwise claim the group is hand-set,
+    -- and — the observable half — the underline would still be drawn.
+    P.run("set @lean.poly.sort underdotted")
+    local dotted = hl("@lean.poly.sort").underdotted or false
+    P.run("set @lean.poly.sort nounderline")
+    local empty_ov = cap(function() P.run("list poly") end)
+    local still_dotted = hl("@lean.poly.sort").underdotted or false
+    -- A pattern narrows the list...
+    local only_hue = cap(function() P.run("list data_sort") end)
+    -- ...and a MALFORMED one — `[` opens a character class the user never
+    -- closed — must come back empty rather than throwing out of
+    -- `string.find`. Issued here, with two things actually set, because with
+    -- a clean palette the filter is never reached at all.
+    local bad_pattern = cap(function() P.run("list @lean.prop.[") end)
+    P.run("reset data_sort")
+    P.run("reset @lean.prop.former")
+    local back = cap(function() P.run("list") end)
+    -- ...and `all`, from a fresh mess, because `reset all` is a different
+    -- code path from two `reset <target>`s.
+    P.run("set poly_sort peach")
+    P.run("reset all")
+    local after_all = cap(function() P.run("list") end)
+    return { clean = clean, dirty = dirty, back = back, after_all = after_all,
+             only_hue = only_hue, bad_pattern = bad_pattern,
+             empty_ov = empty_ov, dotted = dotted, still_dotted = still_dotted,
+             hue = HL.opts.hues.data_sort, def = HL.defaults().hues.data_sort,
+             ov = HL.overrides["@lean.prop.former"] ~= nil }
+  ]==])
+  -- A clean palette lists nothing at all — the question is "what did I
+  -- change", and twenty-four unchanged hues would bury the answer.
+  expect.equality(got.clean:find("nothing set", 1, true) ~= nil, true)
+  expect.equality(got.dirty:find("data_sort", 1, true) ~= nil, true)
+  expect.equality(got.dirty:find("@lean.prop.former", 1, true) ~= nil, true)
+  expect.equality(got.dirty:find("bg=#101010", 1, true) ~= nil, true)
+  -- Non-vacuity: the underline was really there before it was cancelled.
+  expect.equality(got.dotted, true)
+  expect.equality(got.still_dotted, false)
+  expect.equality(got.empty_ov:find("nothing set", 1, true) ~= nil, true)
+  -- A pattern narrows it: the hue is there, the group is not.
+  expect.equality(got.only_hue:find("data_sort", 1, true) ~= nil, true)
+  expect.equality(got.only_hue:find("@lean.prop.former", 1, true), nil)
+  -- A malformed pattern is an empty answer, not a stack trace.
+  expect.equality(got.bad_pattern:find("THREW", 1, true), nil)
+  expect.equality(got.bad_pattern:find("nothing set", 1, true) ~= nil, true)
+  expect.equality(got.back:find("nothing set", 1, true) ~= nil, true)
+  expect.equality(got.after_all:find("nothing set", 1, true) ~= nil, true)
+  expect.equality(got.hue, got.def)
+  expect.equality(got.ov, false)
+end
+
+-- THE EMITTER IS THE REQUIREMENT MOST EASILY DONE SHALLOWLY: printing a
+-- plausible-looking `highlights.lua` edit for a group that does not live
+-- there is worse than saying nothing. So this case does not check that the
+-- output LOOKS right — it reads back every `file:line` the emitter prints
+-- and requires the `-` line to be that file's actual content.
+T["palette"]["cli: source prints edits that exist in the files it names"] = function()
+  local got = cli([==[
+    P.run("set prop_element_local #ff00ff")           -- a hue key
+    P.run("set @lean.data.former sky nobold")         -- a grid cell, both halves
+    P.run("set @lsp.type.keyword.lean #123456")       -- a themes.lua pin
+    P.run("set @lean.op.prop #654321")                -- a namespace_hl group
+    P.run("set former_bold off")                      -- a channel
+    P.run("set NotAThing #abcdef")                    -- no home at all
+    local text = cap(function() P.run("source") end)
+    -- Every `path:lnum` claimed, checked against the file on disk.
+    local checked, wrong = 0, {}
+    local pending
+    for _, line in ipairs(vim.split(text, "\n")) do
+      local path, lnum = line:match("^%s*(lua/[%w_/]+%.lua):(%d+)%s*$")
+      if path then
+        pending = { path = path, lnum = tonumber(lnum) }
+      elseif pending and line:match("^%s*%- ") then
+        local want = line:gsub("^%s*%- ", "")
+        local full = vim.fn.stdpath("config") .. "/" .. pending.path
+        local lines = vim.fn.filereadable(full) == 1 and vim.fn.readfile(full) or {}
+        local actual = lines[pending.lnum]
+        checked = checked + 1
+        if actual ~= want then
+          wrong[#wrong+1] = ("%s:%d\n  file: %s\n  said: %s")
+            :format(pending.path, pending.lnum, tostring(actual), want)
+        end
+        pending = nil
+      end
+    end
+    return {
+      checked = checked, wrong = wrong, text = text,
+      -- Routing, by the file each target was sent to.
+      hue_to_highlights = cap(function() P.run("source prop_element_local") end),
+      cell = cap(function() P.run("source @lean.data.former") end),
+      pin = cap(function() P.run("source @lsp.type.keyword.lean") end),
+      ns = cap(function() P.run("source @lean.op.prop") end),
+      chan = cap(function() P.run("source former_bold") end),
+      homeless = cap(function() P.run("source NotAThing") end),
+    }
+  ]==])
+  -- NON-VACUITY FIRST: if nothing were checked the loop would assert nothing.
+  expect.equality(got.checked >= 5, true)
+  expect.equality(got.wrong, {})
+  -- ROUTING. Each target reaches the file that actually defines it.
+  expect.equality(got.hue_to_highlights:find("highlights.lua", 1, true) ~= nil, true)
+  expect.equality(got.hue_to_highlights:find("prop_element_local", 1, true) ~= nil, true)
+  -- A grid cell splits: the colour is a hue INPUT (so it reaches every
+  -- variant), the attributes are a CELL_STYLE entry.
+  expect.equality(got.cell:find("DEFAULTS.hues.data_former", 1, true) ~= nil, true)
+  expect.equality(got.cell:find("CELL_STYLE.data_former", 1, true) ~= nil, true)
+  expect.equality(got.pin:find("themes.lua", 1, true) ~= nil, true)
+  expect.equality(got.ns:find("namespace_hl.lua", 1, true) ~= nil, true)
+  -- ...and namespace_hl paints from a NAMED hue, so the emitter offers the
+  -- palette entry as well as the group.
+  expect.equality(got.ns:find("p.deeppink", 1, true) ~= nil, true)
+  expect.equality(got.chan:find("highlights.lua", 1, true) ~= nil, true)
+  -- THE REFUSAL. A group with no source home must say so and print the JSON,
+  -- not invent a highlights.lua line for it.
+  expect.equality(got.homeless:find("OVERRIDE%-ONLY") ~= nil, true)
+  expect.equality(got.homeless:find("highlights.lua", 1, true), nil)
+  expect.equality(got.homeless:find("#abcdef", 1, true) ~= nil, true)
+end
+
+T["palette"]["cli: bad input is refused without changing anything"] = function()
+  local got = cli([==[
+    local before = { fg = fg("@lean.prop.element"),
+                     nov = vim.tbl_count(HL.overrides) }
+    local errs = {
+      colour   = tostring(P.run("set prop_element notacolour")),
+      word     = tostring(P.run("set @lean.prop.former wibble")),
+      sub      = tostring(P.run("frobnicate")),
+      bare_set = tostring(P.run("set")),
+      chan     = tostring(P.run("set former_bold sideways")),
+    }
+    return { errs = errs, after = fg("@lean.prop.element"),
+             nov = vim.tbl_count(HL.overrides), before = before }
+  ]==])
+  for _, k in ipairs({ "colour", "word", "sub", "bare_set", "chan" }) do
+    -- A message, not a crash and not silence.
+    expect.equality({ k, got.errs[k] ~= "nil" }, { k, true })
+    expect.equality({ k, got.errs[k]:find("THREW", 1, true) }, { k, nil })
+  end
+  -- Nothing moved.
+  expect.equality(got.after, got.before.fg)
+  expect.equality(got.nov, got.before.nov)
+end
+
+T["palette"]["cli: completion offers subcommands, targets and values"] = function()
+  local got = cli([==[
+    local function has(list, want)
+      for _, v in ipairs(list) do if v == want then return true end end
+      return false
+    end
+    local subs   = P.complete("", "LeanPalette ")
+    local targ   = P.complete("", "LeanPalette set ")
+    local filt   = P.complete("prop_e", "LeanPalette set prop_e")
+    local vals   = P.complete("", "LeanPalette set @lean.prop.former ")
+    local boolch = P.complete("", "LeanPalette set former_bold ")
+    local enumch = P.complete("", "LeanPalette set axiom_underline ")
+    local resets = P.complete("", "LeanPalette reset ")
+    return {
+      sub_set = has(subs, "set"), sub_source = has(subs, "source"),
+      -- A hue INPUT and a GROUP are both completable, which is the thing
+      -- that makes the command usable without remembering either list.
+      targ_hue = has(targ, "prop_element_local"),
+      targ_group = has(targ, "@lean.prop.element"),
+      targ_chan = has(targ, "former_bold"),
+      filt = filt,
+      -- Values are TARGET-DEPENDENT: attribute words on a group, on/off on a
+      -- boolean channel, underline styles on an enum one.
+      val_ladder = has(vals, "mauve"), val_attr = has(vals, "nobold"),
+      val_under = has(vals, "underdotted"),
+      bool_on = has(boolch, "on"), bool_nobold = has(boolch, "nobold"),
+      enum_style = has(enumch, "underdouble"), enum_on = has(enumch, "on"),
+      reset_all = has(resets, "all"),
+    }
+  ]==])
+  expect.equality(got.sub_set, true)
+  expect.equality(got.sub_source, true)
+  expect.equality(got.targ_hue, true)
+  expect.equality(got.targ_group, true)
+  expect.equality(got.targ_chan, true)
+  -- Filtering by what has been typed, and nothing that does not match.
+  expect.equality(got.filt, { "prop_element", "prop_element_local" })
+  expect.equality(got.val_ladder, true)
+  expect.equality(got.val_attr, true)
+  expect.equality(got.val_under, true)
+  -- ...and the negative half, which is what makes "target-dependent" mean
+  -- something: a boolean channel does not offer `nobold`, an enum one does
+  -- not offer `on`.
+  expect.equality(got.bool_on, true)
+  expect.equality(got.bool_nobold, false)
+  expect.equality(got.enum_style, true)
+  expect.equality(got.enum_on, false)
+  expect.equality(got.reset_all, true)
+end
+
+T["palette"]["cli: save and forget round-trip both layers"] = function()
+  local got = cli([==[
+    P.run("set data_sort_local #010203")
+    P.run("set @lean.prop.former bold")
+    P.run("save")
+    local state = HL.load()
+    local existed = vim.fn.filereadable(HL.state_path) == 1
+    P.run("forget")
+    return { existed = existed, hue = state.inputs.hues.data_sort_local,
+             ov = state.overrides["@lean.prop.former"],
+             gone = vim.fn.filereadable(HL.state_path) == 0 }
+  ]==])
+  expect.equality(got.existed, true)
+  expect.equality(got.hue, "#010203")
+  expect.equality(got.ov, { bold = true })
+  expect.equality(got.gone, true)
+end
+
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ END: the colour CLI                                                  │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+
 return T

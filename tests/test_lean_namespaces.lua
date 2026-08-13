@@ -241,10 +241,15 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
   expect.equality(got["λ"], "leanBinderSymbol")
   expect.equality(got["↦"], "leanBinderSymbol")
   -- ...and the RESOLVED colour, which is what "not an operator" actually
-  -- means. `leanOp` links to `Operator`, catppuccin's `#89dceb` sky; the
-  -- binder group is `#ff1493` DeepPink. Asserting the group name alone
-  -- would pass if `↦` had merely been added to lean.nvim's operator class,
-  -- which is the plausible wrong fix.
+  -- means. `leanOp` links to `Operator`, catppuccin's sky; the binder group
+  -- is the palette's DeepPink. Asserting the group name alone would pass if
+  -- `↦` had merely been added to lean.nvim's operator class, which is the
+  -- plausible wrong fix.
+  --
+  -- ASSERTED AS "FAR FROM THE OPERATOR COLOUR", not as a hex. `~= op` alone
+  -- would pass on two shades of the same sky, so it is a measured gap
+  -- (`H.hex_gap`); DeepPink against sky measures 406 today. Which pink Dan
+  -- wants is his to change without failing a test.
   local resolved = child.lua_get([[(function()
     require("config.lean.namespace_hl").define()
     local h = vim.api.nvim_get_hl(0, { name = "leanBinderSymbol" })
@@ -254,8 +259,194 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
              op = op.fg and string.format("#%06x", op.fg) or "nil" }
   end)()]])
   expect.equality(resolved.link, "@lean.binder.keyword")
-  expect.equality(resolved.fg, "#ff1493")
-  expect.no_equality(resolved.fg, resolved.op)
+  -- A4: `nvim_get_hl` returns {} for an undefined group, so a gap computed
+  -- from two "nil" strings would be 0 and the assertion would fail — but say
+  -- it directly so the failure names the cause.
+  expect.no_equality(resolved.fg, "nil")
+  expect.no_equality(resolved.op, "nil")
+  expect.equality(H.hex_gap(resolved.fg, resolved.op) >= 55, true)
+end
+
+-- ── the syntax layer: operator symbols ─────────────────────────────────
+--
+-- FOURTH RETUNE. Same standing as the `∀ ∃ λ ↦` case above and for the same
+-- measured reason (M21): `lsp_probe.py` against the patched server on
+-- `OperatorSpecimen.lean` returns NO token for any operator symbol at all, so
+-- the syntax layer is unopposed at these columns and `synstack()` is the whole
+-- truth. That is why these cases are honest headless while a semantic-token
+-- case in the same file could only pass vacuously.
+--
+-- Three destinations, and each is asserted BY RESOLVED COLOUR as well as by
+-- group name, because the group name alone cannot tell the two plausible
+-- wrong fixes apart:
+--
+--   * putting a symbol in lean.nvim's `leanOp` character class instead of the
+--     pink group — the group name would be `leanOp` but a reader checking
+--     "is it coloured" would see yes;
+--   * putting a set operator in the pink group instead of leaving it sky.
+--
+-- So the three destinations are told apart BY IDENTITY AND BY DISTANCE, not
+-- by hex: pink is the same colour as the binder group and a measured gap from
+-- the operator sky; sky is `== Operator.fg`, by LINK and not by a copied
+-- value; yellow is a measured gap from both and from Normal. A recolour of
+-- any of the three is then one edit in `namespace_hl.palette` and no test
+-- failures, which is the point.
+
+--- Innermost syntax group at every byte column of `line`, in a lean buffer.
+---
+--- The answer is the per-byte group list with CONSECUTIVE DUPLICATES
+--- COLLAPSED, so a single glyph — `∈` is three bytes — reads as one name,
+--- while a compound that split across two rules reads as `leanOp/leanPropOp`
+--- and is visible rather than averaged away. Collapsing rather than sampling
+--- the first byte is the point: sampling would report `=>` as sky on the `=`
+--- and never look at the `>`.
+local function op_groups(line, needles)
+  return child.lua_get(string.format(
+    [[(function()
+      local line = %q
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
+      local was = vim.api.nvim_get_current_buf()
+      vim.api.nvim_set_current_buf(buf)
+      vim.bo[buf].filetype = "lean"
+      local out = {}
+      for _, needle in ipairs(%s) do
+        local at = vim.fn.stridx(line, needle)
+        if at < 0 then
+          out[needle] = "NOT IN LINE"
+        else
+          -- Every BYTE of the needle, joined. A compound kept whole reads as
+          -- "leanOp/leanOp"; one that split reads as "leanOp/leanPropOp".
+          local seen = {}
+          for b = 1, #needle do
+            local st = vim.fn.synstack(1, at + b)
+            local g = #st > 0 and vim.fn.synIDattr(st[#st], "name") or ""
+            if seen[#seen] ~= g then
+              seen[#seen + 1] = g
+            end
+          end
+          out[needle] = table.concat(seen, "/")
+        end
+      end
+      vim.api.nvim_set_current_buf(was)
+      vim.api.nvim_buf_delete(buf, { force = true })
+      return out
+    end)()]],
+    line,
+    vim.inspect(needles):gsub("%s+", " ")
+  ))
+end
+
+--- Resolved foreground of a syntax group, following the link chain.
+local function op_colours()
+  return child.lua_get([[(function()
+    require("config.lean.namespace_hl").define()
+    local function fg(name)
+      local h = vim.api.nvim_get_hl(0, { name = name, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    return { prop = fg("leanPropOp"), set = fg("leanSetOp"), colon = fg("leanTypeColon"),
+             op = fg("leanOp"), binder = fg("leanBinderSymbol"), normal = fg("Normal") }
+  end)()]])
+end
+
+NS["operators: membership, connectives, relations and big binders are DeepPink"] = function()
+  local got = op_groups(
+    "theorem t : s ∩ t ⊆ x ∈ s ∧ n ∣ m ∨ ¬(n ≤ m) ↔ n < m → n ≥ m ∧ n ≠ m ∧ n > m := ⋂ ⋃ ⨆ ⨅ ∑ ∏ sᶜ ∪ s \\ t ∉ q",
+    { "∈", "∉", "∧", "∨", "¬", "↔", "→", "⋂", "⋃", "⨆", "⨅", "∑", "∏",
+      "≠", "≤", "≥", "∣", "<", ">", "∩", "∪", "⊆", "ᶜ", "\\" }
+  )
+  -- The pink set. `∣` is here and not with the set operators by our own call:
+  -- `n ∣ m` is `Dvd.dvd`, a Prop-valued relation in the position `n ≤ m`
+  -- occupies, and it never appears in `s ∩ t ⊆ sᶜ`.
+  -- `≠ ≤ ≥ < >` are deliberately NOT here. They were pink briefly and Dan
+  -- reverted it -- relations are furniture, not proposition structure -- so
+  -- they stay sky via lean.nvim's own `leanOp`.
+  for _, ch in ipairs({ "∈", "∉", "∧", "∨", "¬", "↔", "→", "⋂", "⋃", "⨆", "⨅",
+                        "∑", "∏", "∣" }) do
+    expect.equality(ch .. " " .. got[ch], ch .. " leanPropOp")
+  end
+  -- ...and the set algebra, which stays sky and is the other half of the
+  -- decision. Without this half the rule could be "every symbol goes pink".
+  for _, ch in ipairs({ "∩", "∪", "⊆", "ᶜ", "\\" }) do
+    expect.equality(ch .. " " .. got[ch], ch .. " leanSetOp")
+  end
+
+  local c = op_colours()
+  -- A4: `nvim_get_hl` returns {} for an undefined group, so "they differ"
+  -- would pass with both nil. Require every one of them to be a real colour
+  -- FIRST, so a gap of 0 between two "nil"s cannot be misread as a collision.
+  for _, v in pairs(c) do
+    expect.no_equality(v, "nil")
+  end
+  expect.equality(c.prop, c.binder) -- one hue, `p.deeppink`, two groups
+  -- NOT the plausible "add it to leanOp" fix — and far enough from sky to be
+  -- a different colour rather than a different shade. 406 today.
+  expect.equality(H.hex_gap(c.prop, c.op) >= 55, true)
+  expect.equality(c.set, c.op) -- sky BY LINK to Operator, not by a copied hex
+  expect.equality(H.hex_gap(c.set, c.prop) >= 55, true)
+end
+
+NS["operators: the ascription colon is yellow, `:=` and `::` are not"] = function()
+  -- Statement position, and `:=` on the same line so the two cannot be tested
+  -- in separate happy fixtures.
+  local got = op_groups("theorem t : Nat := by exact 1", { ":", ":=" })
+  expect.equality(got[":"], "leanTypeColon")
+  -- Binder position, inside a `leanEncl` region — a `contains=TOP` region is
+  -- exactly where a top-level match can silently fail to reach.
+  local binder = op_groups("example (h : Nat) : Nat := h", { ":" })
+  expect.equality(binder[":"], "leanTypeColon")
+  -- List cons.
+  local cons = op_groups("example : List Nat := 1 :: []", { "::" })
+  expect.equality(cons["::"], "leanOp")
+  -- Dan: "`:=` and `::` are separate tokens; keep them as they are." They fall
+  -- out of the same bare-`:` rule, so they are named in the compound rule in
+  -- after/syntax/lean.vim, which is defined last and wins at that column.
+  -- BOTH BYTES, so a rule that yellowed the `:` and left the `=` sky is
+  -- visible here rather than passing on the first byte.
+  expect.equality(got[":="], "leanOp")
+
+  local c = op_colours()
+  -- Three measured gaps rather than a hex. It left sky, which is the whole
+  -- point; it is not the proposition pink; and it is not simply Normal, which
+  -- is the way "we coloured it" can be true and invisible at the same time.
+  -- 178 from sky, 240 from the proposition pink, 125 from Normal.
+  for _, other in ipairs({ "op", "prop", "normal" }) do
+    expect.no_equality(c[other], "nil")
+    expect.equality({ other, H.hex_gap(c.colon, c[other]) >= 55 }, { other, true })
+  end
+end
+
+NS["operators: `=>` `<;>` `<|>` `->` `<-` `<|` `|>` are never split"] = function()
+  -- `<` and `>` are relations AND half of five compound tokens. Colouring the
+  -- `>` of `=>` pink while its `=` stays sky draws a two-colour ligature,
+  -- which reads as a rendering fault and not as a distinction.
+  -- Ordered so that every needle's FIRST occurrence is the standalone one:
+  -- `<|>` contains `<|` and `|>`, so a lazier line would test the compound
+  -- three times and the two pipes never.
+  local got = op_groups(
+    "example : Unit -> Unit := by intro x ; exact id |> id <| id <|> skip <;> skip ;"
+      .. " rw [<- h] ; exact (fun y => y)",
+    { "->", "|>", "<|", "<|>", "<;>", "<-", "=>" }
+  )
+  expect.equality(got["->"], "leanOp")
+  expect.equality(got["|>"], "leanOp")
+  expect.equality(got["<|"], "leanOp")
+  expect.equality(got["<|>"], "leanOp")
+  expect.equality(got["<;>"], "leanOp")
+  expect.equality(got["<-"], "leanOp")
+  expect.equality(got["=>"], "leanOp")
+  -- Bare `<`/`>` are `leanOp` too now: relations were pink briefly and Dan
+  -- reverted it. So this case no longer distinguishes bare from compound by
+  -- GROUP, and asserting that would be vacuous. What still has to hold is
+  -- that the compound is never SPLIT -- the `<` of `=>` must not be a
+  -- separate item from the rest of it -- which the `∧` on the same line
+  -- keeps honest by proving the pink rule is live in this buffer at all.
+  local both = op_groups("example : n > m ∧ (fun x => x) 1 < 9 := by omega", { ">", "<", "=>", "∧" })
+  expect.equality(both["<"], "leanOp")
+  expect.equality(both[">"], "leanOp")
+  expect.equality(both["=>"], "leanOp")
+  expect.equality(both["∧"], "leanPropOp")
 end
 
 -- ── the token handler: which tokens get split, and which are refused ───
@@ -531,21 +722,66 @@ NS["nothing is painted under a derived Ghostty profile"] = function()
 end
 
 NS["the palette is hand-picked, not derived"] = function()
-  -- Named explicitly so that a future "just blend it a bit" edit has to delete
-  -- an assertion rather than slip through. Dan's words: "FUCK any blending."
-  expect.equality(child.lua_get([[require("config.lean.namespace_hl").palette]]), {
-    mauve = "#cba6f7",
-    slate = "#708090",
-    hotpink = "#ff69b4",
-    -- Third retune: the binder keywords take the DeepPink that
-    -- `@lean.prop.former` vacated when the type level became one magenta
-    -- family. Instructed by hex.
-    deeppink = "#ff1493",
-    brass = "#e5b567",
-    -- Six catppuccin hues, cycling by POSITION. Spelled out rather than
-    -- counted so that "rainbow" cannot quietly become three colours.
-    rainbow = { "#f38ba8", "#fab387", "#f9e2af", "#a6e3a1", "#89b4fa", "#cba6f7" },
+  -- Dan's words: "FUCK any blending." This case used to mirror all twelve
+  -- hexes, so recolouring one thing broke it every time — and mirroring is a
+  -- weak way to say "hand-picked" anyway, since a copied table of computed
+  -- values would satisfy it.
+  --
+  -- WHAT "HAND-PICKED" ACTUALLY MEANS, and what is asserted instead: every
+  -- value in the live palette appears VERBATIM as a literal in the module
+  -- source. A blended or derived value does not — `blend(mauve, 0.4)` puts no
+  -- `#8e74ad` in the file. The keys are pinned (they are an interface: other
+  -- modules and the tests below name them), the shape is pinned, and the
+  -- values are free.
+  local got = child.lua_get([[(function()
+    local p = require("config.lean.namespace_hl").palette
+    local src = table.concat(vim.fn.readfile(
+      vim.fn.stdpath("config") .. "/lua/config/lean/namespace_hl.lua"), "\n")
+    local keys, bad, absent = {}, {}, {}
+    local function check(label, v)
+      if type(v) ~= "string" or not v:match("^#%x%x%x%x%x%x$") then
+        bad[#bad + 1] = label .. "=" .. tostring(v)
+      elseif not src:find(v, 1, true) then
+        absent[#absent + 1] = label .. "=" .. v
+      end
+    end
+    for k, v in pairs(p) do
+      keys[#keys + 1] = k
+      if k == "rainbow" then
+        for i, hex in ipairs(v) do check("rainbow[" .. i .. "]", hex) end
+      else
+        check(k, v)
+      end
+    end
+    table.sort(keys); table.sort(bad); table.sort(absent)
+    return { keys = keys, bad = bad, absent = absent, nrainbow = #p.rainbow,
+             -- The one CALL that would mean the rule had been broken. A
+             -- pattern and not a plain substring: the module's header uses
+             -- the word "blended" to say the palette is not, and banning the
+             -- word would ban saying so.
+             blends = src:find("blend%s*%(") ~= nil }
+  end)()]])
+  -- The interface: `namespace_hl` is required by name from the syntax layer
+  -- and from test_lean.lua's hotpink identity check, so a renamed key is a
+  -- real break and not a recolour.
+  expect.equality(got.keys, {
+    "brass",
+    "deeppink",
+    "hotpink",
+    "mauve",
+    "rainbow",
+    "slate",
+    "yellow",
   })
+  -- Every value is a real `#rrggbb`...
+  expect.equality(got.bad, {})
+  -- ...and every one of them is a literal somebody typed into the module.
+  expect.equality(got.absent, {})
+  -- Six hues cycling by POSITION, so "rainbow" cannot quietly become three.
+  expect.equality(got.nrainbow, 6)
+  -- And the word itself, because the literal check would still pass on
+  -- `blend(hotpink, mauve)` assigned to a NEW key nobody looks at.
+  expect.equality(got.blends, false)
 end
 
 NS["@lsp.type.keyword.lean is never touched"] = function()
@@ -562,6 +798,19 @@ NS["@lsp.type.keyword.lean is never touched"] = function()
     return "none"
   end)()]])
   expect.equality(got, "none")
+end
+
+-- lean.nvim gives `(`, `[`, `⦃` and `#[` a `leanEncl` region with
+-- `matchgroup=leanDelim` and omits `{`…`}`, so braces rendered as nothing
+-- while parens rendered as `leanDelim`. Dan noticed on the glass. We add the
+-- missing region in after/syntax/lean.vim; this pins that all four agree,
+-- and would fail if upstream's region were ever removed under us.
+NS["operators: braces are delimiters, exactly like parens"] = function()
+  local got = op_groups("theorem t {a : Nat} (b : Nat) : a = a := rfl",
+    { "{", "}", "(", ")" })
+  for _, ch in ipairs({ "{", "}", "(", ")" }) do
+    expect.equality(ch .. " " .. tostring(got[ch]), ch .. " leanDelim")
+  end
 end
 
 return T
