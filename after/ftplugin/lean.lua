@@ -227,6 +227,17 @@ map("<LocalLeader>p", prose.toggle, "Toggle prose rendering")
 vim.api.nvim_buf_create_user_command(0, "LeanProse", prose.toggle, {
   desc = "Toggle Markdown rendering inside /-! -/ blocks",
 })
+-- The band behind each prose block is a proposal, not a decision: this
+-- re-colours every rendered buffer immediately, so values can be tried.
+vim.api.nvim_buf_create_user_command(0, "LeanProseField", function(opts)
+  prose.set_field(opts.args)
+end, {
+  nargs = "?",
+  complete = function()
+    return { "off", "#1a1a27", "#1c1c2b", "#11111a" }
+  end,
+  desc = "Re-colour or remove the prose background band",
+})
 local prose_buf = vim.api.nvim_get_current_buf()
 if prose.should_auto(prose_buf) then
   -- Deferred: markview attaches extmarks, and doing that during ftplugin

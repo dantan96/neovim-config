@@ -60,6 +60,72 @@ local function ensure_registered()
   return true
 end
 
+-- ── the prose field ───────────────────────────────────────────────────────
+--
+-- A band behind every prose block, so blocks read as cells on a page rather
+-- than as differently-coloured comments. This is a FIELD distinction, not a
+-- hue one: the palette's contrast budget is spent on things that get confused
+-- with each other, and prose is never confused with code — what it needs is to
+-- occupy its own ground.
+--
+-- The default is a 5-step lift off Normal (#151520 -> #1a1a27 under
+-- catppuccin-mocha). That is a proposal, not a decision: `:LeanProseField
+-- #1c1c2b` re-colours every open buffer immediately, and `:LeanProseField off`
+-- removes the band entirely.
+
+local FIELD_NS = vim.api.nvim_create_namespace("lean_prose_field")
+
+M.field_enabled = true
+
+---Define the field group, unless something has already defined it.
+---`default = true` means a colourscheme or the user wins over this.
+function M.define_field_hl()
+  vim.api.nvim_set_hl(0, "LeanProseField", { bg = "#1a1a27", default = true })
+end
+
+---Paint the band behind every prose block.
+---@param buf integer
+local function paint_field(buf)
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(buf, FIELD_NS, 0, -1)
+  if not M.field_enabled or not M.is_on(buf) then
+    return
+  end
+  local last = vim.api.nvim_buf_line_count(buf)
+  for _, block in ipairs(M.blocks(buf)) do
+    for row = block.first, math.min(block.last, last - 1) do
+      vim.api.nvim_buf_set_extmark(buf, FIELD_NS, row, 0, {
+        line_hl_group = "LeanProseField",
+        -- Below markview's own marks, so headings and code spans keep their
+        -- own backgrounds and this only fills what they leave.
+        priority = 1,
+      })
+    end
+  end
+end
+
+M.paint_field = paint_field
+
+---Re-colour, or switch the band off.
+---@param spec string? a hex colour, "off", or nil to re-apply the default
+function M.set_field(spec)
+  if spec == "off" then
+    M.field_enabled = false
+  else
+    M.field_enabled = true
+    if spec and spec ~= "" then
+      vim.api.nvim_set_hl(0, "LeanProseField", { bg = spec })
+    end
+  end
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and M.is_on(buf) then
+      paint_field(buf)
+    end
+  end
+end
+
 -- ── the `/-!` and `-/` lines ──────────────────────────────────────────────
 --
 -- markview never sees them: the injection query offsets them out, so markdown
@@ -248,9 +314,12 @@ function M.attach(buf)
     buffer = buf,
     callback = function()
       conceal_delimiters(buf)
+      paint_field(buf)
     end,
   })
+  M.define_field_hl()
   conceal_delimiters(buf)
+  paint_field(buf)
 end
 
 ---Stop rendering prose in this buffer.
@@ -279,6 +348,7 @@ function M.detach(buf, lazy_only)
   pcall(vim.api.nvim_del_augroup_by_name, "LeanProse" .. buf)
   if vim.api.nvim_buf_is_valid(buf) then
     vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
+    vim.api.nvim_buf_clear_namespace(buf, FIELD_NS, 0, -1)
   end
 end
 
