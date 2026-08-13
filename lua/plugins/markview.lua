@@ -5,6 +5,17 @@ return {
     -- Leave Markview loaded so :Markview can be invoked manually;
     -- auto-start is suppressed in after/ftplugin/markdown.lua.
     -- lazy = false, -- author recommends not lazy-loading (it already manages its own)
+    opts = {
+      preview = {
+        -- `lean` earns its place here for the injected markdown in `/-! -/`
+        -- blocks (config.lean.prose). markview's refresh autocmds bail out on
+        -- any filetype absent from this list, so a buffer attached by hand
+        -- would draw once and then never update again. Attaching stays
+        -- opt-in: \p toggles it, and only the generated MILbook/ tree starts
+        -- it automatically.
+        filetypes = { "markdown", "quarto", "rmd", "typst", "asciidoc", "lean" },
+      },
+    },
     keys = {
       {
         "<leader>tv",

@@ -113,6 +113,7 @@ vim.b.miniclue_config = {
     { mode = "n", keys = "<LocalLeader>a", desc = "Code action" },
     { mode = "n", keys = "<LocalLeader>f", desc = "References" },
     { mode = "n", keys = "<LocalLeader>b", desc = "Open book page" },
+    { mode = "n", keys = "<LocalLeader>p", desc = "Toggle prose rendering" },
     { mode = "n", keys = "<LocalLeader>h", desc = "Toggle inlay hints" },
     { mode = "n", keys = "<LocalLeader>D", desc = "Declaration (parser/elaborator)" },
     { mode = "n", keys = "<LocalLeader>m", desc = "+module hierarchy" },
@@ -213,6 +214,37 @@ map("<LocalLeader>b", book.open, "Open book page")
 vim.api.nvim_buf_create_user_command(0, "LeanBook", book.open, {
   desc = "Open the rendered book page for this Lean file",
 })
+
+-- ── \p · render the prose inside `/-! -/` blocks ──────────────────────────
+-- The other half of \b: instead of sending the book to a browser, draw it in
+-- the buffer. See config.lean.prose for why this uses an 8.8 KB
+-- comments-only grammar and never turns on tree-sitter highlighting.
+local prose = require("config.lean.prose")
+map("<LocalLeader>p", prose.toggle, "Toggle prose rendering")
+vim.api.nvim_buf_create_user_command(0, "LeanProse", prose.toggle, {
+  desc = "Toggle Markdown rendering inside /-! -/ blocks",
+})
+local prose_buf = vim.api.nvim_get_current_buf()
+if prose.should_auto(prose_buf) then
+  -- Deferred: markview attaches extmarks, and doing that during ftplugin
+  -- sourcing races the first draw. The buffer id is captured rather than
+  -- passed as 0, which by then would mean whatever buffer is current.
+  vim.schedule(function()
+    if vim.api.nvim_buf_is_valid(prose_buf) then
+      prose.attach(prose_buf)
+    end
+  end)
+else
+  -- `lean` is in markview's preview.filetypes so its refresh autocmds will
+  -- service an attached buffer; the cost is that markview would also attach
+  -- to every other Lean buffer of its own accord once loaded. Undo that here,
+  -- so a Mathlib file's `/--` docstrings render only when \p asks them to.
+  vim.schedule(function()
+    if vim.api.nvim_buf_is_valid(prose_buf) then
+      prose.detach(prose_buf, true)
+    end
+  end)
+end
 
 -- ── \y · yank this file's module name ─────────────────────────────────────
 -- VS Code's `lean4.copyModuleName` (parity audit #10). `\y` rather than `\c`
