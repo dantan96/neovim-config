@@ -77,10 +77,41 @@ local FIELD_NS = vim.api.nvim_create_namespace("lean_prose_field")
 
 M.field_enabled = true
 
----Define the field group, unless something has already defined it.
----`default = true` means a colourscheme or the user wins over this.
+---Define the groups this feature owns.
+---
+---`default = true` throughout, so a colourscheme or Dan's own definition wins.
 function M.define_field_hl()
   vim.api.nvim_set_hl(0, "LeanProseField", { bg = "#1a1a27", default = true })
+
+  -- THE PROSE'S OWN COLOUR. Markdown captures only what has structure, so a
+  -- plain paragraph gets no capture and inherits whatever is underneath —
+  -- `leanBlockComment`, comment grey and italic. That is what made the page
+  -- read as code interspersed with comments. `queries/leantiny/highlights.scm`
+  -- captures the doc-comment node as `@lean.prose`; this gives it body-text
+  -- colour and takes the italic off, because italic is doing other work in this
+  -- palette (it means "bound here") and a page of italic paragraphs is tiring.
+  vim.api.nvim_set_hl(0, "@lean.prose", { fg = "#bac2de", italic = false })
+
+  -- ONE BACKGROUND PER PILL. markview draws `padding_left`/`padding_right`
+  -- around inline code as separate virtual-text chunks carrying
+  -- `MarkviewInlineCode` (bg #313244), while the code text itself is coloured
+  -- by tree-sitter's `@markup.raw.markdown_inline` — which has a foreground and
+  -- NO background. The result was a dark chip, a bare gap, another dark chip.
+  -- Removing the padding would only hide it; the fault is the mismatch, so the
+  -- text takes the chip's background and the pill closes up.
+  local chip = vim.api.nvim_get_hl(0, { name = "MarkviewInlineCode", link = false })
+  if chip.bg then
+    for _, g in ipairs({ "@markup.raw.markdown_inline", "@markup.raw.markdown" }) do
+      local cur = vim.api.nvim_get_hl(0, { name = g, link = false })
+      if not cur.bg then
+        -- NOT `default = true`: catppuccin already defines this group, and a
+        -- default definition of an existing group is silently a no-op. That is
+        -- what made the first attempt at this change nothing at all.
+        cur.bg = chip.bg
+        vim.api.nvim_set_hl(0, g, cur)
+      end
+    end
+  end
 end
 
 ---Paint the band behind every prose block.
@@ -318,6 +349,10 @@ function M.attach(buf)
     end,
   })
   M.define_field_hl()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("LeanProseHl", { clear = true }),
+    callback = M.define_field_hl,
+  })
   conceal_delimiters(buf)
   paint_field(buf)
 end
