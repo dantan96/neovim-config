@@ -269,3 +269,19 @@ for s:i in range(1, 6)
   execute 'hi def link leanPathDot' . s:i . ' @lean.path.dot'
 endfor
 unlet s:i
+
+" ── curly braces are delimiters too ─────────────────────────────────────
+" lean.nvim declares a `leanEncl` region with `matchgroup=leanDelim` for
+" `(`…`)`, `[`…`]`, `⦃`…`⦄` and `#[`…`]` (its syntax/lean.vim:64-67) and
+" simply omits `{`…`}`. So parens rendered as `leanDelim` and braces as
+" nothing at all — measured, not guessed:
+"
+"   theorem t {a : Nat} (b : Nat)
+"   {  -> NONE        (  -> leanDelim
+"
+" Implicit binders `{α : Type*}`, structure instances and set-builder
+" notation are all brace-delimited, so this is not a rare shape. Declared
+" exactly as upstream declares its siblings, so the two stay in step if
+" upstream ever adds it: this becomes a harmless duplicate rather than a
+" conflicting rule.
+syn region leanEncl matchgroup=leanDelim start="{" end="}" contains=TOP

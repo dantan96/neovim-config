@@ -739,4 +739,17 @@ NS["@lsp.type.keyword.lean is never touched"] = function()
   expect.equality(got, "none")
 end
 
+-- lean.nvim gives `(`, `[`, `⦃` and `#[` a `leanEncl` region with
+-- `matchgroup=leanDelim` and omits `{`…`}`, so braces rendered as nothing
+-- while parens rendered as `leanDelim`. Dan noticed on the glass. We add the
+-- missing region in after/syntax/lean.vim; this pins that all four agree,
+-- and would fail if upstream's region were ever removed under us.
+NS["operators: braces are delimiters, exactly like parens"] = function()
+  local got = op_groups("theorem t {a : Nat} (b : Nat) : a = a := rfl",
+    { "{", "}", "(", ")" })
+  for _, ch in ipairs({ "{", "}", "(", ")" }) do
+    expect.equality(ch .. " " .. tostring(got[ch]), ch .. " leanDelim")
+  end
+end
+
 return T
