@@ -62,13 +62,15 @@
 --   italic        still set for `local`, as a secondary cue on top of the
 --                 hue split. Free, so it stays.
 --   bold          former — the head of a type expression.
---   background    IN USE. `simp` is a warm background tint. The previous
---                 header reserved backgrounds by argument ("a third meaning
---                 would dissolve the first two"); Dan withdrew the
---                 reservation. Moving simp here also frees `#f9e2af` to be a
---                 foreground, and leaves the single underline slot to the
---                 two flags that genuinely need it.
---   underline     ONE slot (3-bit enum, B4): axiom = double, auto = dashed.
+--   background    UNUSED AGAIN as of the third retune. It held the `@[simp]`
+--                 tint; Dan deleted that outright ("It's gotta go") and
+--                 `@[simp]` is now unmarked. The slot is free, but the
+--                 underline slot is NOT where simp goes if it ever returns —
+--                 see the note by `alarm` below.
+--   underline     ONE slot (3-bit enum, B4): imported = straight, axiom =
+--                 double, auto = dashed. `data.former` also carries a
+--                 straight underline as a per-CELL style (CELL_STYLE), which
+--                 any of the three flags overwrites.
 --   strikethrough deprecated, set separately, stacks freely (M4).
 --
 -- STILL OUT OF REACH FROM THIS FILE, and being handled elsewhere: namespace
@@ -88,10 +90,9 @@
 --     class>                                the three kind-override groups
 --   hues.<world>                            @lean.prop / .data / .poly
 --   alarm    (axiom + auto sp and fg)       every flag-suffixed variant
---   simp_bg  (the @[simp] tint)             ...forty-odd complete specs
---   channels.former_bold
+--   channels.former_bold                    ...forty-odd complete specs
 --   channels.local_italic
---   channels.simp_marker     (boolean; the effect is a BACKGROUND)
+--   channels.imported_underline
 --   channels.axiom_underline
 --   channels.auto_underline
 --   channels.auto_recolour
@@ -103,8 +104,9 @@
 -- `M.defaults()` below.
 --
 -- RETIRED, and listed here because a saved `lean-palette.json` still
--- carries them: `dust`, `recede` (the blend step) and `simp_sp` (the simp
--- underline's colour, now a background). `M.validate` ignores all three
+-- carries them: `dust`, `recede` (the blend step), `simp_sp` (the simp
+-- underline's colour) and `simp_bg` (the simp background that replaced it,
+-- now deleted along with the whole marker). `M.validate` ignores all four
 -- rather than complaining — see `RETIRED` below.
 --
 -- ─────────────────────────────────────────────────────────────────────────
@@ -242,10 +244,64 @@ local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted",
 --   data.former.glob    130  11  14  12   DarkOrange (55 after `class` takes 75)
 --   prop.former.glob     21  43  17  16   DeepPink   `Even`, `Prime`, `Set α`
 --
--- Off-theme hexes are now confined to cells that measured RARE: `#908070`
--- (projections: 12 in the Gallery, 0 in three MIL chapters) and `#ff8c00`
--- (type constructors). `#8b4513` SaddleBrown is gone — Dan: "change it
--- completely" — and it was near-black on this background besides.
+-- Off-theme hexes were confined to cells that measured RARE. THAT RULE IS
+-- NOW PARTLY SUSPENDED BY INSTRUCTION — see the THIRD RETUNE below.
+--
+-- ── THIRD RETUNE, 2026-08-13 (late) — DIRECT INSTRUCTION ───────────────
+-- Dan looked at the second retune and gave eight specific edits. Several of
+-- them CONTRADICT the rule stated above, deliberately and by name, so the
+-- rule is not deleted — it is overruled where he overruled it, and the
+-- overrules are listed so nobody "fixes" them back:
+--
+--   prop_element  #b4befe lavender -> #00bfff DeepSkyBlue. His word was
+--                 "eye-catching ELECTRIC BLUE, not bold", and his
+--                 instruction was to pick it by looking at a Mathlib screen
+--                 rather than off a hex table, because it lands on ~32% of a
+--                 Filter screen. Four candidates were rendered in one window
+--                 at font 13 and read off the glass: #1e90ff DodgerBlue sits
+--                 in `#89b4fa`'s family (the tactic blue, one word away on
+--                 every `rw [...]` line), #33ccff drifts toward `#89dceb`
+--                 sky, which is catppuccin's Operator and 118 cells of the
+--                 same screen. #00bfff is the one that separates from BOTH:
+--                 its red channel is 0 against sky's 137, and it is fully
+--                 saturated where the tactic blue is not. It is off-theme on
+--                 a frequent cell, which the rule above forbids; he asked
+--                 for it anyway ("gross" was his verdict on the lavender).
+--                 NOT BOLD.
+--   data_element_local  #a6e3a1 green -> #f2cdcd flamingo. Instructed. This
+--                 is the single commonest cell in the language, and flamingo
+--                 is catppuccin's own `Identifier`, i.e. the colour
+--                 `@lsp.type.variable.lean` already falls through to — so
+--                 the grid and the fall-through now AGREE and B10 is benign
+--                 here instead of a trap. Keeps its italic.
+--   data_former   #ff8c00 -> #ff5fff, BOLD and UNDERLINED, not italic.
+--                 Instructed verbatim, and it is the one place the standing
+--                 "no bold on a bright hue" rule is broken ON PURPOSE. The
+--                 test that sweeps for it now carries a NAMED exception
+--                 rather than a weakened predicate.
+--   data_sort     #eba0ac maroon -> #cc44cc. Joins the magenta family.
+--   prop_former   #ff1493 -> #ffa8ff, a LIGHTER shade of the same magenta.
+--                 (He first said teal, then withdrew it in favour of his
+--                 earlier instruction that prop.former be a lighter shade of
+--                 the data.former / data.sort hue. The withdrawal is why the
+--                 poly family did not have to move off #94e2d5 teal.)
+--
+-- SO THE TYPE LEVEL IS NOW ONE FAMILY IN FOUR SHADES OF MAGENTA:
+--   #ffa8ff  prop.former       a predicate           lightest
+--   #ff5fff  data.sort.local   a type variable       italic
+--   #ff5fff  data.former       a type constructor    bold + underline
+--   #cc44cc  data.sort         a concrete type       deepest
+-- `data.former` and `data.sort.local` share a hex by instruction 5 and are
+-- told apart by weight alone — `Set α` puts them adjacent, which is the pair
+-- to judge it on.
+--
+-- ORPHANED BY THIS PASS, recorded because an unused hue is a loose end:
+-- `#ff8c00` DarkOrange and `#b4befe` lavender leave the palette entirely;
+-- `#a6e3a1` green survives only as rainbow position 4; `#eba0ac` maroon
+-- survives only on `data_former_local`, which measured ZERO cells in all
+-- four probe files. `#ff1493` DeepPink leaves the grid and moves to the
+-- BINDER KEYWORDS in namespace_hl.lua, where it is on `fun` / `have` /
+-- `∀` / `∃` / `↦` — i.e. it is more visible than it was, not less.
 --
 -- THE INVARIANT ABOUT `sp`, stated precisely, because the loose version was
 -- costing colours it had no right to:
@@ -258,9 +314,9 @@ local UNDERLINE_KEYS = { "underline", "undercurl", "underdouble", "underdotted",
 -- complaint was that it had too few. `#f38ba8` is now BOTH the alarm `sp`
 -- and `kind_class`, and that is fine: a class is `data.sort`/`data.former`
 -- and the alarm belongs to token type `axiom` and to `autoImplicit`, so the
--- two cannot land on one token. `#f9e2af` came back the same way — moving
--- `simp` from an underline to a background freed it, and it is now
--- `prop_element`, a cited lemma, the commonest coloured thing in a proof.
+-- two cannot land on one token. `#f9e2af` yellow came back the same way when
+-- `simp` vacated the underline; it is now rainbow position 3 in
+-- namespace_hl.lua rather than a grid cell.
 --
 -- The precise rule is ENFORCED, not merely written down: tests/test_lean.lua
 -- sweeps every generated group and fails on `spec.fg == spec.sp`. That is
@@ -279,7 +335,10 @@ local DEFAULTS = {
     -- nameable in `:highlight`; every cell below is hand-picked and none of
     -- them is derived from these.
     prop = "#ff1493",
-    data = "#a6e3a1",
+    -- Follows `data_element_local` (third retune), so that no hue in this
+    -- table is a value nothing on screen can be. `#a6e3a1` green would
+    -- otherwise sit here with zero users.
+    data = "#f2cdcd",
     poly = "#94e2d5",
 
     -- ── world × level × local, all hand-picked ────────────────────────
@@ -289,21 +348,20 @@ local DEFAULTS = {
     -- what made the old palette read as monochrome.
 
     -- Prop world. A proof, a proposition, a predicate.
-    -- ORDERED BY MEASURED FREQUENCY, loudest last. See the RETUNE note above.
-    prop_element_local = "#f5c2e7", -- pink      — A HYPOTHESIS. `h0`, `h1`
-    prop_element = "#b4befe", -- lavender  — A CITED LEMMA. `mul_assoc`
+    prop_element_local = "#eba0ac", -- pink      — A HYPOTHESIS. `h0`, `h1`
+    prop_element = "#00bfff", -- DeepSkyBlue — A CITED LEMMA. `mul_assoc`
     prop_sort_local = "#ffc0cb", -- pinkPlain — a local `p : Prop` (rare; see below)
     prop_sort = "#ffc0cb", -- pinkPlain — A PROPOSITION. `2 ≤ m`, `True`
     prop_former_local = "#f5e0dc", -- rosewater — a local predicate `{s t : Set α}`
-    prop_former = "#ff1493", -- DeepPink  — A PREDICATE. `Even`, `Prime`, `Interval.Wf`
+    prop_former = "#ffa8ff", -- magenta·light — A PREDICATE. `Even`, `Antitone`
 
     -- Data world.
-    data_element_local = "#a6e3a1", -- green     — A DATUM YOU BOUND. `m`, `n`
+    data_element_local = "#f2cdcd", -- flamingo  — A DATUM YOU BOUND. `m`, `n`
     data_element = "#fab387", -- peach     — A GLOBAL DATUM. `Nat.factorial`
     data_sort_local = "#ff5fff", -- magenta   — A TYPE VARIABLE. `α`, `G`
-    data_sort = "#eba0ac", -- maroon    — A CONCRETE TYPE. `Interval`, `Filter α`
-    data_former_local = "#eba0ac", -- maroon    — a local type family
-    data_former = "#ff8c00", -- DarkOrange — A TYPE CONSTRUCTOR. `List`, `Prod`
+    data_sort = "#cc44cc", -- magenta·deep  — A CONCRETE TYPE. `Interval`
+    data_former_local = "#eba0ac", -- maroon    — a local type family (0 cells; see below)
+    data_former = "#ff5fff", -- magenta   — A TYPE CONSTRUCTOR. `Set`, `List`
 
     -- Poly world — genuinely undetermined `Sort u`. A deliberately tight
     -- family, because these are rare and should read as one thing.
@@ -321,22 +379,23 @@ local DEFAULTS = {
     kind_projection = "#908070", -- dark gold   — `property`: structural plumbing
     kind_class = "#f38ba8", -- red         — `class`: Mathlib's scaffolding
   },
-  simp_bg = "#3a3a2a", -- a warm tint — "the automation knows about this".
-  -- A BACKGROUND, not an underline. Two reasons: it frees `#f9e2af` to be a
-  -- foreground (a cited lemma), and the single underline slot (B4) was
-  -- three meanings deep. Backgrounds were previously reserved by argument;
-  -- Dan withdrew that reservation.
+  -- THE `@[simp]` MARKER IS GONE, 2026-08-13 (third retune). Dan: "It's
+  -- gotta go." It was a warm background tint (`simp_bg = "#3a3a2a"`) and
+  -- before that an underline. `@[simp]`-ness is now UNMARKED — there is no
+  -- channel for it and no group suffix.
+  --
+  -- IT MUST NOT COME BACK ON THE UNDERLINE. That slot holds `imported` /
+  -- `axiom` / `auto` (one style per cell, B4), and adding a fourth claimant
+  -- is exactly what pushed simp onto a background in the first place. If the
+  -- distinction is ever wanted again it needs a channel nothing else uses.
+  --
+  -- `simp_bg` is listed in `RETIRED` below, not merely deleted: Dan's saved
+  -- `lean-palette.json` still contains it and a complaint at every start is
+  -- how a warning becomes furniture.
   alarm = "#f38ba8", -- red      — axioms and auto-bound implicits
   channels = {
     former_bold = true, -- former = the head of a type expression
     local_italic = true, -- bound here, not imported
-    -- RENAMED from `simp_underline`, which was an enum over underline
-    -- STYLES naming a channel whose effect is now a BACKGROUND (`simp_bg`).
-    -- A key whose name lies is worse than a migration: `M.validate` reads
-    -- the old key when this one is absent, maps any style other than "none"
-    -- to `true`, and drops it — so an already-saved palette keeps working
-    -- and nobody inherits the lie.
-    simp_marker = true,
     -- NEW 2026-08-13. "Is this lemma mine, or Mathlib's?" — the highest-value
     -- distinction the server sends and the one this file has listed as
     -- unspent since it was written. Dan: "there should be a distinction
@@ -395,18 +454,21 @@ local function is_hex(s)
 end
 
 --- Inputs earlier versions had and this one does not. `dust` and `recede`
---- drove the deleted blend step; `simp_sp` coloured the deleted simp
---- underline, which is now a background (`simp_bg`). Dan's saved
---- `lean-palette.json` contains all three.
+--- drove the deleted blend step; `simp_sp` coloured the simp underline and
+--- `simp_bg` the simp background that replaced it, and the whole `@[simp]`
+--- marker is now deleted. Dan's saved `lean-palette.json` contains all four.
 ---
 --- Retired keys are IGNORED, never complained about. `M.setup` notifies on
 --- complaints now, and a key that is merely old would put a warning on the
 --- screen at every start — which teaches the user that the warning means
 --- nothing, and then the one that matters is invisible too.
 ---
---- `channels.simp_underline` is retired as well but is MIGRATED rather than
---- dropped; see the note in `M.validate`.
-local RETIRED = { "dust", "recede", "simp_sp" }
+--- `channels.simp_underline` and `channels.simp_marker` are retired too.
+--- They need no entry here: `M.validate` only ever copies the channel keys
+--- it names, so an unknown one is dropped in silence already. The
+--- TOP-LEVEL keys are the ones that need listing, because that loop reads
+--- `raw[k]` directly.
+local RETIRED = { "dust", "recede", "simp_sp", "simp_bg" }
 
 local function is_style(s)
   for _, v in ipairs(M.underline_styles) do
@@ -447,7 +509,7 @@ function M.validate(raw)
       end
     end
   end
-  for _, k in ipairs({ "alarm", "simp_bg" }) do
+  for _, k in ipairs({ "alarm" }) do
     local v = raw[k]
     if v ~= nil then
       if is_hex(v) then
@@ -457,9 +519,10 @@ function M.validate(raw)
       end
     end
   end
-  -- RETIRED KEYS. `dust` and `recede` drove the deleted blend step and
-  -- `simp_sp` coloured the deleted simp underline. Dan already has a
-  -- `lean-palette.json` containing all three, so they are IGNORED rather
+  -- RETIRED KEYS. `dust` and `recede` drove the deleted blend step;
+  -- `simp_sp` and `simp_bg` coloured the deleted `@[simp]` marker. Dan
+  -- already has a
+  -- `lean-palette.json` containing all four, so they are IGNORED rather
   -- than complained about: a saved file that mentions a key this version no
   -- longer has is not a damaged file, and reporting it would train the user
   -- to ignore the complaint list. Anything else unrecognised is simply not
@@ -470,7 +533,7 @@ function M.validate(raw)
     end
   end
   if type(raw.channels) == "table" then
-    for _, k in ipairs({ "former_bold", "local_italic", "auto_recolour", "simp_marker" }) do
+    for _, k in ipairs({ "former_bold", "local_italic", "auto_recolour" }) do
       local v = raw.channels[k]
       if v ~= nil then
         if type(v) == "boolean" then
@@ -490,16 +553,12 @@ function M.validate(raw)
         end
       end
     end
-    -- MIGRATION, retired 2026-08-13. `simp_underline` was an enum over
-    -- underline styles; the channel became a background tint and the key
-    -- became `simp_marker`, a boolean. A saved palette written before the
-    -- rename still carries the old key, so read it — any style other than
-    -- "none" meant the channel was on — and drop it from the output. Not a
-    -- complaint, for the same reason as `RETIRED`: it would fire a warning
-    -- at every start for a file that is perfectly fine.
-    if raw.channels.simp_marker == nil and is_style(raw.channels.simp_underline) then
-      out.channels.simp_marker = raw.channels.simp_underline ~= "none"
-    end
+    -- `simp_underline` and `simp_marker` used to be migrated one to the
+    -- other here. The whole `@[simp]` marker is deleted, so both are simply
+    -- not read: `out.channels` only ever grows from the two lists above, and
+    -- a key nobody reads produces neither an effect nor a complaint.
+    -- tests/test_lean_palette.lua asserts that, and asserts it non-vacuously
+    -- by also feeding a key that DOES complain.
   end
   return out, bad
 end
@@ -646,7 +705,7 @@ local function rebuild_palette(o)
   for k in pairs(p) do
     p[k] = nil
   end
-  p.alarm, p.simp_bg = o.alarm, o.simp_bg
+  p.alarm = o.alarm
   -- A flat copy, and nothing else. There is no derived shade any more: what
   -- is in `hues` is what gets painted.
   for name, hex in pairs(o.hues) do
@@ -708,8 +767,27 @@ local KIND_HUE = {
 -- Keyed WITHOUT the `_local` suffix, i.e. on the grid cell: the `_local`
 -- variant additionally picks up italic from the `local` channel, which is
 -- idempotent with this.
+--
+-- `data_former` gained an UNDERLINE here in the third retune, by direct
+-- instruction: "`data_former` → the same colour as `data_sort_local`
+-- (`#ff5fff`), bold, underlined, NOT italic." The underline is a per-cell
+-- style and not a channel, so it does not compete for the FLAGS slot — but
+-- the flags still clear it, because `set_underline` wipes every underline
+-- bit before setting its own. That is the right precedence: an `auto`-bound
+-- type constructor should read as auto-bound, not as a former.
+--
+-- KEYED WITHOUT `_local`, so `data_former_local` picks this up too and then
+-- adds italic from the `local` channel, i.e. bold + underline + italic
+-- maroon — which contradicts the "NOT italic" half of the instruction. It is
+-- left that way deliberately: `data.former.local` measured ZERO cells in all
+-- four probe files, and adding a per-locality style lookup to serve a cell
+-- nothing renders is machinery bought with nothing.
 local CELL_STYLE = {
   prop_former = { bold = false, italic = true },
+  -- Underline only. The bold came off on Dan's instruction: magenta plus bold
+  -- plus an underline was three markers on `Set`, louder than the orange it
+  -- replaced, and he has twice rejected bold on a bright hue.
+  data_former = { bold = false, underline = true },
 }
 
 --- Complete spec for one grid cell. Never a delta — see mechanic 1.
@@ -814,21 +892,6 @@ local function build_flags(o)
         -- coming from the environment. Same convention as this machine's
         -- spthy scheme, where italic consistently means "variable".
         spec.italic = true
-      end,
-    }
-  end
-  if c.simp_marker then
-    flags[#flags + 1] = {
-      "simp",
-      function(_, mods)
-        return mods.simp
-      end,
-      function(spec)
-        -- `@[simp]`-ness is invisible at the use site and is exactly what a
-        -- reader asks when deciding whether `simp` will close a goal.
-        -- Background, so it stacks with whatever underline the axiom or
-        -- auto flags later claim, instead of competing for the one slot.
-        spec.bg = M.palette.simp_bg
       end,
     }
   end
@@ -1434,7 +1497,6 @@ local ANCHOR_GLOSS = {
 local SUFFIX_GLOSS = {
   ["local"] = "bound here (binder list or tactic block), not imported",
   imported = "from an import — Mathlib's, not one you proved in this file",
-  simp = "carries @[simp] — simp already knows this one",
   axiom = "an axiom — it rests on nothing",
   auto = "auto-bound implicit — the elaborator bound it, you did not",
 }
@@ -1514,7 +1576,6 @@ function M.warm()
     { "variable", { polyWorld = true, sort = true, ["local"] = true } },
     { "theorem", { propWorld = true, element = true } },
     { "theorem", { propWorld = true, element = true, defaultLibrary = true } },
-    { "theorem", { propWorld = true, element = true, simp = true } },
     -- The collision that decides the underline precedence: `Classical.choice`
     -- is imported AND an axiom, and the axiom mark has to survive.
     { "axiom", { propWorld = true, element = true, defaultLibrary = true } },
@@ -1605,9 +1666,11 @@ end
 --                   `channels.imported_underline`. The old note here said
 --                   every style channel was spent and the honest options
 --                   were a hue pair per world or nothing — that was wrong by
---                   one, because moving `simp` to a background had already
---                   freed the underline slot and only `axiom` and `auto`
---                   were competing for it.
+--                   one, because moving `simp` off the underline had already
+--                   freed the slot and only `axiom` and `auto` were
+--                   competing for it. `simp` has since been deleted
+--                   entirely; its background is free and its underline is
+--                   not (three claimants already).
 --   instance        a registered instance, as opposed to a plain def.
 --   irreducible     `simp` and `rw` will not unfold it, which is exactly
 --                   the surprise that costs a reader ten minutes.

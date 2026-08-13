@@ -64,11 +64,11 @@ T["palette"]["defaults are complete and every colour is real"] = function()
   local got = pal([==[
     local d = HL.defaults()
     local bad = {}
-    -- `alarm` is the axiom/auto underline `sp`; `simp_bg` is the @[simp]
-    -- background tint, which is a real channel and must round-trip like any
-    -- other colour. `simp_sp`, `recede` and `dust` used to be here and are
+    -- `alarm` is the axiom/auto underline `sp`, and since the third retune
+    -- deleted the `@[simp]` marker it is the ONLY standalone colour input
+    -- left. `simp_bg`, `simp_sp`, `recede` and `dust` used to be here and are
     -- retired — see "a retired input in a saved file is ignored" below.
-    for _, k in ipairs({ "alarm", "simp_bg" }) do
+    for _, k in ipairs({ "alarm" }) do
       if not tostring(d[k]):match("^#%x%x%x%x%x%x$") then bad[#bad+1] = k end
     end
     -- The SHAPE, not a fixed triple: `hues` is arbitrary-keyed so the
@@ -92,16 +92,22 @@ T["palette"]["defaults are complete and every colour is real"] = function()
       elseif inside and line:match('^%s*[%a_][%w_]* = "#%x%x%x%x%x%x"') then src = src + 1 end
     end
     return { bad = bad, nhues = nhues, nsrc = src, channels = d.channels,
-             -- presence as a boolean: a nil field vanishes on the way back
-             has_simp_underline = d.channels.simp_underline ~= nil }
+             -- presence as a boolean: a nil field vanishes on the way back.
+             -- BOTH simp keys must be gone, and `simp_bg` with them: the
+             -- third retune deleted the marker outright ("It's gotta go"),
+             -- and a channel that half-exists is worse than either.
+             has_simp_underline = d.channels.simp_underline ~= nil,
+             has_simp_marker = d.channels.simp_marker ~= nil,
+             has_simp_bg = d.simp_bg ~= nil }
   ]==])
   expect.equality(got.bad, {})
   expect.equality(got.nhues > 0, true)
   expect.equality(got.nsrc, got.nhues) -- no silently shadowed duplicate
   expect.equality(got.channels.former_bold, true)
   expect.equality(got.channels.local_italic, true)
-  expect.equality(got.channels.simp_marker, true)
-  expect.equality(got.has_simp_underline, false) -- renamed, not kept alongside
+  expect.equality(got.has_simp_underline, false)
+  expect.equality(got.has_simp_marker, false)
+  expect.equality(got.has_simp_bg, false)
 end
 
 -- `nvim_get_hl` ROUND-TRIPS LOWERCASE. So a palette string held as
@@ -286,44 +292,71 @@ T["palette"]["a retired input in a saved file is ignored, not complained about"]
   expect.equality(got.has_simp_sp, false)
 end
 
--- The one retired key that is MIGRATED rather than dropped.
--- `channels.simp_underline` was an enum over underline styles; the channel
--- became a background tint and the key became `simp_marker`, a boolean. A
--- key whose name lies about what it does is worse than a rename, so the
--- rename happened — and a saved palette written before it must still say
--- what it meant, in both directions.
-T["palette"]["the retired simp_underline key migrates to simp_marker"] = function()
+-- THE `@[simp]` MARKER IS DELETED, third retune. Dan: "It's gotta go."
+-- There were three generations of it — `simp_underline` (an enum), then
+-- `simp_marker` + `simp_bg` (a boolean and a background) — and Dan's live
+-- `lean-palette.json` on this machine contains keys from all of them.
+--
+-- The requirement is therefore NOT "the keys do nothing". It is "the keys do
+-- nothing AND SAY NOTHING": `M.setup` notifies on every complaint the loader
+-- returns, so a retired key that lands in that list puts a WARN on the
+-- screen at every editor start, which is how a warning becomes furniture and
+-- the one that matters becomes invisible.
+--
+-- NON-VACUITY. "No complaints" is the pass condition, and a loader that had
+-- simply stopped complaining about anything would sail through it. So the
+-- same case feeds a key that MUST complain, in the same file.
+T["palette"]["the deleted @[simp] keys are ignored, and ignored silently"] = function()
   local got = pal([==[
-    local function load_channels(body)
+    local function load_body(body)
       HL.state_path = vim.fn.tempname()
       local fh = io.open(HL.state_path, "w"); fh:write(body); fh:close()
       local state, bad = HL.load()
-      return { marker = state.inputs.channels.simp_marker, nbad = #bad }
+      return { inputs = state.inputs, bad = bad }
     end
-    local on  = load_channels('{"inputs":{"channels":{"simp_underline":"underdotted"}}}')
-    local off = load_channels('{"inputs":{"channels":{"simp_underline":"none"}}}')
-    -- the NEW key wins outright when both are present
-    local both = load_channels('{"inputs":{"channels":' ..
-                               '{"simp_underline":"underdotted","simp_marker":false}}}')
-    -- and the migrated value really reaches the paint
+    -- every generation of the key, together, plus a real hue so the file is
+    -- not discarded wholesale
+    local old = load_body('{"inputs":{"hues":{"prop_element":"#00ff00"},' ..
+      '"simp_bg":"#3a3a2a","simp_sp":"#e5b567",' ..
+      '"channels":{"simp_underline":"underdotted","simp_marker":true}}}')
+    -- ...and a key that IS malformed, so "nbad == 0" above is a fact about
+    -- the retired keys and not about the loader having gone quiet.
+    local broken = load_body('{"inputs":{"hues":{"prop_element":"chartreuse"}}}')
+    -- and the paint: no group may carry a simp suffix or a background.
     HL.state_path = vim.fn.tempname()
-    local fh = io.open(HL.state_path, "w")
-    fh:write('{"inputs":{"channels":{"simp_underline":"none"}}}'); fh:close()
     HL.setup({ load_saved = true })
     local g = HL.group("theorem", { propWorld = true, element = true, simp = true })
-    return { on = on, off = off, both = both,
-             -- the channel is off, so the suffix must be gone from the NAME
-             -- as well as the paint
-             group_when_off = g,
-             bg_when_off = HL._specs()[g].bg or "nil" }
+    local sfx, bg = {}, {}
+    for name, spec in pairs(HL._specs()) do
+      if name:find("simp", 1, true) then sfx[#sfx+1] = name end
+      if spec.bg then bg[#bg+1] = name end
+    end
+    table.sort(sfx); table.sort(bg)
+    return {
+      nbad_old = #old.bad,
+      kept = old.inputs.hues.prop_element,
+      has_simp_bg = old.inputs.simp_bg ~= nil,
+      has_marker = old.inputs.channels.simp_marker ~= nil,
+      has_underline = old.inputs.channels.simp_underline ~= nil,
+      nbad_broken = #broken.bad,
+      group_for_a_simp_lemma = g,
+      simp_named_groups = sfx,
+      groups_with_a_background = bg,
+    }
   ]==])
-  expect.equality(got.on.marker, true) -- a style meant "on"
-  expect.equality(got.off.marker, false) -- "none" meant "off"
-  expect.equality(got.both.marker, false) -- the new key wins
-  expect.equality(got.on.nbad, 0) -- and none of it is a complaint
-  expect.equality(got.off.nbad, 0)
-  expect.equality(got.group_when_off, "@lean.prop.element")
-  expect.equality(got.bg_when_off, "nil")
+  -- silently ignored...
+  expect.equality(got.nbad_old, 0)
+  expect.equality(got.kept, "#00ff00") -- and the rest of the file survived
+  expect.equality(got.has_simp_bg, false)
+  expect.equality(got.has_marker, false)
+  expect.equality(got.has_underline, false)
+  -- ...and the loader has NOT merely gone quiet.
+  expect.equality(got.nbad_broken, 1)
+  -- `@[simp]` is unmarked: a simp lemma is the same group as any other cited
+  -- lemma, no suffix and no background anywhere in the generated set.
+  expect.equality(got.group_for_a_simp_lemma, "@lean.prop.element")
+  expect.equality(got.simp_named_groups, {})
+  expect.equality(got.groups_with_a_background, {})
 end
 
 -- `M.load` is TOTAL by design — it runs inside catppuccin's `config`
@@ -395,19 +428,17 @@ T["palette"]["switching a channel off drops its suffix and its attribute"] = fun
   expect.equality(got.off_italic, false)
 end
 
--- TWO CHANNELS, and they moved apart in the rebuild. `simp` is now a
--- BACKGROUND TINT, so its input is `simp_bg` and it stacks with whatever
--- else the token carries. `axiom` and `auto` still compete for the single
--- underline slot (B4), and their style is still an enum input.
---
--- Asserting simp's underline flags are absent is the load-bearing half: if
--- simp ever reclaims the slot, an axiom that is also a simp lemma loses its
--- double underline and nothing else would notice.
-T["palette"]["simp is a background, and the underline styles are inputs"] = function()
+-- THE UNDERLINE STYLES ARE ENUM INPUTS, and there are exactly three
+-- claimants on the one slot (B4): imported, axiom, auto. `simp` used to be a
+-- fourth and then a background; it is deleted, and the load-bearing half of
+-- this case is now that a `@[simp]` lemma comes back as an ORDINARY cited
+-- lemma — no fourth claimant, no background. If simp ever reclaimed the
+-- slot, an axiom that is also a simp lemma would lose its double underline
+-- and nothing else in the suite would notice.
+T["palette"]["the underline styles are inputs, and @[simp] is not one"] = function()
   local got = pal([==[
     HL.setup()
     local inputs = vim.deepcopy(HL.opts)
-    inputs.simp_bg = "#123456"
     inputs.channels.axiom_underline = "undercurl"
     HL.apply(inputs)
     local function look(ty, mods)
@@ -429,11 +460,11 @@ T["palette"]["simp is a background, and the underline styles are inputs"] = func
       auto  = look("variable", { dataWorld = true, sort = true, autoImplicit = true }),
     }
   ]==])
-  -- simp: a background, driven by its own input, and NOT an underline.
-  expect.equality(got.simp.bg, "#123456")
+  -- simp: indistinguishable from a plain cited lemma, in every channel.
+  expect.equality(got.simp.g, got.plain.g)
+  expect.equality(got.simp.bg, "nil")
   expect.equality(got.simp.nunder, 0)
   expect.equality(got.simp.sp, "nil")
-  expect.equality(got.plain.bg, "nil") -- non-vacuity: the bg came from simp
   -- axiom: still the single underline slot, still an enum input.
   expect.equality(got.axiom.undercurl, true) -- followed the input...
   expect.equality(got.axiom.underdouble, false) -- ...off the shipped default
@@ -740,7 +771,7 @@ T["palette"]["both layers survive a save and load"] = function()
     HL.setup()
     local inputs = vim.deepcopy(HL.opts)
     inputs.hues.poly = "#010203"
-    inputs.simp_bg = "#070809"
+    inputs.alarm = "#070809"
     inputs.channels.axiom_underline = "none"
     HL.apply(inputs)
     HL.set_override("@lsp.type.leanSorryLike.lean", { fg = "#040506", bold = true })
@@ -748,17 +779,19 @@ T["palette"]["both layers survive a save and load"] = function()
     local state = HL.load()
     return {
       poly = state.inputs.hues.poly,
-      simp_bg = state.inputs.simp_bg,
+      alarm = state.inputs.alarm,
       axiom = state.inputs.channels.axiom_underline,
       ov = state.overrides["@lsp.type.leanSorryLike.lean"],
     }
   ]==])
   expect.equality(got.poly, "#010203")
-  -- `simp_bg` is the @[simp] background tint. It was NOT in validate's
-  -- colour list when the channel was introduced, so it silently could not
-  -- be saved — the headline new channel was the one input that did not
-  -- round-trip.
-  expect.equality(got.simp_bg, "#070809")
+  -- `alarm` is the STANDALONE colour input, i.e. the one that is not under
+  -- `hues`, and it is here because the class of bug this pins is real: when
+  -- `simp_bg` joined that class it was left out of `M.validate`'s colour
+  -- list and silently could not be saved — the headline new channel was the
+  -- one input that did not round-trip. `simp_bg` is gone; `alarm` inherits
+  -- the guard, and it must keep it as long as any such key exists.
+  expect.equality(got.alarm, "#070809")
   expect.equality(got.axiom, "none")
   expect.equality(got.ov, { fg = "#040506", bold = true })
 end
@@ -869,12 +902,15 @@ T["palette"]["the specimen exercises every category the palette distinguishes"] 
     ["@lean.data.element.local"] = "a data local",
     ["@lean.data.sort.local"] = "a type variable",
     ["@lean.prop.former"] = "a Set-valued definition",
-    -- Both carry `.imported` as well as of the 2026-08-13 retune: every
-    -- specimen lemma is Mathlib's, and `defaultLibrary` is now a channel.
-    -- The axiom one is the underline-precedence case in the flesh —
+    -- Both carry `.imported`, as of the 2026-08-13 retune: every specimen
+    -- lemma is Mathlib's, and `defaultLibrary` is a channel. The `@[simp]`
+    -- suffix that used to be on the first of these is GONE — the third
+    -- retune deleted the marker, so a simp lemma is an ordinary imported
+    -- lemma and the specimen must show that rather than a stale suffix.
+    -- The axiom one is the underline-precedence case in the flesh:
     -- `imported` sets a straight underline and `axiom` must take the slot
     -- back for its double.
-    ["@lean.prop.element.simp.imported"] = "a simp lemma",
+    ["@lean.prop.element.imported"] = "a cited lemma, @[simp] or not",
     ["@lean.prop.element.imported.axiom"] = "an axiom reference",
     ["@lean.poly.sort.local"] = "a sort-polymorphic type variable",
     ["@lsp.type.leanSorryLike.lean"] = "a sorry",

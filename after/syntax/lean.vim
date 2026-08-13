@@ -135,11 +135,26 @@ unlet s:i s:next s:leanPathComponent
 " to is defined.)
 syn keyword leanBinderKeyword fun let have show suffices match with do from
 
-" ...but `∀ ∃ λ` are not in that sentence. The server emits NO token for them
-" — verified on `theorem coext' (h : ∀ s, sᶜ ∈ f ↔ sᶜ ∈ g)`, which produces
-" tokens for `s`, `f` and `g` and nothing at the `∀`. lean.nvim lumps them
-" into `leanOp` with `+`, `*` and `=`; this rule is defined later and so wins.
-syn match leanBinderSymbol "[λ∀∃]"
+" ...but `∀ ∃ λ ↦` are not in that sentence. The server emits NO token for
+" them — verified on `theorem coext' (h : ∀ s, sᶜ ∈ f ↔ sᶜ ∈ g)`, which
+" produces tokens for `s`, `f` and `g` and nothing at the `∀`, and on
+" `fun x ↦ f x`, which produces tokens for `fun`, `x` and `f` and nothing at
+" the `↦`. lean.nvim lumps `λ ∀ ∃` into `leanOp` with `+`, `*` and `=`; this
+" rule is defined later and so wins.
+"
+" `↦` ADDED IN THE THIRD RETUNE. It is not in lean.nvim's `leanOp` character
+" class at all — that class is
+"   [:=≠><λ←→↔∀∃∧∨¬≤≥▸·+*-/^;$|&%!×]
+" — so before this it matched no rule anywhere and rendered as bare `Normal`.
+" Dan: "`↦` renders uncoloured. It should not be." It joins the binder
+" symbols rather than the operators because `fun … ↦ …` is one construct and
+" this makes the whole gesture read as one thing.
+"
+" THE COST, stated because it is visible and nobody chose it: `←` and `→` are
+" already sky via `leanOp`, so the arrows are now split across two colours by
+" which of them happened to be in a 2015 regex. `⇒` (i.e. the `=>` ligature)
+" stays sky for the same reason.
+syn match leanBinderSymbol "[λ∀∃↦]"
 
 hi def link leanConstant        Function
 " The keyword rules link to the ATTRIBUTE-FREE floor groups, not to the ones

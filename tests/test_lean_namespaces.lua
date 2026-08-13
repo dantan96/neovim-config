@@ -206,18 +206,26 @@ NS["binder keywords are separated from declaration keywords"] = function()
   expect.equality(syn_at(8, 15), "leanBinderKeyword") -- fun
 end
 
-NS["`∀ ∃ λ` are binder keywords and not operators"] = function()
+NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
   -- The server emits NO token for these at all, so this rule is the only
   -- thing that reaches them. Before the change they were leanOp -> Operator,
   -- sharing sky #89dceb with type variables.
+  --
+  -- `↦` IS THE THIRD RETUNE'S ADDITION and is a different case from the
+  -- other three: it was in NO rule at all — lean.nvim's `leanOp` character
+  -- class simply does not contain it — so it rendered as bare `Normal`.
+  -- Dan: "`↦` renders uncoloured. It should not be." Non-vacuity for this
+  -- one is easy to get wrong: asserting `leanBinderSymbol` would pass
+  -- equally if `↦` had been added to `leanOp`, so the case also pins the
+  -- RESOLVED colour below.
   local got = child.lua_get([[(function()
     local buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "theorem q : ∀ n, ∃ m, n = m := λ n => rfl" })
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "theorem q : ∀ n, ∃ m, n = m := λ n ↦ rfl" })
     local was = vim.api.nvim_get_current_buf()
     vim.api.nvim_set_current_buf(buf)
     vim.bo[buf].filetype = "lean"
     local out = {}
-    for _, needle in ipairs({ "∀", "∃", "λ" }) do
+    for _, needle in ipairs({ "∀", "∃", "λ", "↦" }) do
       local c = vim.fn.stridx(vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1], needle)
       local st = vim.fn.synstack(1, c + 1)
       out[needle] = #st > 0 and vim.fn.synIDattr(st[#st], "name") or ""
@@ -231,6 +239,23 @@ NS["`∀ ∃ λ` are binder keywords and not operators"] = function()
   expect.equality(got["∀"], "leanBinderSymbol")
   expect.equality(got["∃"], "leanBinderSymbol")
   expect.equality(got["λ"], "leanBinderSymbol")
+  expect.equality(got["↦"], "leanBinderSymbol")
+  -- ...and the RESOLVED colour, which is what "not an operator" actually
+  -- means. `leanOp` links to `Operator`, catppuccin's `#89dceb` sky; the
+  -- binder group is `#ff1493` DeepPink. Asserting the group name alone
+  -- would pass if `↦` had merely been added to lean.nvim's operator class,
+  -- which is the plausible wrong fix.
+  local resolved = child.lua_get([[(function()
+    require("config.lean.namespace_hl").define()
+    local h = vim.api.nvim_get_hl(0, { name = "leanBinderSymbol" })
+    local t = vim.api.nvim_get_hl(0, { name = h.link or "leanBinderSymbol", link = false })
+    local op = vim.api.nvim_get_hl(0, { name = "Operator", link = false })
+    return { link = h.link, fg = t.fg and string.format("#%06x", t.fg) or "nil",
+             op = op.fg and string.format("#%06x", op.fg) or "nil" }
+  end)()]])
+  expect.equality(resolved.link, "@lean.binder.keyword")
+  expect.equality(resolved.fg, "#ff1493")
+  expect.no_equality(resolved.fg, resolved.op)
 end
 
 -- ── the token handler: which tokens get split, and which are refused ───
@@ -512,6 +537,10 @@ NS["the palette is hand-picked, not derived"] = function()
     mauve = "#cba6f7",
     slate = "#708090",
     hotpink = "#ff69b4",
+    -- Third retune: the binder keywords take the DeepPink that
+    -- `@lean.prop.former` vacated when the type level became one magenta
+    -- family. Instructed by hex.
+    deeppink = "#ff1493",
     brass = "#e5b567",
     -- Six catppuccin hues, cycling by POSITION. Spelled out rather than
     -- counted so that "rainbow" cannot quietly become three colours.
