@@ -1502,19 +1502,25 @@ local function open_grid(title, current, on_pick)
       on_pick(hex)
     end
   end)
+  -- `vim.fn.input`, not `vim.ui.input`. The rest of this config prefers the
+  -- latter and it is the wrong tool twice here: it is ASYNCHRONOUS, so the
+  -- answer arrives after the grid has gone and the picker has redrawn, and
+  -- it routes through whichever provider is configured — which means this
+  -- key cannot be driven from a script and therefore cannot be verified the
+  -- way everything else here was. The native prompt is synchronous, needs no
+  -- provider, and reads from the same typeahead `feedkeys` writes to.
   map("i", function()
     local start = G.cells[G.idx] and G.cells[G.idx][1] or "#"
     close_grid()
-    vim.ui.input({ prompt = title .. " hex: ", default = start }, function(v)
-      if v and v:match("^#%x%x%x%x%x%x$") then
-        on_pick(v:lower())
-      elseif v and v ~= "" then
-        S.status = "not a hex colour: " .. v
-        render()
-      else
-        render()
-      end
-    end)
+    local ok, v = pcall(vim.fn.input, { prompt = title .. " hex: ", default = start })
+    if ok and type(v) == "string" and v:match("^#%x%x%x%x%x%x$") then
+      on_pick(v:lower())
+    elseif ok and type(v) == "string" and v ~= "" and v ~= start then
+      S.status = "not a hex colour: " .. v
+      render()
+    else
+      render()
+    end
   end)
   map("q", function()
     close_grid()
@@ -3002,6 +3008,16 @@ function M.setup()
 end
 
 -- ── test surface ───────────────────────────────────────────────────────
+
+--- @return { [1]: string, [2]: string }[] the ladder, name and hex
+function M.ladder()
+  return vim.deepcopy(LADDER)
+end
+
+--- @return string what the footer is currently saying
+function M._status()
+  return S.status
+end
 
 --- @return table[] the resolved specimen tokens
 function M._tokens()

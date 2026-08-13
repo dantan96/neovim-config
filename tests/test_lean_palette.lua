@@ -1367,4 +1367,616 @@ end
 -- │ END: the colour CLI                                                  │
 -- ╰──────────────────────────────────────────────────────────────────────╯
 
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ THE PICKER AS A TUI                                                  │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+--
+-- WHAT IS AND IS NOT TESTABLE HERE. The picker's floats, its row model, its
+-- keymaps and the colour arithmetic behind `h`/`l` are pure Neovim: a
+-- headless child opens the windows, the mappings fire, and the control
+-- buffer's LINES are the drawn text. What headless cannot see is a screen
+-- CELL — no semantic tokens, no composition, no `screenstring` (GOTCHAS A1)
+-- — so the questions "does the real buffer repaint" and "does the footer
+-- clip at 80x24" are not asked here and are not pretended at. They were
+-- answered by driving a pty-hosted TUI at 200x50 and at 80x24; see the audit
+-- in the leanSetup repo.
+--
+-- NO PALETTE PINS. Every colour these cases reason about is READ from
+-- `HL.defaults()` and asserted structurally — distance floors and ceilings,
+-- family membership, the ladder's own contents. A test that pinned
+-- `#ffa8ff` would fail on the next retune while saying nothing about the
+-- behaviour it names.
+--
+-- The one hex written out is `#00ff00`, and it is a SENTINEL, not a pin: a
+-- value nothing in the palette can produce, typed in so that "the group came
+-- back" is a fact about that exact value rather than about inequality (A4).
+-- Fifteen cases above already use it for the same reason.
+
+--- Run `body` against a fresh module pair with the picker OPEN, and a
+--- `press(keys)` that goes through the real buffer-local mappings rather
+--- than calling the handlers directly — the point of most of these cases is
+--- which key does what.
+--- The body is spliced with `gsub`, not `format`. This template is full of
+--- Lua patterns (`%s`, `%u`, `%x`) and `string.format` eats every one of
+--- them — the `cli` helper above escapes each as `%%`, which is a tax on
+--- every case written afterwards and was paid wrong twelve times here first.
+local function tui(body)
+  local tpl = [==[(function()
+    package.loaded["config.lean.highlights"] = nil
+    package.loaded["config.lean.palette_picker"] = nil
+    local HL = require("config.lean.highlights")
+    HL.state_path = vim.fn.tempname() .. "/lean-palette.json"
+    HL.setup()
+    local P = require("config.lean.palette_picker")
+    -- A HEADLESS CHILD IS 80x24, and at that size the picker correctly drops
+    -- the gloss column for want of room — so a case asserting the gloss is
+    -- there would fail for a reason that has nothing to do with it. Sized to
+    -- the terminal the audit was taken on, which is also the size the layout
+    -- is meant for.
+    vim.o.columns, vim.o.lines = 200, 50
+    local function press(keys)
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+    end
+    --- The control pane's drawn text, as lines.
+    local function pane()
+      for _, w in ipairs(vim.api.nvim_list_wins()) do
+        local c = vim.api.nvim_win_get_config(w)
+        if c.relative ~= "" and c.title and c.title[1][1]:find("palette") then
+          return vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w), 0, -1, false)
+        end
+      end
+      return {}
+    end
+    --- The line carrying the selection marker.
+    local function selected()
+      for _, l in ipairs(pane()) do
+        if l:find("\u{25b8}", 1, true) then return l end
+      end
+      return ""
+    end
+    local function gap(a, b)
+      local function ch(s, i) return tonumber(s:sub(i, i + 1), 16) or 0 end
+      local d = 0
+      for _, i in ipairs({ 2, 4, 6 }) do d = d + math.abs(ch(a, i) - ch(b, i)) end
+      return d
+    end
+    --- Move the selection onto the row whose label is exactly `name`.
+    local function goto_row(name)
+      for _ = 1, 80 do
+        if selected():find("\u{25b8}%s*" .. vim.pesc(name) .. "%s") then return true end
+        press("j")
+      end
+      return false
+    end
+    local out = (function() __BODY__ end)()
+    pcall(press, "q")
+    return out
+  end)()]==]
+  return child.lua_get((tpl:gsub("__BODY__", function()
+    return body
+  end)))
+end
+
+-- ── item 1: `h`/`l` must not be able to destroy a colour ───────────────
+
+T["palette"]["nudge preserves the hue and is exactly reversible"] = function()
+  local got = tui([==[
+    -- The starting colours are READ FROM THE PALETTE, never typed: the point
+    -- is that whatever Dan has hand-picked survives, and a literal here
+    -- would be testing a colour that is no longer in the file.
+    local rows = {}
+    for k, hex in pairs(HL.defaults().hues) do rows[#rows+1] = { k, hex } end
+    table.sort(rows, function(a, b) return a[1] < b[1] end)
+    local worst, ragged, asym = 0, {}, {}
+    for _, r in ipairs(rows) do
+      local up = P.nudge(r[2], 0.04)
+      local back = P.nudge(up, -0.04)
+      worst = math.max(worst, gap(r[2], up))
+      -- A nudge that does nothing is as bad as one that does too much: the
+      -- key has to be usable, and 0 would mean the row is frozen.
+      if gap(r[2], up) == 0 then ragged[#ragged+1] = r[1] end
+      -- WITHIN ONE UNIT PER CHANNEL, not identical. Eight bits per channel
+      -- and a round trip through HSL cannot be exact, and pretending
+      -- otherwise would mean either a lookup table or a lie. What matters is
+      -- the difference in kind from the bug: l-then-h returns a colour
+      -- indistinguishable from the one you started with, where it used to
+      -- return rosewater. The EXACT value is what `u` restores.
+      if gap(r[2], back) > 3 then
+        asym[#asym+1] = r[1] .. " " .. r[2] .. "->" .. up .. "->" .. back
+      end
+    end
+    return { worst = worst, ragged = ragged, asym = asym, n = #rows,
+             -- Total on nonsense, so a row whose value is somehow not a hex
+             -- cannot make the primary adjust key throw inside a redraw.
+             junk = P.nudge("nonsense", 0.04), nilsafe = P.nudge(nil, 0.04) == nil }
+  ]==])
+  expect.equality(got.n > 20, true)
+  -- A CEILING, not an equality: one press is a nudge. 4% of the range is
+  -- ~10 per channel, so 40 across three channels is generous and 765 (the
+  -- old behaviour's worst case, black to white) is nowhere near it.
+  expect.equality(got.worst < 60, true)
+  expect.equality(got.ragged, {})
+  expect.equality(got.asym, {})
+  expect.equality(got.junk, "nonsense")
+  expect.equality(got.nilsafe, true)
+end
+
+T["palette"]["the ladder walk starts from the NEAREST rung, not the end of the list"] = function()
+  local got = tui([==[
+    -- THE BUG, stated as a test. `ladder_step` used to need the current hex
+    -- to BE a rung; off the ladder it returned LADDER[1] or LADDER[#LADDER],
+    -- so one `l` on a hand-picked colour replaced it with rosewater and one
+    -- `h` with crust. Half the palette is off the ladder.
+    local off = {}
+    for k, hex in pairs(HL.defaults().hues) do
+      local rung = P.nearest_rung(hex)
+      -- only the keys that are NOT on a rung are interesting
+      if gap(hex, P.ladder()[rung][2]) ~= 0 then off[#off+1] = { k, hex, rung } end
+    end
+    table.sort(off, function(a, b) return a[1] < b[1] end)
+    local ladder = P.ladder()
+    local bad, worst = {}, 0
+    for _, e in ipairs(off) do
+      for _, delta in ipairs({ 1, -1 }) do
+        local to = P.ladder_step(e[2], delta)
+        worst = math.max(worst, gap(e[2], to))
+        -- THE STEP IS FROM THE NEAREST RUNG. Stated exactly rather than as
+        -- "it did not land on an end", because landing on an end is the
+        -- RIGHT answer when the nearest rung is next to one — `#ffc0cb` is
+        -- closest to flamingo, so `h` correctly reaches rosewater, and a
+        -- test phrased as "never an end" calls that a bug.
+        local want = ladder[(e[3] - 1 + delta) % #ladder + 1][2]
+        if to ~= want then
+          bad[#bad+1] = ("%s %s d=%d -> %s, wanted %s (nearest rung %s)")
+            :format(e[1], e[2], delta, to, want, ladder[e[3]][1])
+        end
+      end
+    end
+    return { n_off = #off, bad = bad, worst = worst }
+  ]==])
+  -- The premise: the palette really has left catppuccin's ladder. If this
+  -- ever reaches zero the case above it is vacuous and this says so.
+  expect.equality(got.n_off > 5, true)
+  expect.equality(got.bad, {})
+  -- One `H` from an off-ladder colour costs the distance to its nearest rung
+  -- plus one step. That is bounded; a jump to the end of the list is not.
+  expect.equality(got.worst < 300, true)
+end
+
+T["palette"]["h/l and H/L are different keys"] = function()
+  local got = tui([==[
+    P.open()
+    if not goto_row("data_element") then return { found = false } end
+    local start = HL.opts.hues.data_element
+    press("l")
+    local small = HL.opts.hues.data_element
+    press("h")            -- back
+    press("L")
+    local big = HL.opts.hues.data_element
+    return { found = true, start = start, small = small, big = big,
+             d_small = gap(start, small), d_big = gap(start, big),
+             -- `H`/`L` used to be silent duplicates: `adjust`'s `big`
+             -- argument was only read by a `number` row kind that had
+             -- already been deleted with the blend.
+             same = small == big }
+  ]==])
+  expect.equality(got.found, true)
+  expect.equality(got.same, false)
+  expect.equality(got.d_small > 0, true)
+  expect.equality(got.d_big > got.d_small, true)
+end
+
+T["palette"]["there is no `number` row kind left anywhere"] = function()
+  -- SOURCE-VERBATIM, because the thing being asserted is an ABSENCE and no
+  -- runtime read can see dead code. ~15 lines of rendering and dispatch were
+  -- unreachable, and the argument that fed them is what made `H`/`L` lie.
+  local got = child.lua_get([==[(function()
+    local path = vim.api.nvim_get_runtime_file("lua/config/lean/palette_picker.lua", false)[1]
+    local hits = {}
+    local n = 0
+    for line in io.lines(path) do
+      n = n + 1
+      if line:find('kind == "number"', 1, true) or line:find('kind = "number"', 1, true) then
+        hits[#hits+1] = n .. ": " .. line
+      end
+    end
+    return hits
+  end)()]==])
+  expect.equality(got, {})
+end
+
+-- ── item 2: undo ───────────────────────────────────────────────────────
+
+T["palette"]["u steps back through both layers, and <C-r> forward"] = function()
+  local got = tui([==[
+    P.open()
+    if not goto_row("data_element") then return { found = false } end
+    local start = HL.opts.hues.data_element
+    press("lll")
+    local moved = HL.opts.hues.data_element
+    local rings_before = { P._rings() }
+    press("uuu")
+    local undone = HL.opts.hues.data_element
+    press("<C-r><C-r><C-r>")
+    local redone = HL.opts.hues.data_element
+    return { found = true, start = start, moved = moved, undone = undone,
+             redone = redone, rings = rings_before[1] }
+  ]==])
+  expect.equality(got.found, true)
+  expect.equality(got.moved ~= got.start, true)
+  expect.equality(got.undone, got.start)
+  expect.equality(got.redone, got.moved)
+  expect.equality(got.rings >= 3, true)
+end
+
+T["palette"]["undoing an override CLEARS the group rather than leaving it painted"] = function()
+  -- THE PART THAT WOULD HAVE BROKEN SILENTLY. Restoring by assigning
+  -- `HL.overrides` and repainting bypasses `restore_baseline`, so a group
+  -- whose override the undo removes keeps the hand-set colour — a wrong
+  -- undo, which is worse than no undo. Asserted against the group's own
+  -- value, not against "it changed".
+  local got = tui([==[
+    local name = "@lsp.type.tactic.lean"
+    local function fg()
+      local h = vim.api.nvim_get_hl(0, { name = name, link = false })
+      return h.fg and string.format("#%06x", h.fg) or "nil"
+    end
+    local before = fg()
+    -- Opened ON that group, so nothing here depends on which row the
+    -- catalogue happens to list first.
+    P.open({ group = name })
+    press("<CR>")                  -- the fg row -> the swatch grid
+    press("i<C-u>#00ff00<CR>")     -- an exact hex
+    local set, ov_set = fg(), HL.overrides[name] ~= nil
+    -- THE DIRECTION THAT BREAKS SILENTLY. Undoing a SET has to REMOVE the
+    -- override, and removing one is the only path that runs
+    -- `restore_baseline`. A restore that assigns `HL.overrides` and repaints
+    -- leaves the group painted with the hand-set colour instead — which is
+    -- indistinguishable from "the undo did nothing" and is worse than it.
+    press("u")
+    local undone, ov_undone = fg(), HL.overrides[name] ~= nil
+    press("<C-r>")
+    local redone = fg()
+    return { before = before, set = set, ov_set = ov_set,
+             undone = undone, ov_undone = ov_undone, redone = redone }
+  ]==])
+  expect.equality(got.set, "#00ff00")
+  expect.equality(got.ov_set, true)
+  -- Not "it changed": the exact value the group had before anything touched
+  -- it, and no override left behind (A4 — a group that merely differs would
+  -- pass a `~=` while being wrong).
+  expect.equality(got.undone, got.before)
+  expect.equality(got.ov_undone, false)
+  expect.equality(got.redone, "#00ff00")
+end
+
+-- ── item 12: `r` and `X` say what they will take ───────────────────────
+
+T["palette"]["r and X need a second press, and name the damage first"] = function()
+  local got = tui([==[
+    P.open()
+    if not goto_row("data_element") then return { found = false } end
+    press("l")
+    local moved = HL.opts.hues.data_element
+    press("r")
+    local after_one = HL.opts.hues.data_element
+    local armed = P._status()
+    press("r")
+    local after_two = HL.opts.hues.data_element
+    -- ...and a key in between DISARMS it, so an `r` thought better of is
+    -- cancelled by carrying on rather than by remembering not to press it.
+    press("l")
+    local moved2 = HL.opts.hues.data_element
+    press("r")
+    press("j")
+    press("r")
+    local still = HL.opts.hues.data_element
+    return { found = true, moved = moved, after_one = after_one,
+             after_two = after_two, armed = armed,
+             moved2 = moved2, still = still, shipped = HL.defaults().hues.data_element }
+  ]==])
+  expect.equality(got.found, true)
+  expect.equality(got.after_one, got.moved) -- one press changed nothing
+  expect.equality(got.after_two, got.shipped)
+  expect.equality(got.armed:find("r again to discard", 1, true) ~= nil, true)
+  expect.equality(got.armed:find("1 hue change", 1, true) ~= nil, true)
+  -- disarmed by the `j`, so the second `r` only re-armed
+  expect.equality(got.still, got.moved2)
+end
+
+-- ── item 3: the rest of the Lean palette is reachable ──────────────────
+
+T["palette"]["the catalogue reaches namespace_hl's groups, each naming its palette key"] = function()
+  local got = child.lua_get([==[(function()
+    package.loaded["config.lean.highlights"] = nil
+    local HL = require("config.lean.highlights")
+    HL.setup()
+    HL.warm()
+    local NS = require("config.lean.namespace_hl")
+    local seen = {}
+    for _, e in ipairs(HL.catalogue()) do seen[e.name] = e.gloss end
+    local missing, glossless, badkey = {}, {}, {}
+    for name in pairs(NS.groups()) do
+      if seen[name] == nil then
+        missing[#missing+1] = name
+      else
+        if seen[name] == "" then glossless[#glossless+1] = name end
+        -- Every row says which `M.palette` entry it paints from — the
+        -- mitigation for the one thing that argued against listing these at
+        -- all, since a per-group override splits a family that exists on
+        -- purpose. A key it names must be a key that exists.
+        local k = seen[name]:match("via p%.([%w_]+)")
+        local slot = seen[name]:match("via p%.rainbow%[(%d+)%]")
+        if k and NS.palette[k] == nil then badkey[#badkey+1] = name .. " -> p." .. k end
+        if slot and NS.palette.rainbow[tonumber(slot)] == nil then
+          badkey[#badkey+1] = name .. " -> rainbow[" .. slot .. "]"
+        end
+        if not k and not slot and name ~= "@lean.ns.prefix" then
+          -- `@lean.ns.prefix` is the one group with no `fg` by design; it
+          -- still names `p.brass` through its `sp`, so even it is covered
+          -- and this branch should stay empty.
+          badkey[#badkey+1] = name .. " names no palette key"
+        end
+      end
+    end
+    return { missing = missing, glossless = glossless, badkey = badkey,
+             n = #HL.catalogue() }
+  end)()]==])
+  expect.equality(got.missing, {})
+  expect.equality(got.glossless, {})
+  expect.equality(got.badkey, {})
+  -- The audit measured 49 entries with none of namespace_hl's in them.
+  expect.equality(got.n > 60, true)
+end
+
+T["palette"]["the rainbow's slots are named by position, not by a colliding hue"] = function()
+  -- `rainbow[3]` IS `p.yellow` and `rainbow[6]` IS `p.mauve` — both
+  -- deliberate. A reverse map from the hex therefore has two right answers
+  -- and picked the wrong one, sending the user to the wrong edit; and
+  -- `pairs` order is not stable, so it could pick differently on two runs.
+  local got = child.lua_get([==[(function()
+    local NS = require("config.lean.namespace_hl")
+    local by = {}
+    for _, e in ipairs(NS.catalogue()) do by[e[1]] = e[2] end
+    local bad = {}
+    for i = 1, #NS.palette.rainbow do
+      for _, pre in ipairs({ "c", "f" }) do
+        local name = "@lean.path." .. pre .. i
+        local want = "via p.rainbow[" .. i .. "]"
+        if not (by[name] or ""):find(want, 1, true) then
+          bad[#bad+1] = name .. " says " .. tostring(by[name])
+        end
+      end
+    end
+    return bad
+  end)()]==])
+  expect.equality(got, {})
+end
+
+-- ── items 10 and 15: the list is a view of the grid again ──────────────
+
+T["palette"]["the hue rows are grouped by world, with _local under its partner"] = function()
+  local got = tui([==[
+    P.open()
+    local rows, order = pane(), {}
+    for _, l in ipairs(rows) do
+      -- A hue row's label is the first word after the two-cell cursor
+      -- column; a heading has no swatch.
+      -- Anchored on the SWATCH, not on the cursor column. Lua patterns are
+      -- byte-based, so `\u{25b8}?` does not mean "an optional marker" — the
+      -- `?` applies to the last BYTE of a three-byte character — and `^..`
+      -- for "skip the marker" skips two thirds of it. Both spellings were
+      -- tried and both dropped rows silently, which is the worst way for an
+      -- assertion over a list to be wrong.
+      local label = l:match("([%w_]+)%s+\u{2588}")
+      if label then order[#order+1] = label end
+      local headtext = l:match("^%s%s(%u[%u%s]+\u{b7}.*)$")
+      if headtext then order[#order+1] = "## " .. headtext:match("^(%u+)") end
+    end
+    local function idx(want)
+      for i, v in ipairs(order) do if v == want then return i end end
+    end
+    return {
+      order = order,
+      sample = vim.list_slice(pane(), 1, 12),
+      -- Item 15: the two cells the palette exists to separate were sixteen
+      -- rows apart under the alphabetical order.
+      pair_distance = math.abs((idx("prop_element_local") or 0) - (idx("prop_element") or 0)),
+      data_pair = math.abs((idx("data_element_local") or 0) - (idx("data_element") or 0)),
+      worlds_first = (idx("## PROP") or 99) < (idx("## DATA") or 0),
+      -- Item 10: the anchors are not the parents of the twenty-one cells and
+      -- must not sit at the top of the list reading as though they were.
+      anchor_after_cells = (idx("prop") or 0) > (idx("prop_former_local") or 99),
+      anchor_heading = idx("## ANCHORS") ~= nil,
+    }
+  ]==])
+  expect.equality(got.pair_distance, 1)
+  expect.equality(got.data_pair, 1)
+  expect.equality(got.worlds_first, true)
+  expect.equality(got.anchor_after_cells, true)
+  expect.equality(got.anchor_heading, true)
+end
+
+-- ── item 6: a group row shows what it already knows ────────────────────
+
+T["palette"]["a GROUPS row carries its colour and its gloss"] = function()
+  local got = tui([==[
+    P.open()
+    press("G")
+    local hits, glossed, hexed = 0, 0, 0
+    for _, l in ipairs(pane()) do
+      local hex, name = l:match("\u{2588}\u{2588}\u{2588}%s+(#%x%x%x%x%x%x)%s+(%S+)")
+      if hex and name then
+        hits = hits + 1
+        hexed = hexed + 1
+        local tail = l:match(vim.pesc(name) .. "%s+(%S.*)$")
+        if tail and #tail > 3 then glossed = glossed + 1 end
+      end
+    end
+    return { hits = hits, glossed = glossed, hexed = hexed,
+             sample = vim.list_slice(pane(), 1, 8),
+             width = (function()
+               for _, w in ipairs(vim.api.nvim_list_wins()) do
+                 local c = vim.api.nvim_win_get_config(w)
+                 if c.relative ~= "" and c.title and c.title[1][1]:find("palette") then return c.width end
+               end
+             end)() }
+  ]==])
+  expect.equality(got.hits > 10, true)
+  expect.equality(got.hexed, got.hits)
+  -- Every catalogue entry has a gloss; the audit found the row showed none.
+  expect.equality(got.glossed, got.hits)
+end
+
+-- ── item 4: the filter ─────────────────────────────────────────────────
+
+T["palette"]["/ narrows the list and <BS> puts it back"] = function()
+  local got = tui([==[
+    P.open()
+    press("G")
+    local function n()
+      local c = 0
+      for _, l in ipairs(pane()) do if l:find("\u{2588}", 1, true) then c = c + 1 end end
+      return c
+    end
+    local all = n()
+    press("/@lean.op<CR>")
+    local narrowed = n()
+    local names = {}
+    for _, l in ipairs(pane()) do
+      local g = l:match("(@lean%.op%.%w+)")
+      if g then names[#names+1] = g end
+    end
+    press("<BS>")
+    return { all = all, narrowed = narrowed, back = n(), names = names,
+             status = P._status() }
+  ]==])
+  expect.equality(got.all > got.narrowed, true)
+  expect.equality(got.narrowed > 0, true)
+  expect.equality(got.back, got.all)
+  expect.equality(vim.tbl_contains(got.names, "@lean.op.prop"), true)
+  expect.equality(vim.tbl_contains(got.names, "@lean.op.colon"), true)
+end
+
+-- ── item 8: the legend ─────────────────────────────────────────────────
+
+T["palette"]["every key the picker maps is in the `?` legend"] = function()
+  local got = tui([==[
+    P.open()
+    local buf
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      local c = vim.api.nvim_win_get_config(w)
+      if c.relative ~= "" and c.title and c.title[1][1]:find("palette") then
+        buf = vim.api.nvim_win_get_buf(w)
+      end
+    end
+    -- Split on the " / " that joins an alias pair, and normalise: a keymap's
+    -- `lhs` for `<Space>` is a literal space and for `<C-r>` is `<C-R>`, so a
+    -- naive string compare reports three keys missing that are right there.
+    local listed = {}
+    for _, entry in ipairs(P._keys()) do
+      for k in entry:gmatch("[^%s]+") do
+        if k ~= "/" or entry == "/" then listed[k] = true end
+      end
+      for k in entry:gmatch("[^/]+") do listed[(k:gsub("^%s+", ""):gsub("%s+$", ""))] = true end
+    end
+    listed[" "] = listed["<Space>"]
+    listed["<C-R>"] = listed["<C-r>"]
+    -- The arrow duplicates and the two motion aliases are deliberately not
+    -- in the legend: they say nothing j/k/h/l does not.
+    local ALIASES = {
+      ["<Down>"] = true, ["<Up>"] = true, ["<Left>"] = true, ["<Right>"] = true,
+    }
+    local missing = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+      if not listed[m.lhs] and not ALIASES[m.lhs] then missing[#missing+1] = m.lhs end
+    end
+    table.sort(missing)
+    return { missing = missing, n_listed = vim.tbl_count(listed) }
+  ]==])
+  expect.equality(got.missing, {})
+  expect.equality(got.n_listed > 12, true)
+end
+
+-- ── item 11: the bridge from the inspector ─────────────────────────────
+
+T["palette"]["M.open({ group = ... }) lands on that group, open or not"] = function()
+  local got = tui([==[
+    local function shows(name)
+      for _, l in ipairs(pane()) do
+        if l:find(name, 1, true) then return true end
+      end
+      return false
+    end
+    P.open({ group = "@lsp.type.tactic.lean" })
+    local first = shows("@lsp.type.tactic.lean")
+    -- ...and AGAIN while already open, which the `S.open` early return used
+    -- to make a no-op — precisely when the picker is up, which is the
+    -- likeliest state for someone comparing two groups.
+    P.open({ group = "@lsp.type.keyword.lean" })
+    local second = shows("@lsp.type.keyword.lean")
+    return { first = first, second = second, stale = shows("@lsp.type.tactic.lean") }
+  ]==])
+  expect.equality(got.first, true)
+  expect.equality(got.second, true)
+  expect.equality(got.stale, false)
+end
+
+T["palette"]["the token inspector offers the key, and names a real group"] = function()
+  -- The rhs cannot be exercised without a Lean server, so what is asserted
+  -- is the pair that D14 says a `desc` test cannot see on its own: the
+  -- function the key would call EXISTS and takes the option the key passes.
+  local got = child.lua_get([==[(function()
+    local src = vim.api.nvim_get_runtime_file("lua/config/lean/inspect_token.lua", false)[1]
+    local body = table.concat(vim.fn.readfile(src), "\n")
+    local P = require("config.lean.palette_picker")
+    return {
+      binds = body:find('vim.keymap.set("n", "e"', 1, true) ~= nil,
+      calls = body:find('palette_picker").open({ group = target })', 1, true) ~= nil,
+      guards = body:find("local target = R.winner and R.winner.group", 1, true) ~= nil,
+      -- and the door it knocks on is open
+      accepts = pcall(P.open, { group = "@lsp.type.tactic.lean" }),
+    }
+  end)()]==])
+  expect.equality(got.binds, true)
+  expect.equality(got.calls, true)
+  expect.equality(got.guards, true)
+  expect.equality(got.accepts, true)
+end
+
+-- ── item 13: `y` knows the name the CLI knows ──────────────────────────
+
+T["palette"]["y hands the row's TARGET to source_for, not its label"] = function()
+  local got = tui([==[
+    P.open()
+    -- A channel row's LABEL is prose (`local \u{2192} italic`) and its TARGET is
+    -- an identifier (`local_italic`). Before `row.target` existed there was
+    -- nothing on the row that `source_for` could be given.
+    local label
+    for _ = 1, 80 do
+      press("j")
+      local l = selected()
+      if l:find("local", 1, true) and l:find("italic", 1, true) then label = l break end
+    end
+    if not label then return { found = false } end
+    -- Pressing the real key, and reading the buffer it puts the edit in —
+    -- asserting that `source_for` works when handed the right string would
+    -- pass whether or not the row can supply it.
+    press("y")
+    local scratch = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    return { found = true, label = label, scratch = table.concat(scratch, "\n") }
+  ]==])
+  expect.equality(got.found, true)
+  -- The label really is prose, which is the reason the target is stored.
+  expect.equality(got.label:find("italic", 1, true) ~= nil, true)
+  expect.equality(got.label:find("local_italic", 1, true), nil)
+  -- ...and what `y` produced names the identifier and a real source line.
+  expect.equality(got.scratch:find("local_italic", 1, true) ~= nil, true)
+  expect.equality(got.scratch:find("highlights.lua:%d") ~= nil, true)
+end
+
+-- ╭──────────────────────────────────────────────────────────────────────╮
+-- │ END: the picker as a TUI                                             │
+-- ╰──────────────────────────────────────────────────────────────────────╯
+
 return T
