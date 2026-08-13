@@ -990,7 +990,7 @@ T["lean"]["highlights: hypothesis, datum and type differ from each other"] = fun
   -- Measured on rendered cells and reported; NOT quietly repaired, because
   -- moving `h0` was not asked for. If it is to be fixed, `prop_element_local`
   -- is the cell to move, not `data_element_local`.
-  expect.equality(got.fgs.hyp, "#f5c2e7") -- h0, h1 — pink, calm
+  expect.equality(got.fgs.hyp, "#eba0ac") -- h0, h1 — maroon: separated from flamingo data locals
   expect.equality(got.fgs.dat, "#f2cdcd") -- m     — flamingo (third retune)
   expect.equality(got.fgs.srt, "#ff5fff") -- G, α  — magenta
   -- ...and pairwise distinct, stated separately so a future recolour that
@@ -1349,7 +1349,10 @@ T["lean"]["highlights: no bright pink or magenta is bold"] = function()
     "@lean.data.sort.class",       -- #f38ba8
     "@lean.data.sort.local",       -- #ff5fff  a type variable
     "@lean.prop",                  -- #ff1493  the world anchor
-    "@lean.prop.element.local",    -- #f5c2e7  a hypothesis
+    -- `@lean.prop.element.local` is NOT in this set any more: hypotheses moved
+    -- from `#f5c2e7` to `#eba0ac` maroon, because the pale pink had become
+    -- near-indistinguishable from flamingo data locals for `h` and `m` in one
+    -- binder list -- the distinction this palette exists to draw.
     "@lean.prop.former",           -- #ffa8ff  a predicate
   })
   -- THE ONE EXCEPTION, BY NAME. Instruction 5 of the third retune. Anything
@@ -1458,7 +1461,13 @@ T["lean"]["highlights: the palette resolves to real hex colours"] = function()
   -- families; green survives as rainbow position 3+1 in namespace_hl.lua).
   -- IN: `#00b7ff` electric blue, `#f2cdcd` flamingo, `#ffa8ff` light magenta
   -- and `#cc44cc` deep magenta. -3 +4 = 16.
-  expect.equality(got.ndistinct, 16)
+  -- 15, not 16: `prop_element_local` moved onto `#eba0ac` maroon, which
+  -- `data_former_local` already held. That was a deliberate merge -- the two
+  -- pale pinks `#f5c2e7` and `#f2cdcd` had become near-identical on the glass
+  -- for `h` and `m` in one binder list, which is the distinction this whole
+  -- palette exists to draw. data_former_local measures ZERO cells in every
+  -- probe file, so the shared hex is never actually rendered twice.
+  expect.equality(got.ndistinct, 15)
 end
 
 -- ╭──────────────────────────────────────────────────────────────────────╮
