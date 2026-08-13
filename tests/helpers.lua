@@ -110,4 +110,33 @@ function H.cmd_exists(child, name)
   return child.lua_get(string.format('vim.fn.exists(":%s") == 2', name))
 end
 
+--- How far apart two `#rrggbb` strings are, as the sum of the three channel
+--- deltas (0 identical, 765 black-to-white).
+---
+--- WHY A DISTANCE AND NOT `~=`. The colour cases used to pin exact hexes, so
+--- a one-hex aesthetic change cost two or three test failures. Replacing a
+--- pin with "these two differ" is cheaper but WEAKER, and measurably so:
+--- `#f5c2e7` on hypotheses beside `#f2cdcd` on data locals passed `~=` for a
+--- whole commit while being the same pale warm pink on the glass, in the one
+--- binder list the palette exists to disambiguate (test_lean.lua, the
+--- `two_le` case). That pair scores 40 here. A floor rejects it; `~=` does
+--- not.
+---
+--- Sum-of-channels rather than a perceptual metric on purpose: it needs no
+--- colour-space library, it is monotone in the thing being asked about, and
+--- every number in the assertions is reproducible by hand from the hexes.
+---@param a string `#rrggbb`
+---@param b string `#rrggbb`
+---@return integer
+function H.hex_gap(a, b)
+  local function ch(s, i)
+    return tonumber(s:sub(i, i + 1), 16) or 0
+  end
+  local d = 0
+  for _, i in ipairs({ 2, 4, 6 }) do
+    d = d + math.abs(ch(a, i) - ch(b, i))
+  end
+  return d
+end
+
 return H

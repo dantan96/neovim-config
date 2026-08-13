@@ -241,10 +241,15 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
   expect.equality(got["λ"], "leanBinderSymbol")
   expect.equality(got["↦"], "leanBinderSymbol")
   -- ...and the RESOLVED colour, which is what "not an operator" actually
-  -- means. `leanOp` links to `Operator`, catppuccin's `#89dceb` sky; the
-  -- binder group is `#ff1493` DeepPink. Asserting the group name alone
-  -- would pass if `↦` had merely been added to lean.nvim's operator class,
-  -- which is the plausible wrong fix.
+  -- means. `leanOp` links to `Operator`, catppuccin's sky; the binder group
+  -- is the palette's DeepPink. Asserting the group name alone would pass if
+  -- `↦` had merely been added to lean.nvim's operator class, which is the
+  -- plausible wrong fix.
+  --
+  -- ASSERTED AS "FAR FROM THE OPERATOR COLOUR", not as a hex. `~= op` alone
+  -- would pass on two shades of the same sky, so it is a measured gap
+  -- (`H.hex_gap`); DeepPink against sky measures 402 today. Which pink Dan
+  -- wants is his to change without failing a test.
   local resolved = child.lua_get([[(function()
     require("config.lean.namespace_hl").define()
     local h = vim.api.nvim_get_hl(0, { name = "leanBinderSymbol" })
@@ -254,8 +259,12 @@ NS["`∀ ∃ λ ↦` are binder keywords and not operators"] = function()
              op = op.fg and string.format("#%06x", op.fg) or "nil" }
   end)()]])
   expect.equality(resolved.link, "@lean.binder.keyword")
-  expect.equality(resolved.fg, "#ff1493")
-  expect.no_equality(resolved.fg, resolved.op)
+  -- A4: `nvim_get_hl` returns {} for an undefined group, so a gap computed
+  -- from two "nil" strings would be 0 and the assertion would fail — but say
+  -- it directly so the failure names the cause.
+  expect.no_equality(resolved.fg, "nil")
+  expect.no_equality(resolved.op, "nil")
+  expect.equality(H.hex_gap(resolved.fg, resolved.op) >= 60, true)
 end
 
 -- ── the syntax layer: operator symbols ─────────────────────────────────
@@ -276,8 +285,12 @@ end
 --     "is it coloured" would see yes;
 --   * putting a set operator in the pink group instead of leaving it sky.
 --
--- So pink asserts `#ff1493` AND `~= Operator.fg`; sky asserts `== Operator.fg`
--- AND `~= #ff1493`; yellow asserts `#f9e2af` and differs from both.
+-- So the three destinations are told apart BY IDENTITY AND BY DISTANCE, not
+-- by hex: pink is the same colour as the binder group and a measured gap from
+-- the operator sky; sky is `== Operator.fg`, by LINK and not by a copied
+-- value; yellow is a measured gap from both and from Normal. A recolour of
+-- any of the three is then one edit in `namespace_hl.palette` and no test
+-- failures, which is the point.
 
 --- Innermost syntax group at every byte column of `line`, in a lean buffer.
 ---
@@ -357,16 +370,18 @@ NS["operators: membership, connectives, relations and big binders are DeepPink"]
   end
 
   local c = op_colours()
-  expect.equality(c.prop, "#ff1493")
-  expect.equality(c.prop, c.binder) -- one hue, `p.deeppink`, two groups
-  expect.no_equality(c.prop, c.op) -- NOT the plausible "add it to leanOp" fix
-  expect.equality(c.set, c.op) -- sky BY LINK to Operator, not by a copied hex
-  expect.no_equality(c.set, c.prop)
   -- A4: `nvim_get_hl` returns {} for an undefined group, so "they differ"
-  -- would pass with both nil. Require every one of them to be a real colour.
+  -- would pass with both nil. Require every one of them to be a real colour
+  -- FIRST, so a gap of 0 between two "nil"s cannot be misread as a collision.
   for _, v in pairs(c) do
     expect.no_equality(v, "nil")
   end
+  expect.equality(c.prop, c.binder) -- one hue, `p.deeppink`, two groups
+  -- NOT the plausible "add it to leanOp" fix — and far enough from sky to be
+  -- a different colour rather than a different shade. 402 today.
+  expect.equality(H.hex_gap(c.prop, c.op) >= 60, true)
+  expect.equality(c.set, c.op) -- sky BY LINK to Operator, not by a copied hex
+  expect.equality(H.hex_gap(c.set, c.prop) >= 60, true)
 end
 
 NS["operators: the ascription colon is yellow, `:=` and `::` are not"] = function()
@@ -389,10 +404,13 @@ NS["operators: the ascription colon is yellow, `:=` and `::` are not"] = functio
   expect.equality(got[":="], "leanOp")
 
   local c = op_colours()
-  expect.equality(c.colon, "#f9e2af")
-  expect.no_equality(c.colon, c.op) -- it left sky, which is the whole point
-  expect.no_equality(c.colon, c.prop)
-  expect.no_equality(c.colon, c.normal)
+  -- Three measured gaps rather than a hex. It left sky, which is the whole
+  -- point; it is not the proposition pink; and it is not simply Normal, which
+  -- is the way "we coloured it" can be true and invisible at the same time.
+  for _, other in ipairs({ "op", "prop", "normal" }) do
+    expect.no_equality(c[other], "nil")
+    expect.equality({ other, H.hex_gap(c.colon, c[other]) >= 60 }, { other, true })
+  end
 end
 
 NS["operators: `=>` `<;>` `<|>` `->` `<-` `<|` `|>` are never split"] = function()
@@ -697,24 +715,66 @@ NS["nothing is painted under a derived Ghostty profile"] = function()
 end
 
 NS["the palette is hand-picked, not derived"] = function()
-  -- Named explicitly so that a future "just blend it a bit" edit has to delete
-  -- an assertion rather than slip through. Dan's words: "FUCK any blending."
-  expect.equality(child.lua_get([[require("config.lean.namespace_hl").palette]]), {
-    mauve = "#cba6f7",
-    slate = "#708090",
-    hotpink = "#ff69b4",
-    -- Fourth retune: the ascription colon. Same hex as rainbow position 3 on
-    -- purpose — a module path has no colon in it.
-    yellow = "#f9e2af",
-    -- Third retune: the binder keywords take the DeepPink that
-    -- `@lean.prop.former` vacated when the type level became one magenta
-    -- family. Instructed by hex.
-    deeppink = "#ff1493",
-    brass = "#e5b567",
-    -- Six catppuccin hues, cycling by POSITION. Spelled out rather than
-    -- counted so that "rainbow" cannot quietly become three colours.
-    rainbow = { "#f38ba8", "#fab387", "#f9e2af", "#a6e3a1", "#89b4fa", "#cba6f7" },
+  -- Dan's words: "FUCK any blending." This case used to mirror all twelve
+  -- hexes, so recolouring one thing broke it every time — and mirroring is a
+  -- weak way to say "hand-picked" anyway, since a copied table of computed
+  -- values would satisfy it.
+  --
+  -- WHAT "HAND-PICKED" ACTUALLY MEANS, and what is asserted instead: every
+  -- value in the live palette appears VERBATIM as a literal in the module
+  -- source. A blended or derived value does not — `blend(mauve, 0.4)` puts no
+  -- `#8e74ad` in the file. The keys are pinned (they are an interface: other
+  -- modules and the tests below name them), the shape is pinned, and the
+  -- values are free.
+  local got = child.lua_get([[(function()
+    local p = require("config.lean.namespace_hl").palette
+    local src = table.concat(vim.fn.readfile(
+      vim.fn.stdpath("config") .. "/lua/config/lean/namespace_hl.lua"), "\n")
+    local keys, bad, absent = {}, {}, {}
+    local function check(label, v)
+      if type(v) ~= "string" or not v:match("^#%x%x%x%x%x%x$") then
+        bad[#bad + 1] = label .. "=" .. tostring(v)
+      elseif not src:find(v, 1, true) then
+        absent[#absent + 1] = label .. "=" .. v
+      end
+    end
+    for k, v in pairs(p) do
+      keys[#keys + 1] = k
+      if k == "rainbow" then
+        for i, hex in ipairs(v) do check("rainbow[" .. i .. "]", hex) end
+      else
+        check(k, v)
+      end
+    end
+    table.sort(keys); table.sort(bad); table.sort(absent)
+    return { keys = keys, bad = bad, absent = absent, nrainbow = #p.rainbow,
+             -- The one CALL that would mean the rule had been broken. A
+             -- pattern and not a plain substring: the module's header uses
+             -- the word "blended" to say the palette is not, and banning the
+             -- word would ban saying so.
+             blends = src:find("blend%s*%(") ~= nil }
+  end)()]])
+  -- The interface: `namespace_hl` is required by name from the syntax layer
+  -- and from test_lean.lua's hotpink identity check, so a renamed key is a
+  -- real break and not a recolour.
+  expect.equality(got.keys, {
+    "brass",
+    "deeppink",
+    "hotpink",
+    "mauve",
+    "rainbow",
+    "slate",
+    "yellow",
   })
+  -- Every value is a real `#rrggbb`...
+  expect.equality(got.bad, {})
+  -- ...and every one of them is a literal somebody typed into the module.
+  expect.equality(got.absent, {})
+  -- Six hues cycling by POSITION, so "rainbow" cannot quietly become three.
+  expect.equality(got.nrainbow, 6)
+  -- And the word itself, because the literal check would still pass on
+  -- `blend(hotpink, mauve)` assigned to a NEW key nobody looks at.
+  expect.equality(got.blends, false)
 end
 
 NS["@lsp.type.keyword.lean is never touched"] = function()
