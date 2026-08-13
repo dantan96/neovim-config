@@ -1412,7 +1412,10 @@ local function tui(body)
     -- the gloss column for want of room — so a case asserting the gloss is
     -- there would fail for a reason that has nothing to do with it. Sized to
     -- the terminal the audit was taken on, which is also the size the layout
-    -- is meant for.
+    -- is meant for, and PUT BACK below: this is one shared child (D4), and a
+    -- global write left standing is how a case poisons whatever is added
+    -- after it.
+    local was = { vim.o.columns, vim.o.lines }
     vim.o.columns, vim.o.lines = 200, 50
     local function press(keys)
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
@@ -1450,6 +1453,7 @@ local function tui(body)
     end
     local out = (function() __BODY__ end)()
     pcall(press, "q")
+    vim.o.columns, vim.o.lines = was[1], was[2]
     return out
   end)()]==]
   return child.lua_get((tpl:gsub("__BODY__", function()

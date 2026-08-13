@@ -2241,6 +2241,9 @@ function M.open(opts)
   S.status = ""
   S.filter = ""
   S.pending = nil
+  -- `S.compact` is deliberately NOT reset. If you folded the preview away to
+  -- watch the real buffer, you meant it, and having to press `p` again after
+  -- every close would make the fold a per-session chore rather than a mode.
   HL.warm() -- so GROUPS mode lists the flag variants without a Lean buffer
   if group then
     S.mode = "group"
